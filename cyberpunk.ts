@@ -11,11 +11,19 @@ const SOUNDS = join(CONFIG, "sounds")
 const THEMES = join(CONFIG, "themes")
 const OPENCODE_JSON = join(CONFIG, "opencode.json")
 const IS_MAC = process.platform === "darwin"
+const SDD_REVIEW_PROMPT_PATH = join(PROMPTS, "sdd-review.md")
+const SDD_CLAUDE_REVIEW_PROMPT_PATH = join(PROMPTS, "sdd-claude-review.md")
+const SDD_REVIEW_SKILL_PATH = join(SKILLS, "sdd-review", "SKILL.md")
+const SDD_CLAUDE_REVIEW_SKILL_PATH = join(SKILLS, "sdd-claude-review", "SKILL.md")
 
-const SDD_REVIEW_PROMPT = `You are an SDD executor for the review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ~/.config/opencode/skills/sdd-review/SKILL.md and follow it exactly.
+function fileRef(path: string) {
+  return `{file:${path}}`
+}
+
+const SDD_REVIEW_PROMPT = `You are an SDD executor for the review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ${SDD_REVIEW_SKILL_PATH} and follow it exactly.
 `
 
-const SDD_CLAUDE_REVIEW_PROMPT = `You are an SDD executor for the claude-review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ~/.config/opencode/skills/sdd-claude-review/SKILL.md and follow it exactly.
+const SDD_CLAUDE_REVIEW_PROMPT = `You are an SDD executor for the claude-review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ${SDD_CLAUDE_REVIEW_SKILL_PATH} and follow it exactly.
 `
 
 const SDD_REVIEW_COMMAND = `---
@@ -24,7 +32,7 @@ agent: sdd-orchestrator
 subtask: true
 ---
 
-You are an SDD sub-agent. Read the skill file at ~/.config/opencode/skills/sdd-review/SKILL.md FIRST, then follow its instructions exactly.
+You are an SDD sub-agent. Read the skill file at ${SDD_REVIEW_SKILL_PATH} FIRST, then follow its instructions exactly.
 
 CONTEXT:
 - Working directory: !\`echo -n "$(pwd)"\`
@@ -41,7 +49,7 @@ agent: sdd-orchestrator
 subtask: true
 ---
 
-You are an SDD sub-agent. Read the skill file at ~/.config/opencode/skills/sdd-claude-review/SKILL.md FIRST, then follow its instructions exactly.
+You are an SDD sub-agent. Read the skill file at ${SDD_CLAUDE_REVIEW_SKILL_PATH} FIRST, then follow its instructions exactly.
 
 CONTEXT:
 - Working directory: !\`echo -n "$(pwd)"\`
@@ -210,7 +218,7 @@ const SDD_MANAGED_AGENTS = {
     hidden: true,
     mode: "subagent",
     model: "zai-coding-plan/glm-5.1",
-    prompt: "{file:/home/kevinlb/.config/opencode/prompts/sdd/sdd-review.md}",
+    prompt: fileRef(SDD_REVIEW_PROMPT_PATH),
     tools: { bash: true, read: true, write: true },
   },
   "sdd-review-intranet": {
@@ -218,7 +226,7 @@ const SDD_MANAGED_AGENTS = {
     hidden: true,
     mode: "subagent",
     model: "zai-coding-plan/glm-5-turbo",
-    prompt: "{file:/home/kevinlb/.config/opencode/prompts/sdd/sdd-review.md}",
+    prompt: fileRef(SDD_REVIEW_PROMPT_PATH),
     tools: { bash: true, read: true, write: true },
   },
   "sdd-claude-review": {
@@ -226,7 +234,7 @@ const SDD_MANAGED_AGENTS = {
     hidden: true,
     mode: "subagent",
     model: "alibaba-coding-plan/glm-5",
-    prompt: "{file:/home/kevinlb/.config/opencode/prompts/sdd/sdd-claude-review.md}",
+    prompt: fileRef(SDD_CLAUDE_REVIEW_PROMPT_PATH),
     tools: { bash: true, read: true, write: true },
   },
   "sdd-claude-review-intranet": {
@@ -234,7 +242,7 @@ const SDD_MANAGED_AGENTS = {
     hidden: true,
     mode: "subagent",
     model: "alibaba-coding-plan/glm-5",
-    prompt: "{file:/home/kevinlb/.config/opencode/prompts/sdd/sdd-claude-review.md}",
+    prompt: fileRef(SDD_CLAUDE_REVIEW_PROMPT_PATH),
     tools: { bash: true, read: true, write: true },
   },
 } as const
