@@ -26,6 +26,17 @@ function logInstallNotice(message: string) {
   console.log(message)
 }
 
+async function ensureSound($: any, file: string, args: string) {
+  const path = join(SOUNDS, file)
+  if (existsSync(path)) return
+
+  const command = `ffmpeg -loglevel error -nostats ${args} ${JSON.stringify(path)} >/dev/null 2>&1`
+
+  try {
+    await $`bash -lc ${command}`.nothrow()
+  } catch {}
+}
+
 const SDD_REVIEW_PROMPT = `You are an SDD executor for the review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ${SDD_REVIEW_SKILL_PATH} and follow it exactly.
 `
 
@@ -353,14 +364,6 @@ const SOUND_GENERATORS: Record<string, string> = {
   ].join(" "),
 }
 
-const stats = {
-  tools: 0,
-  edits: 0,
-  bash: 0,
-  errors: 0,
-  startTime: 0,
-}
-
 let installed = false
 
 function ensureFile(path: string, content: string) {
@@ -471,12 +474,7 @@ async function install($: any) {
   }
 
   for (const [file, args] of Object.entries(SOUND_GENERATORS)) {
-    const path = join(SOUNDS, file)
-    if (!existsSync(path)) {
-      try {
-        await $`ffmpeg ${args.split(" ")} ${path} 2>/dev/null`.nothrow()
-      } catch {}
-    }
+    await ensureSound($, file, args)
   }
 
   installSddAssets()
@@ -499,20 +497,11 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
 
   return {
     event: async ({ event }) => {
-      if (event.type === "session.created") {
-        stats.tools = 0
-        stats.edits = 0
-        stats.bash = 0
-        stats.errors = 0
-        stats.startTime = Date.now()
-      }
-
       if (event.type === "session.idle") {
         try { await playSound($, "idle.m4a") } catch {}
       }
 
       if (event.type === "session.error") {
-        stats.errors++
         try { await playSound($, "error.m4a") } catch {}
       }
 
@@ -523,12 +512,6 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
       if (event.type === "permission.asked") {
         try { await playSound($, "permission.m4a") } catch {}
       }
-    },
-
-    "tool.execute.after": async (input) => {
-      stats.tools++
-      if (input.tool === "edit" || input.tool === "write") stats.edits++
-      if (input.tool === "bash") stats.bash++
     },
   }
 }

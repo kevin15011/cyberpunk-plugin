@@ -11,6 +11,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SCRIPT_DIR/cyberpunk.ts" ~/.config/opencode/plugins/cyberpunk.ts
 echo "   Plugin installed at ~/.config/opencode/plugins/cyberpunk.ts"
 
+OBS_PLUGIN=~/.config/opencode/plugins/opencode-observability.ts
+if [ -f "$OBS_PLUGIN" ]; then
+  mv "$OBS_PLUGIN" "$OBS_PLUGIN.disabled"
+  echo "   Disabled noisy plugin at ~/.config/opencode/plugins/opencode-observability.ts"
+fi
+
 # --- Tmux Config ---
 echo ">> Installing tmux config..."
 if [ -f ~/.tmux.conf ]; then
