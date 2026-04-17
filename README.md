@@ -11,7 +11,6 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `error` — Low descending tone on session errors
   - `compact` — Neural compression sound on context compaction
   - `permission` — Alert beep when opencode asks for permission
-- **ASCII banner** — Cyberpunk welcome banner on session start
 - **Cross-platform** — macOS (`afplay`) and Linux (`ffplay`)
 
 ### Tmux Config

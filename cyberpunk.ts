@@ -108,16 +108,6 @@ const SOUND_GENERATORS: Record<string, string> = {
   ].join(" "),
 }
 
-const ASCII_BANNER = `
- ██████╗██╗   ██╗██████╗ ███████╗██████╗ 
-██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗
-██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝
-██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗
-╚██████╗   ██║   ██████╔╝███████╗██║  ██║
- ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝
-  ▀▀▀▀▀▀▀▀▀▀▀ NET::RUNNER v2.0 ▀▀▀▀▀▀▀▀▀▀▀
-`
-
 const stats = {
   tools: 0,
   edits: 0,
@@ -184,7 +174,6 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
         stats.bash = 0
         stats.errors = 0
         stats.startTime = Date.now()
-        console.log(ASCII_BANNER)
       }
 
       if (event.type === "session.idle") {
