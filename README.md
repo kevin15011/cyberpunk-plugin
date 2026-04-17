@@ -32,6 +32,8 @@ chmod +x install.sh
 
 Then restart opencode. The plugin will auto-configure on first load, install both review phases, and patch the local SDD flow.
 
+Installation and SDD patch notices are silent by default so they do not clutter the OpenCode UI every time you open it. If you want to debug the setup flow, launch OpenCode with `OPENCODE_CYBERPUNK_INSTALL_NOTICES=1`.
+
 ## Install (opencode plugin only)
 
 ```bash

@@ -11,6 +11,7 @@ const SOUNDS = join(CONFIG, "sounds")
 const THEMES = join(CONFIG, "themes")
 const OPENCODE_JSON = join(CONFIG, "opencode.json")
 const IS_MAC = process.platform === "darwin"
+const SHOW_INSTALL_NOTICES = process.env.OPENCODE_CYBERPUNK_INSTALL_NOTICES === "1"
 const SDD_REVIEW_PROMPT_PATH = join(PROMPTS, "sdd-review.md")
 const SDD_CLAUDE_REVIEW_PROMPT_PATH = join(PROMPTS, "sdd-claude-review.md")
 const SDD_REVIEW_SKILL_PATH = join(SKILLS, "sdd-review", "SKILL.md")
@@ -18,6 +19,11 @@ const SDD_CLAUDE_REVIEW_SKILL_PATH = join(SKILLS, "sdd-claude-review", "SKILL.md
 
 function fileRef(path: string) {
   return `{file:${path}}`
+}
+
+function logInstallNotice(message: string) {
+  if (!SHOW_INSTALL_NOTICES) return
+  console.log(message)
 }
 
 const SDD_REVIEW_PROMPT = `You are an SDD executor for the review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ${SDD_REVIEW_SKILL_PATH} and follow it exactly.
@@ -379,11 +385,11 @@ function installSddAssets() {
   ].some(Boolean)
 
   if (changed) {
-    console.log("\x1b[38;5;45m>> SDD REVIEW PHASES INSTALLED // restart opencode to load agents\x1b[0m")
+    logInstallNotice("\x1b[38;5;45m>> SDD REVIEW PHASES INSTALLED // restart opencode to load agents\x1b[0m")
     return
   }
 
-  console.log("\x1b[38;5;39m>> SDD REVIEW PHASES DETECTED // sdd-review + sdd-claude-review already installed\x1b[0m")
+  logInstallNotice("\x1b[38;5;39m>> SDD REVIEW PHASES DETECTED // sdd-review + sdd-claude-review already installed\x1b[0m")
 }
 
 function patchSddContinueCommand() {
@@ -400,7 +406,7 @@ function patchSddContinueCommand() {
 
   if (next !== current) {
     writeFileSync(path, next)
-    console.log("\x1b[38;5;45m>> SDD FLOW PATCHED // apply -> review -> verify\x1b[0m")
+    logInstallNotice("\x1b[38;5;45m>> SDD FLOW PATCHED // apply -> review -> verify\x1b[0m")
   }
 }
 
@@ -435,7 +441,7 @@ function patchOpencodeConfig() {
   if (changed) {
     data.agent = agents
     writeFileSync(OPENCODE_JSON, JSON.stringify(data, null, 2) + "\n")
-    console.log("\x1b[38;5;45m>> AGENTS PATCHED // sdd-review + sdd-claude-review registered\x1b[0m")
+    logInstallNotice("\x1b[38;5;45m>> AGENTS PATCHED // sdd-review + sdd-claude-review registered\x1b[0m")
   }
 }
 
@@ -449,7 +455,7 @@ async function install($: any) {
   const themePath = join(THEMES, "cyberpunk.json")
   if (!existsSync(themePath)) {
     writeFileSync(themePath, CYBERPUNK_THEME)
-    console.log("\x1b[38;5;201m>> CYBERPUNK THEME INSTALLED // Reboot to apply\x1b[0m")
+    logInstallNotice("\x1b[38;5;201m>> CYBERPUNK THEME INSTALLED // Reboot to apply\x1b[0m")
   }
 
   const tuiPath = join(CONFIG, "tui.json")
@@ -458,7 +464,7 @@ async function install($: any) {
     if (tui.theme !== "cyberpunk") {
       tui.theme = "cyberpunk"
       writeFileSync(tuiPath, JSON.stringify(tui, null, 2))
-      console.log("\x1b[38;5;45m>> THEME ACTIVATED // cyberpunk\x1b[0m")
+      logInstallNotice("\x1b[38;5;45m>> THEME ACTIVATED // cyberpunk\x1b[0m")
     }
   } else {
     writeFileSync(tuiPath, JSON.stringify({ "$schema": "https://opencode.ai/tui.json", theme: "cyberpunk" }, null, 2))
