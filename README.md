@@ -11,6 +11,8 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `error` — Low descending tone on session errors
   - `compact` — Neural compression sound on context compaction
   - `permission` — Alert beep when opencode asks for permission
+- **2 custom SDD review phases** — `sdd-review` (native model review) and `sdd-claude-review` (Claude Opus CLI review)
+- **Automatic SDD patching** — Registers review agents in `opencode.json` and patches `/sdd-continue` to `apply -> review -> verify`
 - **Cross-platform** — macOS (`afplay`) and Linux (`ffplay`)
 
 ### Tmux Config
@@ -28,7 +30,7 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Then restart opencode. The plugin will auto-configure on first load.
+Then restart opencode. The plugin will auto-configure on first load, install both review phases, and patch the local SDD flow.
 
 ## Install (opencode plugin only)
 
