@@ -29,10 +29,13 @@ if [ "$OS" = "linux" ] && [ -f /etc/os-release ] && grep -qi "alpine\|musl" /etc
 fi
 
 BINARY_NAME="cyberpunk-${OS}-${ARCH}"
-INSTALL_PATH="./cyberpunk"
+INSTALL_DIR="${HOME}/.local/bin"
+INSTALL_PATH="${INSTALL_DIR}/cyberpunk"
 REPO="kevin15011/cyberpunk-plugin"
 
 echo ">> Downloading cyberpunk binary for ${OS}/${ARCH}..."
+
+mkdir -p "$INSTALL_DIR"
 
 # Download the latest binary from GitHub Releases
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
@@ -40,6 +43,16 @@ DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}
 if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_PATH" 2>/dev/null; then
   chmod +x "$INSTALL_PATH"
   echo "   Binary installed at ${INSTALL_PATH}"
+
+  case ":$PATH:" in
+    *":${INSTALL_DIR}:"*) ;;
+    *)
+      echo ""
+      echo ">> NOTE: ${INSTALL_DIR} is not in your PATH yet."
+      echo "   Add this line to your shell profile and restart the shell:"
+      echo "   export PATH=\"${INSTALL_DIR}:\$PATH\""
+      ;;
+  esac
 else
   echo ">> ERROR: Failed to download binary for ${OS}/${ARCH}."
   echo "   Please report this issue at: https://github.com/${REPO}/issues"
@@ -54,4 +67,4 @@ fi
 # Run the TUI to let the user choose what to install
 echo ""
 echo ">> Launching cyberpunk TUI..."
-./cyberpunk tui
+"$INSTALL_PATH" tui

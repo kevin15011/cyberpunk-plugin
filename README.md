@@ -28,7 +28,9 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
 curl -fsSL https://raw.githubusercontent.com/kevin15011/cyberpunk-plugin/main/install.sh | bash
 ```
 
-This downloads the binary from the latest GitHub Release and launches the installer TUI.
+This downloads the binary from the latest GitHub Release, installs it to `~/.local/bin/cyberpunk`, and launches the installer TUI.
+
+If `~/.local/bin` is not already in your `PATH`, the script prints the export line you need to add.
 
 **Alternative**: Clone and build from source (for other platforms):
 ```bash
@@ -97,6 +99,7 @@ To hear the permission alert sound, add this to your `opencode.json`:
 ```bash
 rm ~/.config/opencode/plugins/cyberpunk.ts
 rm -rf ~/.config/opencode/sounds/
+rm -f ~/.local/bin/cyberpunk
 rm ~/.tmux.conf
 ```
 
