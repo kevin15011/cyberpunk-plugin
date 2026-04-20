@@ -5,6 +5,7 @@ import { getPluginComponent } from "../components/plugin"
 import { getThemeComponent } from "../components/theme"
 import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
+import { getRtkComponent } from "../components/rtk"
 import type { ComponentModule } from "../components/types"
 import type { ComponentId } from "../config/schema"
 
@@ -13,6 +14,7 @@ const ALL_COMPONENTS: (() => ComponentModule)[] = [
   getThemeComponent,
   getSoundsComponent,
   getContextModeComponent,
+  getRtkComponent,
 ]
 
 export async function collectStatus(

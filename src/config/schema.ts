@@ -1,6 +1,6 @@
 // src/config/schema.ts — CyberpunkConfig interface with defaults
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode"
+export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk"
 export type InstallMode = "repo" | "binary"
 
 export interface ComponentState {
@@ -19,13 +19,14 @@ export interface CyberpunkConfig {
   pluginRegistered?: boolean
 }
 
-export const COMPONENT_IDS: ComponentId[] = ["plugin", "theme", "sounds", "context-mode"]
+export const COMPONENT_IDS: ComponentId[] = ["plugin", "theme", "sounds", "context-mode", "rtk"]
 
 export const COMPONENT_LABELS: Record<ComponentId, string> = {
   plugin: "Plugin de OpenCode",
   theme: "Tema cyberpunk",
   sounds: "Sonidos",
   "context-mode": "Context-Mode",
+  rtk: "RTK (Token Proxy)",
 }
 
 export const DEFAULT_REPO_URL = "https://github.com/kevin15011/cyberpunk-plugin"
@@ -38,6 +39,7 @@ export function createDefaultConfig(): CyberpunkConfig {
       theme: { installed: false },
       sounds: { installed: false },
       "context-mode": { installed: false },
+      rtk: { installed: false },
     },
     repoUrl: DEFAULT_REPO_URL,
   }

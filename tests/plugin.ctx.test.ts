@@ -6,6 +6,8 @@ import { join } from "path"
 
 import {
   SECTION_E_TEMPLATE,
+  SECTION_F_TEMPLATE,
+  MANAGED_SDD_TEMPLATE,
   START_MARKER,
   END_MARKER,
   extractBetweenMarkers,
@@ -54,6 +56,28 @@ describe("ctx_stats unavailable — skip silently", () => {
   })
 })
 
+describe("RTK reinforcement directive", () => {
+  test("managed SDD template adds an explicit RTK guidance block", () => {
+    expect(SECTION_F_TEMPLATE).toContain("## F. RTK Routing")
+    expect(SECTION_F_TEMPLATE).toContain("Prefer `rtk`")
+    expect(SECTION_F_TEMPLATE).toContain("broad shell inspection")
+    expect(SECTION_F_TEMPLATE).toContain("verbose command output")
+  })
+
+  test("RTK guidance preserves narrow file tools and context-mode", () => {
+    expect(SECTION_F_TEMPLATE).toContain("Read")
+    expect(SECTION_F_TEMPLATE).toContain("Grep")
+    expect(SECTION_F_TEMPLATE).toContain("Glob")
+    expect(SECTION_F_TEMPLATE).toContain("context-mode")
+    expect(SECTION_F_TEMPLATE).toContain("ctx_*")
+  })
+
+  test("managed template includes both session stats and RTK guidance", () => {
+    expect(MANAGED_SDD_TEMPLATE).toContain(SECTION_E_TEMPLATE)
+    expect(MANAGED_SDD_TEMPLATE).toContain(SECTION_F_TEMPLATE)
+  })
+})
+
 // ── install() patched=true message test ───────────────────────
 
 describe("install() message when patched=true", () => {
@@ -96,6 +120,8 @@ describe("install() message when patched=true", () => {
     expect(result).toContain(START_MARKER)
     expect(result).toContain(END_MARKER)
     expect(result).toContain("## E. Session Stats")
+    expect(result).toContain("## F. RTK Routing")
+    expect(result).toContain("Prefer `rtk`")
   })
 })
 

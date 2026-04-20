@@ -11,6 +11,7 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `error` — Low descending tone on session errors
   - `compact` — Neural compression sound on context compaction
   - `permission` — Alert beep when opencode asks for permission
+- **RTK** (optional) — Token-optimized CLI proxy that filters verbose command outputs before they reach your LLM context. Installs `rtk`, runs `rtk init -g --opencode`, and adds instruction reinforcement.
 - **2 custom SDD review phases** — `sdd-review` (native model review) and `sdd-claude-review` (Claude Opus CLI review)
 - **Automatic SDD patching** — Registers review agents in `opencode.json` and patches `/sdd-continue` to `apply -> review -> verify`
 - **Automatic context-mode bootstrap** — Ensures `context-mode` MCP/plugin config, routing instructions, and SDD prompt defaults exist after OpenCode/Gentle AI updates
@@ -79,6 +80,7 @@ tmux source-file ~/.tmux.conf
 - **macOS/other** — Build from source with `bun`
 - **Linux** — `ffplay` (`sudo apt install ffmpeg`)
 - `npm` — Needed for `context-mode` component
+- `curl` — Needed for `rtk` component (if rtk not already installed)
 - `git` — For TPM installation
 - [bun](https://bun.sh) — Only needed if building from source
 
@@ -101,6 +103,8 @@ rm ~/.config/opencode/plugins/cyberpunk.ts
 rm -rf ~/.config/opencode/sounds/
 rm -f ~/.local/bin/cyberpunk
 rm ~/.tmux.conf
+# Optional: remove RTK routing instructions
+rm -f ~/.config/opencode/instructions/rtk-routing.md
 ```
 
 ## Keybindings (tmux)

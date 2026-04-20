@@ -37,6 +37,18 @@ $ ctx_stats output here
 If \`ctx_stats\` is unavailable (e.g., not installed), skip silently.
 `.trim()
 
+const SECTION_F_TEMPLATE = `
+## F. RTK Routing
+
+Prefer \`rtk\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
+
+- Keep using narrow file tools like \`Read\`, \`Grep\`, and \`Glob\` for targeted file/content inspection.
+- Keep using \`context-mode\` / \`ctx_*\` tools for heavy processing, sandboxed execution, or indexed follow-up questions.
+- If \`rtk\` is unavailable or a command is unsupported, fall back to the normal tool path.
+`.trim()
+
+const MANAGED_SDD_TEMPLATE = `${SECTION_E_TEMPLATE}\n\n${SECTION_F_TEMPLATE}`
+
 function extractBetweenMarkers(
   content: string,
   startMarker: string,
@@ -65,7 +77,7 @@ function patchSddPhaseCommon(): boolean {
   // State 1: No markers → heading detection or append
   if (!content.includes(START_MARKER)) {
     const headingIndex = content.indexOf("\n## E.")
-    const markedSection = `\n${START_MARKER}\n${SECTION_E_TEMPLATE}\n${END_MARKER}\n`
+    const markedSection = `\n${START_MARKER}\n${MANAGED_SDD_TEMPLATE}\n${END_MARKER}\n`
     const newContent = headingIndex !== -1
       ? content.slice(0, headingIndex) + markedSection
       : content.trimEnd() + "\n\n" + markedSection
@@ -76,12 +88,12 @@ function patchSddPhaseCommon(): boolean {
   // State 2: Markers present, content matches → no-op
   const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
   if (!extracted) return false
-  if (extracted.managed.trim() === SECTION_E_TEMPLATE) return false
+  if (extracted.managed.trim() === MANAGED_SDD_TEMPLATE) return false
 
   // State 3: Markers present, content mismatched → replace
   const newContent =
     extracted.before +
-    START_MARKER + "\n" + SECTION_E_TEMPLATE + "\n" +
+    START_MARKER + "\n" + MANAGED_SDD_TEMPLATE + "\n" +
     END_MARKER +
     extracted.after
   writeFileSync(SDD_PHASE_COMMON_PATH, newContent, "utf8")
@@ -125,6 +137,18 @@ $ ctx_stats output here
 If \\\`ctx_stats\\\` is unavailable (e.g., not installed), skip silently.
 \`.trim()
 
+const SECTION_F_TEMPLATE = \`
+## F. RTK Routing
+
+Prefer \\\`rtk\\\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
+
+- Keep using narrow file tools like \\\`Read\\\`, \\\`Grep\\\`, and \\\`Glob\\\` for targeted file/content inspection.
+- Keep using \\\`context-mode\\\` / \\\`ctx_*\\\` tools for heavy processing, sandboxed execution, or indexed follow-up questions.
+- If \\\`rtk\\\` is unavailable or a command is unsupported, fall back to the normal tool path.
+\`.trim()
+
+const MANAGED_SDD_TEMPLATE = SECTION_E_TEMPLATE + "\\n\\n" + SECTION_F_TEMPLATE
+
 function extractBetweenMarkers(
   content: string,
   startMarker: string,
@@ -149,7 +173,7 @@ function patchSddPhaseCommon(): boolean {
 
   if (!content.includes(START_MARKER)) {
     const headingIndex = content.indexOf("\\n## E.")
-    const markedSection = "\\n" + START_MARKER + "\\n" + SECTION_E_TEMPLATE + "\\n" + END_MARKER + "\\n"
+    const markedSection = "\\n" + START_MARKER + "\\n" + MANAGED_SDD_TEMPLATE + "\\n" + END_MARKER + "\\n"
     const newContent = headingIndex !== -1
       ? content.slice(0, headingIndex) + markedSection
       : content.trimEnd() + "\\n\\n" + markedSection
@@ -159,11 +183,11 @@ function patchSddPhaseCommon(): boolean {
 
   const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
   if (!extracted) return false
-  if (extracted.managed.trim() === SECTION_E_TEMPLATE) return false
+  if (extracted.managed.trim() === MANAGED_SDD_TEMPLATE) return false
 
   const newContent =
     extracted.before +
-    START_MARKER + "\\n" + SECTION_E_TEMPLATE + "\\n" +
+    START_MARKER + "\\n" + MANAGED_SDD_TEMPLATE + "\\n" +
     END_MARKER +
     extracted.after
   writeFileSync(SDD_PHASE_COMMON_PATH, newContent, "utf8")
@@ -211,7 +235,16 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
 `
 
 // Export helpers for testing
-export { PLUGIN_SOURCE, extractBetweenMarkers, patchSddPhaseCommon, SECTION_E_TEMPLATE, START_MARKER, END_MARKER }
+export {
+  PLUGIN_SOURCE,
+  extractBetweenMarkers,
+  patchSddPhaseCommon,
+  SECTION_E_TEMPLATE,
+  SECTION_F_TEMPLATE,
+  MANAGED_SDD_TEMPLATE,
+  START_MARKER,
+  END_MARKER,
+}
 
 export function getPluginComponent(): ComponentModule {
   return {

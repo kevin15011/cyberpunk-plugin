@@ -115,6 +115,7 @@ ${bold("FLAGS")}
   --theme         Componente: tema
   --sounds        Componente: sonidos
   --context-mode  Componente: context-mode
+  --rtk           Componente: RTK (token proxy)
   --all           Todos los componentes
   --json          Salida en JSON
   --verbose       Log detallado

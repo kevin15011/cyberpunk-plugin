@@ -103,3 +103,17 @@ describe("Context-Mode component status", () => {
     expect(content.includes(marker)).toBe(false)
   })
 })
+
+describe("RTK component status", () => {
+  test("rtk routing marker identifies managed files", () => {
+    const marker = "<!-- cyberpunk-managed:rtk-routing -->"
+    const content = `${marker}\n# RTK Routing\nSome content`
+    expect(content.includes(marker)).toBe(true)
+  })
+
+  test("non-managed file does not contain rtk marker", () => {
+    const marker = "<!-- cyberpunk-managed:rtk-routing -->"
+    const content = "# Some other routing file\nNo marker here"
+    expect(content.includes(marker)).toBe(false)
+  })
+})

@@ -11,6 +11,7 @@ import {
   START_MARKER,
   END_MARKER,
   SECTION_E_TEMPLATE,
+  MANAGED_SDD_TEMPLATE,
 } from "../src/components/plugin"
 
 import { PLUGIN_SOURCE } from "../src/components/plugin"
@@ -178,7 +179,7 @@ Old content that should be replaced.`
 
   test("no-op: file with matching marked section → returns false", async () => {
     // First, install the markers
-    const markedSection = `\n${START_MARKER}\n${SECTION_E_TEMPLATE}\n${END_MARKER}\n`
+    const markedSection = `\n${START_MARKER}\n${MANAGED_SDD_TEMPLATE}\n${END_MARKER}\n`
     const contentWithMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.${markedSection}`
     mkdirSync(join(REAL_SDD_PATH, ".."), { recursive: true })
     writeFileSync(REAL_SDD_PATH, contentWithMarkers, "utf8")
@@ -208,6 +209,7 @@ Old content that should be replaced.`
     expect(patched).toContain(START_MARKER)
     expect(patched).toContain(END_MARKER)
     expect(patched).toContain(SECTION_E_TEMPLATE)
+    expect(patched).toContain("## F. RTK Routing")
     expect(patched).not.toContain("Different Content")
   })
 

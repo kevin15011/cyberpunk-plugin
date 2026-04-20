@@ -1,6 +1,6 @@
 // src/components/types.ts — ComponentId, InstallResult, ComponentStatus, ComponentModule interfaces
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode"
+export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk"
 
 export interface InstallResult {
   component: ComponentId

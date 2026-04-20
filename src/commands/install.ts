@@ -5,6 +5,7 @@ import { getPluginComponent } from "../components/plugin"
 import { getThemeComponent } from "../components/theme"
 import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
+import { getRtkComponent } from "../components/rtk"
 import type { ComponentModule } from "../components/types"
 import { COMPONENT_IDS } from "../config/schema"
 import { loadConfig } from "../config/load"
@@ -15,6 +16,7 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   theme: getThemeComponent,
   sounds: getSoundsComponent,
   "context-mode": getContextModeComponent,
+  rtk: getRtkComponent,
 }
 
 export async function runInstall(

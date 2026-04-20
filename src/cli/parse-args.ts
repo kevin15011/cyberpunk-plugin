@@ -17,7 +17,7 @@ export interface ParsedArgs {
   configValue?: string
 }
 
-const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode"])
+const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode", "rtk"])
 
 const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   i: "install",
@@ -98,6 +98,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--context-mode":
         result.components.push(flag.slice(2) as ComponentId)
         break
+      case "--rtk":
+        result.components.push("rtk" as ComponentId)
+        break
     }
   }
 
@@ -121,7 +124,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
 
   // If --all flag, include all components
   if (result.flags.all) {
-    result.components = ["plugin", "theme", "sounds", "context-mode"]
+    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk"]
   }
 
   return result
