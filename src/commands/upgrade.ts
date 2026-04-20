@@ -1,10 +1,18 @@
-// src/commands/upgrade.ts — git fetch, compare versions, replace files preserving config
+// src/commands/upgrade.ts — git fetch or binary download, compare versions, replace files preserving config
 
-import { existsSync, copyFileSync } from "fs"
+import { existsSync, writeFileSync, renameSync, unlinkSync } from "fs"
 import { join } from "path"
 import { execSync } from "child_process"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
+import type { InstallMode } from "../config/schema"
+
+const REPO = "kevin15011/cyberpunk-plugin"
+const BINARY_INSTALL_DIR = join(
+  (process.env.HOME || process.env.USERPROFILE || "~"),
+  ".local", "bin"
+)
+const BINARY_PATH = join(BINARY_INSTALL_DIR, "cyberpunk")
 
 export interface UpgradeStatus {
   currentVersion: string
@@ -21,12 +29,12 @@ export interface UpgradeResult {
   error?: string
 }
 
+// ── Helpers ───────────────────────────────────────────────────────
+
 function getRepoDir(): string {
-  // If run from the repo, use current dir
   if (existsSync(join(process.cwd(), ".git"))) {
     return process.cwd()
   }
-  // Otherwise can't upgrade
   return ""
 }
 
@@ -42,13 +50,103 @@ function gitCommand(args: string, cwd?: string): string {
   }
 }
 
-export async function checkUpgrade(): Promise<UpgradeStatus> {
+/**
+ * Get the current app version from package.json.
+ */
+export function getAppVersion(): string {
+  try {
+    // Read from package.json at build time — fallback to "0.0.0"
+    const pkg = require("../../package.json")
+    return pkg.version || "0.0.0"
+  } catch {
+    return "0.0.0"
+  }
+}
+
+/**
+ * Compare two semver strings. Returns:
+ *  -1 if a < b
+ *   0 if a === b
+ *   1 if a > b
+ */
+export function compareSemver(a: string, b: string): number {
+  const pa = a.replace(/^v/, "").split(".").map(Number)
+  const pb = b.replace(/^v/, "").split(".").map(Number)
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i] || 0
+    const nb = pb[i] || 0
+    if (na < nb) return -1
+    if (na > nb) return 1
+  }
+  return 0
+}
+
+/**
+ * Detect platform asset suffix for GitHub release download.
+ */
+export function getPlatformAsset(): string {
+  const os = process.platform === "darwin" ? "darwin" : "linux"
+  let arch = process.arch
+  if (arch === "x64") arch = "x64"
+  else if (arch === "arm64") arch = "arm64"
+  else arch = "x64" // fallback
+  return `cyberpunk-${os}-${arch}`
+}
+
+/**
+ * Fetch latest release tag from GitHub API.
+ */
+export async function fetchLatestReleaseTag(): Promise<string> {
+  const url = `https://api.github.com/repos/${REPO}/releases/latest`
+  const resp = await fetch(url, {
+    headers: { "User-Agent": "cyberpunk-cli" },
+  })
+  if (!resp.ok) {
+    throw new Error(`GitHub API returned ${resp.status}`)
+  }
+  const data = await resp.json() as { tag_name?: string }
+  if (!data.tag_name) {
+    throw new Error("No tag_name in release response")
+  }
+  return data.tag_name
+}
+
+/**
+ * Download binary from GitHub release to a temp file, then rename over target.
+ */
+async function downloadAndReplaceBinary(assetName: string, tag: string): Promise<void> {
+  const downloadUrl = `https://github.com/${REPO}/releases/download/${tag}/${assetName}`
+  const tmpPath = BINARY_PATH + ".tmp"
+
+  const resp = await fetch(downloadUrl, {
+    headers: { "User-Agent": "cyberpunk-cli" },
+  })
+  if (!resp.ok) {
+    throw new Error(`Download failed: HTTP ${resp.status}`)
+  }
+
+  const arrayBuf = await resp.arrayBuffer()
+  writeFileSync(tmpPath, Buffer.from(arrayBuf))
+
+  // chmod +x
+  try {
+    execSync(`chmod +x "${tmpPath}"`, { stdio: "pipe" })
+  } catch {
+    // chmod failure is not fatal
+  }
+
+  // Atomic rename
+  renameSync(tmpPath, BINARY_PATH)
+}
+
+// ── Repo upgrade (existing path) ─────────────────────────────────
+
+async function checkRepoUpgrade(): Promise<UpgradeStatus> {
   const repoDir = getRepoDir()
   if (!repoDir) {
     throw new Error("No se pudo determinar el directorio del repositorio")
   }
 
-  // Get current version from git
   let currentVersion: string
   try {
     currentVersion = gitCommand("rev-parse HEAD", repoDir)
@@ -56,14 +154,12 @@ export async function checkUpgrade(): Promise<UpgradeStatus> {
     currentVersion = "unknown"
   }
 
-  // Fetch remote
   try {
     gitCommand("fetch origin main", repoDir)
   } catch (err) {
     throw new Error(`No se pudo conectar al repositorio remoto: ${err}`)
   }
 
-  // Get latest remote version
   let latestVersion: string
   try {
     latestVersion = gitCommand("rev-parse origin/main", repoDir)
@@ -73,7 +169,6 @@ export async function checkUpgrade(): Promise<UpgradeStatus> {
 
   const upToDate = currentVersion === latestVersion
 
-  // Get changed files
   let changedFiles: string[] = []
   if (!upToDate) {
     try {
@@ -84,17 +179,10 @@ export async function checkUpgrade(): Promise<UpgradeStatus> {
     }
   }
 
-  // DO NOT write config in check-only mode — spec says --check MUST NOT modify files
-
-  return {
-    currentVersion,
-    latestVersion,
-    upToDate,
-    changedFiles,
-  }
+  return { currentVersion, latestVersion, upToDate, changedFiles }
 }
 
-export async function runUpgrade(): Promise<UpgradeResult> {
+async function runRepoUpgrade(): Promise<UpgradeResult> {
   const repoDir = getRepoDir()
   if (!repoDir) {
     return {
@@ -103,10 +191,9 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     }
   }
 
-  // First check
   let status: UpgradeStatus
   try {
-    status = await checkUpgrade()
+    status = await checkRepoUpgrade()
   } catch (err) {
     return {
       status: "error",
@@ -123,6 +210,7 @@ export async function runUpgrade(): Promise<UpgradeResult> {
   }
 
   // Back up files that will change
+  const { copyFileSync } = await import("fs")
   const filesToBackup = status.changedFiles.filter(f =>
     f !== "src/config/schema.ts" &&
     !f.endsWith("config.json") &&
@@ -136,11 +224,9 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     }
   }
 
-  // Pull the update
   try {
     gitCommand("pull origin main", repoDir)
   } catch (err) {
-    // Restore backups on failure
     for (const file of filesToBackup) {
       const bakPath = join(repoDir, file + ".bak")
       if (existsSync(bakPath)) {
@@ -153,10 +239,7 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     }
   }
 
-  // Verify config is preserved (should be since config.json is in .gitignore)
-  // Config at ~/.config/cyberpunk/config.json is separate from repo
-
-  // Update lastUpgradeCheck timestamp only when actually upgrading
+  // Update lastUpgradeCheck timestamp
   const config = loadConfig()
   config.lastUpgradeCheck = new Date().toISOString()
   saveConfig(config)
@@ -167,4 +250,97 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     toVersion: status.latestVersion,
     filesUpdated: status.changedFiles,
   }
+}
+
+// ── Binary upgrade (new path) ────────────────────────────────────
+
+async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
+  const currentVersion = getAppVersion()
+  const latestTag = await fetchLatestReleaseTag()
+  const latestVersion = latestTag.replace(/^v/, "")
+  const upToDate = compareSemver(currentVersion, latestVersion) >= 0
+
+  return {
+    currentVersion,
+    latestVersion,
+    upToDate,
+    changedFiles: upToDate ? [] : [BINARY_PATH],
+  }
+}
+
+async function runBinaryUpgrade(): Promise<UpgradeResult> {
+  const currentVersion = getAppVersion()
+
+  let latestTag: string
+  try {
+    latestTag = await fetchLatestReleaseTag()
+  } catch (err) {
+    return {
+      status: "error",
+      error: `No se pudo obtener la última versión: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  const latestVersion = latestTag.replace(/^v/, "")
+
+  // Already up-to-date
+  if (compareSemver(currentVersion, latestVersion) >= 0) {
+    return {
+      status: "up-to-date",
+      fromVersion: currentVersion,
+      toVersion: latestVersion,
+    }
+  }
+
+  // Download and replace
+  const assetName = getPlatformAsset()
+  try {
+    await downloadAndReplaceBinary(assetName, latestTag)
+  } catch (err) {
+    // Clean up temp file on failure
+    const tmpPath = BINARY_PATH + ".tmp"
+    if (existsSync(tmpPath)) {
+      try { unlinkSync(tmpPath) } catch {}
+    }
+    return {
+      status: "error",
+      error: `Error al descargar binary: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  // Update lastUpgradeCheck timestamp — preserve config
+  const config = loadConfig()
+  config.lastUpgradeCheck = new Date().toISOString()
+  saveConfig(config)
+
+  return {
+    status: "upgraded",
+    fromVersion: currentVersion,
+    toVersion: latestVersion,
+    filesUpdated: [BINARY_PATH],
+  }
+}
+
+// ── Public API — dispatch by installMode ──────────────────────────
+
+export async function checkUpgrade(): Promise<UpgradeStatus> {
+  const config = loadConfig()
+  const mode: InstallMode = config.installMode || "repo"
+
+  if (mode === "binary") {
+    return checkBinaryUpgrade()
+  }
+
+  return checkRepoUpgrade()
+}
+
+export async function runUpgrade(): Promise<UpgradeResult> {
+  const config = loadConfig()
+  const mode: InstallMode = config.installMode || "repo"
+
+  if (mode === "binary") {
+    return runBinaryUpgrade()
+  }
+
+  return runRepoUpgrade()
 }

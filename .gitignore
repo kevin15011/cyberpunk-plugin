@@ -6,3 +6,6 @@ tmp-junit*.xml
 
 cyberpunk
 
+# SDD skill registry (local agent memory)
+.atl/
+

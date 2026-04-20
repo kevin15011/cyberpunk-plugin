@@ -11,6 +11,7 @@ export interface ConfigCommandResult {
   value?: unknown
   config: CyberpunkConfig
   message: string
+  success: boolean
 }
 
 export async function runConfigCommand(opts: {
@@ -28,6 +29,7 @@ export async function runConfigCommand(opts: {
       action: "init",
       config,
       message: created ? "Config creado con valores por defecto" : "Config ya existe — sin cambios",
+      success: true,
     }
   }
 
@@ -38,6 +40,7 @@ export async function runConfigCommand(opts: {
       action: "list",
       config,
       message: "Configuración actual",
+      success: true,
     }
   }
 
@@ -52,6 +55,7 @@ export async function runConfigCommand(opts: {
         key: opts.key,
         config,
         message: `(no definido)`,
+        success: false,
       }
     }
     return {
@@ -60,6 +64,7 @@ export async function runConfigCommand(opts: {
       value,
       config,
       message: typeof value === "string" ? value : JSON.stringify(value),
+      success: true,
     }
   }
 
@@ -72,6 +77,7 @@ export async function runConfigCommand(opts: {
         key: opts.key,
         config,
         message: `Clave "${opts.key}" no encontrada en config`,
+        success: false,
       }
     }
     saveConfig(config)
@@ -82,6 +88,7 @@ export async function runConfigCommand(opts: {
       value: newValue,
       config,
       message: `${opts.key} = ${JSON.stringify(newValue)}`,
+      success: true,
     }
   }
 
@@ -90,6 +97,7 @@ export async function runConfigCommand(opts: {
     action: "list",
     config,
     message: "Configuración actual",
+    success: true,
   }
 }
 

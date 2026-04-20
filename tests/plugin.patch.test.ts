@@ -13,6 +13,8 @@ import {
   SECTION_E_TEMPLATE,
 } from "../src/components/plugin"
 
+import { PLUGIN_SOURCE } from "../src/components/plugin"
+
 // ── extractBetweenMarkers tests ──────────────────────────────
 
 describe("extractBetweenMarkers", () => {
@@ -219,5 +221,63 @@ Old content that should be replaced.`
     const result = patchSddPhaseCommon()
 
     expect(result).toBe(false)
+  })
+})
+
+// ── Sound Interaction Trigger Tests ────────────────────────────
+
+describe("PLUGIN_SOURCE: sound interaction trigger fix", () => {
+  // 3.1 — session.idle handler must NOT exist
+  test("must NOT contain session.idle completion handler", () => {
+    expect(PLUGIN_SOURCE).not.toContain('event.type === "session.idle"')
+  })
+
+  // 3.2 — throttle constant exists
+  test("must contain COMPLETION_THROTTLE_MS = 2000 constant", () => {
+    expect(PLUGIN_SOURCE).toContain("COMPLETION_THROTTLE_MS = 2000")
+  })
+
+  // 3.3 — throttle tracking variable exists
+  test("must contain lastCompletionTime variable declaration", () => {
+    expect(PLUGIN_SOURCE).toContain("let lastCompletionTime = 0")
+  })
+
+  // 3.4 — throttle guard pattern inside message.updated handler
+  test("must contain throttle guard in message.updated handler", () => {
+    expect(PLUGIN_SOURCE).toContain("now - lastCompletionTime > COMPLETION_THROTTLE_MS")
+  })
+
+  // 3.5 — permission.asked handler preserved
+  test("must preserve permission.asked handler", () => {
+    expect(PLUGIN_SOURCE).toContain('event.type === "permission.asked"')
+    expect(PLUGIN_SOURCE).toContain('playSound($, "permission.wav")')
+  })
+
+  // 3.6 — session.error handler preserved
+  test("must preserve session.error handler", () => {
+    expect(PLUGIN_SOURCE).toContain('event.type === "session.error"')
+    expect(PLUGIN_SOURCE).toContain('playSound($, "error.wav")')
+  })
+
+  // 3.7 — session.compacted handler preserved
+  test("must preserve session.compacted handler", () => {
+    expect(PLUGIN_SOURCE).toContain('event.type === "session.compacted"')
+    expect(PLUGIN_SOURCE).toContain('playSound($, "compact.wav")')
+  })
+
+  // 3.8 — idle.wav filename unchanged for completion
+  test("must use idle.wav for completion sound", () => {
+    expect(PLUGIN_SOURCE).toContain('playSound($, "idle.wav")')
+  })
+
+  // 3.9 — message.updated + info.finish completion behavior encoded
+  test("must gate completion on message.updated + info.finish", () => {
+    expect(PLUGIN_SOURCE).toContain('event.type === "message.updated"')
+    expect(PLUGIN_SOURCE).toContain("info?.finish")
+  })
+
+  // 3.10 — dead code lastSoundTime must be gone
+  test("must NOT contain dead lastSoundTime variable", () => {
+    expect(PLUGIN_SOURCE).not.toContain("lastSoundTime")
   })
 })

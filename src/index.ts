@@ -78,7 +78,7 @@ async function main() {
           json: args.flags.json,
         })
         console.log(formatConfigOutput(result, args.flags.json))
-        process.exit(0)
+        process.exit(result.success ? 0 : 1)
         break
       }
     }

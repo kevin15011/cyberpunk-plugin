@@ -7,6 +7,8 @@ import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
 import type { ComponentModule } from "../components/types"
 import { COMPONENT_IDS } from "../config/schema"
+import { loadConfig } from "../config/load"
+import { saveConfig } from "../config/save"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -49,6 +51,16 @@ export async function runInstall(
         status: "error",
         message: err instanceof Error ? err.message : String(err),
       })
+    }
+  }
+
+  // Stamp installMode: "repo" after successful install from a git checkout
+  if (action === "install") {
+    const hasSuccess = results.some(r => r.status === "success")
+    if (hasSuccess) {
+      const config = loadConfig()
+      config.installMode = "repo"
+      saveConfig(config)
     }
   }
 

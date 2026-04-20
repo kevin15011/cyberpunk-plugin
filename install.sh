@@ -44,6 +44,34 @@ if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_PATH" 2>/dev/null; then
   chmod +x "$INSTALL_PATH"
   echo "   Binary installed at ${INSTALL_PATH}"
 
+  # Persist installMode: "binary" in cyberpunk config
+  # This ensures 'cyberpunk upgrade' knows to use the binary upgrade path
+  # Uses the installed CLI itself — no dependency on bun/node availability
+
+  if ! "$INSTALL_PATH" config init; then
+    echo ">> ERROR: Failed to initialize cyberpunk config."
+    echo "   Binary install mode could not be persisted."
+    echo "   Try running manually: $INSTALL_PATH config init"
+    exit 1
+  fi
+
+  if ! "$INSTALL_PATH" config installMode binary; then
+    echo ">> ERROR: Failed to persist installMode=binary in config."
+    echo "   Binary upgrades will not work correctly."
+    echo "   Try running manually: $INSTALL_PATH config installMode binary"
+    exit 1
+  fi
+
+  # Verify persistence succeeded
+  STORED_MODE="$("$INSTALL_PATH" config installMode 2>/dev/null)" || true
+  if [ "$STORED_MODE" != "binary" ]; then
+    echo ">> ERROR: installMode persistence verification failed."
+    echo "   Expected 'binary', got: '${STORED_MODE:-<empty>}'"
+    echo "   Binary upgrades will not work correctly."
+    echo "   Please report this issue at: https://github.com/${REPO}/issues"
+    exit 1
+  fi
+
   case ":$PATH:" in
     *":${INSTALL_DIR}:"*) ;;
     *)

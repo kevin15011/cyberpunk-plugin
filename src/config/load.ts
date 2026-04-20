@@ -25,9 +25,15 @@ export function ensureConfigExists(): boolean {
 
 /**
  * Load config from disk. Auto-creates if missing.
+ * Normalizes missing installMode to "repo" in memory (no disk write).
  */
 export function loadConfig(): CyberpunkConfig {
   ensureConfigExists()
   const raw = readFileSync(CONFIG_PATH, "utf8")
-  return JSON.parse(raw) as CyberpunkConfig
+  const config = JSON.parse(raw) as CyberpunkConfig
+  // Normalize missing installMode to "repo" in memory without writing to disk
+  if (!config.installMode) {
+    config.installMode = "repo"
+  }
+  return config
 }

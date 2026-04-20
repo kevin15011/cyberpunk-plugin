@@ -27,7 +27,7 @@ export function setConfigValue(config: CyberpunkConfig, key: string, value: stri
   }
 
   const lastKey = parts[parts.length - 1]
-  if (obj == null || typeof obj !== "object" || !(lastKey in obj)) return false
+  if (obj == null || typeof obj !== "object") return false
 
   // Try parsing value as JSON (booleans, numbers, null, quoted strings)
   let parsed: unknown

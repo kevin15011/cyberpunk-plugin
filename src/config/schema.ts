@@ -1,6 +1,7 @@
 // src/config/schema.ts — CyberpunkConfig interface with defaults
 
 export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode"
+export type InstallMode = "repo" | "binary"
 
 export interface ComponentState {
   installed: boolean
@@ -14,6 +15,8 @@ export interface CyberpunkConfig {
   components: Record<ComponentId, ComponentState>
   lastUpgradeCheck?: string
   repoUrl?: string
+  installMode?: InstallMode
+  pluginRegistered?: boolean
 }
 
 export const COMPONENT_IDS: ComponentId[] = ["plugin", "theme", "sounds", "context-mode"]

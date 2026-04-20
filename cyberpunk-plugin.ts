@@ -8,6 +8,8 @@ import { join } from "path"
 const HOME = process.env.HOME!
 const SOUNDS = join(HOME, ".config", "opencode", "sounds")
 const IS_MAC = process.platform === "darwin"
+const COMPLETION_THROTTLE_MS = 2000
+let lastCompletionTime = 0
 
 async function playSound($: any, file: string) {
   const path = join(SOUNDS, file)
@@ -15,27 +17,34 @@ async function playSound($: any, file: string) {
   if (IS_MAC) {
     await $`afplay ${path}`.nothrow()
   } else {
-    await $`ffplay -nodisp -autoexit -v quiet ${path}`.nothrow()
+    await $`paplay ${path}`.nothrow()
   }
 }
 
 export const CyberpunkPlugin: Plugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
-      if (event.type === "session.idle") {
-        try { await playSound($, "idle.m4a") } catch {}
-      }
-
       if (event.type === "session.error") {
-        try { await playSound($, "error.m4a") } catch {}
+        try { await playSound($, "error.wav") } catch {}
       }
 
       if (event.type === "session.compacted") {
-        try { await playSound($, "compact.m4a") } catch {}
+        try { await playSound($, "compact.wav") } catch {}
       }
 
       if (event.type === "permission.asked") {
-        try { await playSound($, "permission.m4a") } catch {}
+        try { await playSound($, "permission.wav") } catch {}
+      }
+
+      if (event.type === "message.updated") {
+        const info = (event as any).properties?.info
+        if (info?.finish) {
+          const now = Date.now()
+          if (now - lastCompletionTime > COMPLETION_THROTTLE_MS) {
+            lastCompletionTime = now
+            try { await playSound($, "idle.wav") } catch {}
+          }
+        }
       }
     },
   }

@@ -6,6 +6,7 @@ import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
+import { registerCyberpunkPlugin, unregisterCyberpunkPlugin } from "../opencode-config"
 
 const HOME = process.env.HOME || process.env.USERPROFILE || "~"
 const OPENCODE_PLUGINS_DIR = join(HOME, ".config", "opencode", "plugins")
@@ -97,6 +98,8 @@ import { join } from "path"
 const HOME = process.env.HOME!
 const SOUNDS = join(HOME, ".config", "opencode", "sounds")
 const IS_MAC = process.platform === "darwin"
+const COMPLETION_THROTTLE_MS = 2000
+let lastCompletionTime = 0
 
 const SDD_PHASE_COMMON_PATH = join(HOME, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md")
 const START_MARKER = "<!-- cyberpunk:start:section-e -->"
@@ -173,17 +176,13 @@ async function playSound($: any, file: string) {
   if (IS_MAC) {
     await $\`afplay \${path}\`.nothrow()
   } else {
-    await $\`ffplay -nodisp -autoexit -v quiet \${path}\`.nothrow()
+    await $\`paplay \${path}\`.nothrow()
   }
 }
 
 export const CyberpunkPlugin: Plugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
-      if (event.type === "session.idle") {
-        try { await playSound($, "idle.wav") } catch {}
-      }
-
       if (event.type === "session.error") {
         try { await playSound($, "error.wav") } catch {}
       }
@@ -195,13 +194,24 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
       if (event.type === "permission.asked") {
         try { await playSound($, "permission.wav") } catch {}
       }
+
+      if (event.type === "message.updated") {
+        const info = (event as any).properties?.info
+        if (info?.finish) {
+          const now = Date.now()
+          if (now - lastCompletionTime > COMPLETION_THROTTLE_MS) {
+            lastCompletionTime = now
+            try { await playSound($, "idle.wav") } catch {}
+          }
+        }
+      }
     },
   }
 }
 `
 
 // Export helpers for testing
-export { extractBetweenMarkers, patchSddPhaseCommon, SECTION_E_TEMPLATE, START_MARKER, END_MARKER }
+export { PLUGIN_SOURCE, extractBetweenMarkers, patchSddPhaseCommon, SECTION_E_TEMPLATE, START_MARKER, END_MARKER }
 
 export function getPluginComponent(): ComponentModule {
   return {
@@ -237,6 +247,14 @@ export function getPluginComponent(): ComponentModule {
         saveConfig(config)
       }
 
+      // Register plugin in OpenCode config after successful file write
+      const regResult = registerCyberpunkPlugin()
+
+      // Mark pluginRegistered in cyberpunk config — only true when actually registered
+      const regConfig = loadConfig()
+      regConfig.pluginRegistered = regResult.registered
+      saveConfig(regConfig)
+
       // Patch sdd-phase-common.md with Section E (idempotent)
       const patched = patchSddPhaseCommon()
 
@@ -267,6 +285,14 @@ export function getPluginComponent(): ComponentModule {
       const config = loadConfig()
       config.components.plugin = { installed: false }
       saveConfig(config)
+
+      // Unregister plugin from OpenCode config after successful file delete
+      const unregResult = unregisterCyberpunkPlugin()
+
+      // Mark pluginRegistered in cyberpunk config — false after unregister
+      const unregConfig = loadConfig()
+      unregConfig.pluginRegistered = unregResult.registered
+      saveConfig(unregConfig)
 
       return {
         component: "plugin",
