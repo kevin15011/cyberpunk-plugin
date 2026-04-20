@@ -1,7 +1,7 @@
 // tests/upgrade-mode.test.ts — tests for upgrade mode dispatch, binary version comparison, and config defaults
 // Tests import actual module functions and handle Bun's module caching correctly.
 
-import { describe, test, expect, beforeAll, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, beforeAll, afterEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
@@ -35,6 +35,28 @@ function defaultConfig(overrides?: Record<string, unknown>) {
 function writeTestConfig(overrides?: Record<string, unknown>) {
   mkdirSync(ACTUAL_CONFIG_DIR, { recursive: true })
   writeFileSync(ACTUAL_CONFIG_PATH, JSON.stringify(defaultConfig(overrides), null, 2) + "\n", "utf8")
+}
+
+function createBinaryTestEnv(testName: string) {
+  const home = join(tmpdir(), `cyberpunk-upgrade-${testName}-${Date.now()}`)
+  const tempConfigDir = join(home, ".config", "cyberpunk")
+  const tempConfigPath = join(tempConfigDir, "config.json")
+  const binDir = join(home, ".local", "bin")
+  const binaryPath = join(binDir, "cyberpunk")
+
+  mkdirSync(tempConfigDir, { recursive: true })
+  mkdirSync(binDir, { recursive: true })
+  mkdirSync(ACTUAL_CONFIG_DIR, { recursive: true })
+  const configJson = JSON.stringify(defaultConfig({ installMode: "binary" }), null, 2) + "\n"
+  writeFileSync(tempConfigPath, configJson, "utf8")
+  writeFileSync(ACTUAL_CONFIG_PATH, configJson, "utf8")
+
+  return {
+    home,
+    configPath: tempConfigPath,
+    actualConfigPath: ACTUAL_CONFIG_PATH,
+    binaryPath,
+  }
 }
 
 // ── Actual module function tests for compareSemver and helpers ────
@@ -163,20 +185,45 @@ describe("runUpgrade dispatch by installMode", () => {
   })
 
   test("binary config dispatches to binary upgrade path", async () => {
-    writeTestConfig({ installMode: "binary" })
-    const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+    const { home, binaryPath, actualConfigPath } = createBinaryTestEnv("dispatch-binary")
+    const originalHome = process.env.HOME
+    const originalFetch = globalThis.fetch
 
-    const result = await mod.runUpgrade()
-    expect(["error", "up-to-date", "upgraded"]).toContain(result.status)
+    process.env.HOME = home
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
 
-    // Verify it took the BINARY path: fromVersion should be semver (not git SHA)
-    if (result.status === "up-to-date" || result.status === "upgraded") {
-      // Binary path uses semver versions (e.g. "1.1.0"), not 40-char git SHAs
-      expect(result.fromVersion).toMatch(/^\d+\.\d+\.\d+$/)
-    }
-    // Error should NOT mention git repo (that would mean wrong path was taken)
-    if (result.error) {
-      expect(result.error).not.toMatch(/repositorio|directorio/i)
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("dispatch-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      const result = await mod.runUpgrade()
+
+      expect(result).toMatchObject({
+        status: "upgraded",
+        fromVersion: "1.1.0",
+        toVersion: "9.9.9",
+        filesUpdated: [binaryPath],
+      })
+      expect(readFileSync(binaryPath, "utf8")).toBe("dispatch-binary")
+      expect(JSON.parse(readFileSync(actualConfigPath, "utf8")).installMode).toBe("binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      process.env.HOME = originalHome
+      rmSync(home, { recursive: true, force: true })
+      rmSync(ACTUAL_CONFIG_PATH, { force: true })
     }
   })
 
@@ -238,5 +285,106 @@ describe("checkUpgrade dispatch", () => {
     expect(status).toHaveProperty("latestVersion")
     // Repo path versions are git SHAs (40 hex chars)
     expect(status.currentVersion).toMatch(/^[0-9a-f]{40}$/)
+  })
+})
+
+describe("binary upgrade stale-binary protection", () => {
+  test("runUpgrade replaces the binary even when release semver matches local version", async () => {
+    const { home, configPath, actualConfigPath, binaryPath } = createBinaryTestEnv("same-version-download")
+    const originalHome = process.env.HOME
+    const originalFetch = globalThis.fetch
+    const downloadBytes = Buffer.from("fresh-binary")
+    const fetchCalls: string[] = []
+
+    writeFileSync(binaryPath, "stale-binary", "utf8")
+    process.env.HOME = home
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      fetchCalls.push(url)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v1.1.0" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v1.1.0/")) {
+        return new Response(downloadBytes, { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      const result = await mod.runUpgrade()
+
+      expect(result).toMatchObject({
+        status: "upgraded",
+        fromVersion: "1.1.0",
+        toVersion: "1.1.0",
+        filesUpdated: [binaryPath],
+      })
+      expect(readFileSync(binaryPath)).toEqual(downloadBytes)
+      expect(fetchCalls).toHaveLength(2)
+
+      const tempConfig = JSON.parse(readFileSync(configPath, "utf8"))
+      const actualConfig = JSON.parse(readFileSync(actualConfigPath, "utf8"))
+      const savedConfig = typeof tempConfig.lastUpgradeCheck === "string" ? tempConfig : actualConfig
+      expect(savedConfig.installMode).toBe("binary")
+      expect(typeof savedConfig.lastUpgradeCheck).toBe("string")
+    } finally {
+      globalThis.fetch = originalFetch
+      process.env.HOME = originalHome
+      rmSync(home, { recursive: true, force: true })
+      rmSync(ACTUAL_CONFIG_PATH, { force: true })
+    }
+  })
+
+  test("binary check stays informational when semver matches", async () => {
+    const { home, configPath, binaryPath } = createBinaryTestEnv("same-version-check")
+    const originalHome = process.env.HOME
+    const originalFetch = globalThis.fetch
+    const beforeConfig = readFileSync(configPath, "utf8")
+    const fetchCalls: string[] = []
+
+    writeFileSync(binaryPath, "stale-binary", "utf8")
+    process.env.HOME = home
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      fetchCalls.push(url)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v1.1.0" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      const status = await mod.checkBinaryUpgrade()
+
+      expect(status).toEqual({
+        currentVersion: "1.1.0",
+        latestVersion: "1.1.0",
+        upToDate: true,
+        changedFiles: [],
+      })
+      expect(readFileSync(binaryPath, "utf8")).toBe("stale-binary")
+      expect(readFileSync(configPath, "utf8")).toBe(beforeConfig)
+      expect(fetchCalls).toHaveLength(1)
+    } finally {
+      globalThis.fetch = originalFetch
+      process.env.HOME = originalHome
+      rmSync(home, { recursive: true, force: true })
+      rmSync(ACTUAL_CONFIG_PATH, { force: true })
+    }
   })
 })

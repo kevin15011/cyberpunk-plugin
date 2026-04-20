@@ -2,29 +2,18 @@
 // Tests exercise actual module functions with real filesystem fixtures.
 // All tests share one TEMP_HOME to avoid Bun module caching issues.
 
-import { describe, test, expect, beforeAll, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
 
-// Resolve the actual config path that the modules use
-let ACTUAL_CONFIG_PATH: string
-let ACTUAL_CONFIG_DIR: string
-let ACTUAL_OPENCODE_DIR: string
-let ACTUAL_OPENCODE_CONFIG: string
-let ACTUAL_PLUGINS_DIR: string
-
-beforeAll(async () => {
-  const loadMod = await import("../src/config/load.ts?" + Date.now())
-  ACTUAL_CONFIG_PATH = loadMod.CONFIG_PATH as string
-  ACTUAL_CONFIG_DIR = loadMod.CONFIG_DIR as string
-
-  // Derive OpenCode paths from the same HOME that loadConfig uses
-  const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-  ACTUAL_OPENCODE_DIR = join(HOME, ".config", "opencode")
-  ACTUAL_OPENCODE_CONFIG = join(ACTUAL_OPENCODE_DIR, "config.json")
-  ACTUAL_PLUGINS_DIR = join(ACTUAL_OPENCODE_DIR, "plugins")
-})
+const TEMP_HOME = join(tmpdir(), `cyberpunk-plugin-reg-test-${Date.now()}`)
+const ACTUAL_CONFIG_DIR = join(TEMP_HOME, ".config", "cyberpunk")
+const ACTUAL_CONFIG_PATH = join(ACTUAL_CONFIG_DIR, "config.json")
+const ACTUAL_OPENCODE_DIR = join(TEMP_HOME, ".config", "opencode")
+const ACTUAL_OPENCODE_CONFIG = join(ACTUAL_OPENCODE_DIR, "opencode.json")
+const ACTUAL_PLUGINS_DIR = join(ACTUAL_OPENCODE_DIR, "plugins")
+const ORIGINAL_HOME = process.env.HOME
 
 function writeCyberpunkConfig(overrides?: Record<string, unknown>) {
   mkdirSync(ACTUAL_CONFIG_DIR, { recursive: true })
@@ -73,7 +62,15 @@ function writePluginFile(content: string) {
 }
 
 describe("plugin install/uninstall registration", () => {
+  beforeEach(() => {
+    if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
+    mkdirSync(TEMP_HOME, { recursive: true })
+    process.env.HOME = TEMP_HOME
+  })
+
   afterEach(() => {
+    process.env.HOME = ORIGINAL_HOME
+    if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
     // Clean up cyberpunk config
     if (existsSync(ACTUAL_CONFIG_PATH)) rmSync(ACTUAL_CONFIG_PATH, { force: true })
     // Clean up OpenCode config
@@ -160,7 +157,15 @@ describe("plugin install/uninstall registration", () => {
 // ── pluginRegistered accuracy when registration skipped/failed ────
 
 describe("pluginRegistered state accuracy", () => {
+  beforeEach(() => {
+    if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
+    mkdirSync(TEMP_HOME, { recursive: true })
+    process.env.HOME = TEMP_HOME
+  })
+
   afterEach(() => {
+    process.env.HOME = ORIGINAL_HOME
+    if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
     if (existsSync(ACTUAL_CONFIG_PATH)) rmSync(ACTUAL_CONFIG_PATH, { force: true })
     if (existsSync(ACTUAL_OPENCODE_CONFIG)) rmSync(ACTUAL_OPENCODE_CONFIG, { force: true })
     removePluginFile()

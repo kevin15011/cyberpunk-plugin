@@ -7,6 +7,12 @@ import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
+import {
+  RTK_PLUGIN_ENTRY,
+  isOpenCodePluginRegistered,
+  registerOpenCodePlugin,
+  unregisterOpenCodePlugin,
+} from "../opencode-config"
 
 const HOME = process.env.HOME || process.env.USERPROFILE || "~"
 const OPENCODE_DIR = join(HOME, ".config", "opencode")
@@ -171,6 +177,9 @@ export function getRtkComponent(): ComponentModule {
       // Run `rtk init -g --opencode`
       const initOk = runRtkInit()
 
+      // Ensure RTK plugin entry is registered in OpenCode config
+      registerOpenCodePlugin(RTK_PLUGIN_ENTRY)
+
       // Write routing instructions
       ensureRoutingFile()
 
@@ -203,6 +212,9 @@ export function getRtkComponent(): ComponentModule {
       // Run rtk uninstall for OpenCode
       runRtkUninstall()
 
+      // Remove RTK plugin entry from OpenCode config
+      unregisterOpenCodePlugin(RTK_PLUGIN_ENTRY)
+
       const config = loadConfig()
       config.components.rtk = { installed: false }
       saveConfig(config)
@@ -219,12 +231,8 @@ export function getRtkComponent(): ComponentModule {
       const rtkInstalled = isRtkAvailable()
       const routingExists = existsSync(RTK_ROUTING_PATH)
 
-      // Check if RTK plugin is in opencode plugins dir
-      let pluginConfigured = false
-      const rtkPluginPath = join(OPENCODE_DIR, "plugins", "rtk.ts")
-      if (existsSync(rtkPluginPath)) {
-        pluginConfigured = true
-      }
+      // Check if RTK plugin is registered in OpenCode config
+      const pluginConfigured = isOpenCodePluginRegistered(RTK_PLUGIN_ENTRY)
 
       if (rtkInstalled && routingExists && pluginConfigured) {
         return {

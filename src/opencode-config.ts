@@ -1,13 +1,10 @@
-// src/opencode-config.ts — register/unregister ./plugins/cyberpunk in OpenCode config
+// src/opencode-config.ts — register/unregister OpenCode plugin entries in opencode.json
 
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "fs"
 import { join } from "path"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const OPENCODE_CONFIG_DIR = join(HOME, ".config", "opencode")
-const OPENCODE_CONFIG_PATH = join(OPENCODE_CONFIG_DIR, "config.json")
-
 export const CYBERPUNK_PLUGIN_ENTRY = "./plugins/cyberpunk"
+export const RTK_PLUGIN_ENTRY = "./plugins/rtk"
 
 export interface OpenCodePluginUpdateResult {
   changed: boolean
@@ -20,14 +17,28 @@ interface OpenCodeConfig {
   [key: string]: unknown
 }
 
+function getOpenCodeConfigDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  return join(home, ".config", "opencode")
+}
+
+function getOpenCodeConfigPath(): string {
+  return join(getOpenCodeConfigDir(), "opencode.json")
+}
+
+function hasValidPluginArray(config: OpenCodeConfig): config is OpenCodeConfig & { plugin: string[] } {
+  return Array.isArray(config.plugin) && config.plugin.every(entry => typeof entry === "string")
+}
+
 /**
  * Read OpenCode config from disk. Returns null if file doesn't exist
  * or can't be parsed.
  */
 function readOpenCodeConfig(): OpenCodeConfig | null {
-  if (!existsSync(OPENCODE_CONFIG_PATH)) return null
+  const configPath = getOpenCodeConfigPath()
+  if (!existsSync(configPath)) return null
   try {
-    const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8")
+    const raw = readFileSync(configPath, "utf8")
     return JSON.parse(raw) as OpenCodeConfig
   } catch {
     return null
@@ -38,18 +49,20 @@ function readOpenCodeConfig(): OpenCodeConfig | null {
  * Atomic write: write to .tmp then rename over target.
  */
 function writeOpenCodeConfig(config: OpenCodeConfig): void {
-  mkdirSync(OPENCODE_CONFIG_DIR, { recursive: true })
-  const tmpPath = OPENCODE_CONFIG_PATH + ".tmp"
+  const configDir = getOpenCodeConfigDir()
+  const configPath = getOpenCodeConfigPath()
+  mkdirSync(configDir, { recursive: true })
+  const tmpPath = configPath + ".tmp"
   writeFileSync(tmpPath, JSON.stringify(config, null, 2) + "\n", "utf8")
-  renameSync(tmpPath, OPENCODE_CONFIG_PATH)
+  renameSync(tmpPath, configPath)
 }
 
 /**
- * Register ./plugins/cyberpunk in OpenCode config plugin array.
+ * Register a plugin entry in OpenCode config plugin array.
  * Idempotent — will not create duplicate entries.
  * Non-fatal — missing file or invalid plugin field is skipped with warning.
  */
-export function registerCyberpunkPlugin(): OpenCodePluginUpdateResult {
+export function registerOpenCodePlugin(pluginEntry: string): OpenCodePluginUpdateResult {
   const config = readOpenCodeConfig()
 
   if (config === null) {
@@ -61,7 +74,7 @@ export function registerCyberpunkPlugin(): OpenCodePluginUpdateResult {
   }
 
   // Validate plugin field is an array
-  if (config.plugin !== undefined && !Array.isArray(config.plugin)) {
+  if (config.plugin !== undefined && !hasValidPluginArray(config)) {
     return {
       changed: false,
       registered: false,
@@ -75,23 +88,27 @@ export function registerCyberpunkPlugin(): OpenCodePluginUpdateResult {
   }
 
   // Idempotent: skip if already registered
-  if (config.plugin.includes(CYBERPUNK_PLUGIN_ENTRY)) {
+  if (config.plugin.includes(pluginEntry)) {
     return { changed: false, registered: true }
   }
 
   // Append
-  config.plugin.push(CYBERPUNK_PLUGIN_ENTRY)
+  config.plugin.push(pluginEntry)
   writeOpenCodeConfig(config)
 
   return { changed: true, registered: true }
 }
 
+export function registerCyberpunkPlugin(): OpenCodePluginUpdateResult {
+  return registerOpenCodePlugin(CYBERPUNK_PLUGIN_ENTRY)
+}
+
 /**
- * Unregister ./plugins/cyberpunk from OpenCode config plugin array.
- * Only removes the cyberpunk entry, leaves others untouched.
- * Non-fatal — missing file is skipped silently.
+ * Unregister a plugin entry from OpenCode config plugin array.
+ * Only removes the target entry, leaves others untouched.
+ * Non-fatal — missing file or invalid plugin field is skipped silently.
  */
-export function unregisterCyberpunkPlugin(): OpenCodePluginUpdateResult {
+export function unregisterOpenCodePlugin(pluginEntry: string): OpenCodePluginUpdateResult {
   const config = readOpenCodeConfig()
 
   if (config === null) {
@@ -99,11 +116,11 @@ export function unregisterCyberpunkPlugin(): OpenCodePluginUpdateResult {
   }
 
   // Validate plugin field
-  if (!Array.isArray(config.plugin)) {
+  if (!hasValidPluginArray(config)) {
     return { changed: false, registered: false }
   }
 
-  const idx = config.plugin.indexOf(CYBERPUNK_PLUGIN_ENTRY)
+  const idx = config.plugin.indexOf(pluginEntry)
   if (idx === -1) {
     return { changed: false, registered: false }
   }
@@ -112,4 +129,13 @@ export function unregisterCyberpunkPlugin(): OpenCodePluginUpdateResult {
   writeOpenCodeConfig(config)
 
   return { changed: true, registered: false }
+}
+
+export function unregisterCyberpunkPlugin(): OpenCodePluginUpdateResult {
+  return unregisterOpenCodePlugin(CYBERPUNK_PLUGIN_ENTRY)
+}
+
+export function isOpenCodePluginRegistered(pluginEntry: string): boolean {
+  const config = readOpenCodeConfig()
+  return config !== null && hasValidPluginArray(config) && config.plugin.includes(pluginEntry)
 }

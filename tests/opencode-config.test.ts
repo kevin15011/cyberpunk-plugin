@@ -13,7 +13,7 @@ import { tmpdir } from "os"
 
 const TEMP_HOME = join(tmpdir(), `cyberpunk-opencode-test-${Date.now()}`)
 const OPENCODE_DIR = join(TEMP_HOME, ".config", "opencode")
-const OPENCODE_CONFIG = join(OPENCODE_DIR, "config.json")
+const OPENCODE_CONFIG = join(OPENCODE_DIR, "opencode.json")
 const ORIGINAL_HOME = process.env.HOME
 
 // We need to re-import the module after changing HOME,
@@ -195,6 +195,32 @@ describe("OpenCode plugin registration logic", () => {
       expect(result.changed).toBe(false)
       expect(result.registered).toBe(false)
       expect(result.warning).toContain("not an array")
+    })
+
+    test("register RTK plugin appends to existing OpenCode plugin array", async () => {
+      mkdirSync(OPENCODE_DIR, { recursive: true })
+      writeFileSync(OPENCODE_CONFIG, JSON.stringify({ plugin: ["./plugins/cyberpunk"] }, null, 2) + "\n", "utf8")
+
+      const mod = await import("../src/opencode-config.ts?" + Date.now())
+      const result = mod.registerOpenCodePlugin(mod.RTK_PLUGIN_ENTRY)
+      expect(result.changed).toBe(true)
+      expect(result.registered).toBe(true)
+
+      const saved = JSON.parse(readFileSync(OPENCODE_CONFIG, "utf8"))
+      expect(saved.plugin).toEqual(["./plugins/cyberpunk", "./plugins/rtk"])
+    })
+
+    test("unregister RTK plugin removes only RTK entry", async () => {
+      mkdirSync(OPENCODE_DIR, { recursive: true })
+      writeFileSync(OPENCODE_CONFIG, JSON.stringify({ plugin: ["./plugins/cyberpunk", "./plugins/rtk", "./plugins/other"] }, null, 2) + "\n", "utf8")
+
+      const mod = await import("../src/opencode-config.ts?" + Date.now())
+      const result = mod.unregisterOpenCodePlugin(mod.RTK_PLUGIN_ENTRY)
+      expect(result.changed).toBe(true)
+      expect(result.registered).toBe(false)
+
+      const saved = JSON.parse(readFileSync(OPENCODE_CONFIG, "utf8"))
+      expect(saved.plugin).toEqual(["./plugins/cyberpunk", "./plugins/other"])
     })
   })
 })

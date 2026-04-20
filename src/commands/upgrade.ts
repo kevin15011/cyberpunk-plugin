@@ -254,7 +254,7 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
 
 // ── Binary upgrade (new path) ────────────────────────────────────
 
-async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
+export async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
   const currentVersion = getAppVersion()
   const latestTag = await fetchLatestReleaseTag()
   const latestVersion = latestTag.replace(/^v/, "")
@@ -268,7 +268,7 @@ async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
   }
 }
 
-async function runBinaryUpgrade(): Promise<UpgradeResult> {
+export async function runBinaryUpgrade(): Promise<UpgradeResult> {
   const currentVersion = getAppVersion()
 
   let latestTag: string
@@ -283,14 +283,10 @@ async function runBinaryUpgrade(): Promise<UpgradeResult> {
 
   const latestVersion = latestTag.replace(/^v/, "")
 
-  // Already up-to-date
-  if (compareSemver(currentVersion, latestVersion) >= 0) {
-    return {
-      status: "up-to-date",
-      fromVersion: currentVersion,
-      toVersion: latestVersion,
-    }
-  }
+  // Binary installs always refresh from the latest published asset.
+  // `checkUpgrade()` remains informational and may report semver parity,
+  // but `runUpgrade()` force-downloads to avoid stale local binaries when
+  // a release asset is rebuilt under the same version tag.
 
   // Download and replace
   const assetName = getPlatformAsset()
