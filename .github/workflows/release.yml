@@ -38,7 +38,7 @@ jobs:
           chmod +x ./cyberpunk
 
       - name: Create Release
-        uses: ncipollo/release-action@v2
+        uses: ncipollo/release-action@v1
         with:
           draft: false
           prerelease: false
@@ -70,7 +70,7 @@ jobs:
           chmod +x ./cyberpunk-linux-arm64
 
       - name: Create Release
-        uses: ncipollo/release-action@v2
+        uses: ncipollo/release-action@v1
         with:
           draft: false
           prerelease: false
