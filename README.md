@@ -13,6 +13,7 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `permission` — Alert beep when opencode asks for permission
 - **2 custom SDD review phases** — `sdd-review` (native model review) and `sdd-claude-review` (Claude Opus CLI review)
 - **Automatic SDD patching** — Registers review agents in `opencode.json` and patches `/sdd-continue` to `apply -> review -> verify`
+- **Automatic context-mode bootstrap** — Ensures `context-mode` MCP/plugin config, routing instructions, and SDD prompt defaults exist after OpenCode/Gentle AI updates
 - **Cross-platform** — macOS (`afplay`) and Linux (`ffplay`)
 
 ### Tmux Config
@@ -30,9 +31,21 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Then restart opencode. The plugin will auto-configure on first load, install both review phases, and patch the local SDD flow.
+Then restart opencode. The plugin will auto-configure on first load, install both review phases, patch the local SDD flow, and re-bootstrap `context-mode` integration if OpenCode or Gentle AI updates overwrite those files.
 
 Installation and SDD patch notices are silent by default so they do not clutter the OpenCode UI every time you open it. If you want to debug the setup flow, launch OpenCode with `OPENCODE_CYBERPUNK_INSTALL_NOTICES=1`.
+
+## What the plugin now re-applies automatically
+
+- Ensures `opencode.json` contains:
+  - `mcp.context-mode`
+  - `plugin: ["context-mode"]`
+  - `instructions` entry for routing awareness
+- Ensures `~/.config/opencode/instructions/context-mode-routing.md` exists
+- Appends a small `context-mode` default block to `sdd-*.md` prompt files when missing
+- Re-patches inline `sdd-*` agent prompts in `opencode.json` when they do not already mention `context-mode`
+
+This is intentionally idempotent: if Gentle AI updates re-generate SDD prompts or agent config, loading the Cyberpunk plugin restores the missing `context-mode` glue without overwriting unrelated customizations.
 
 ## Install (opencode plugin only)
 

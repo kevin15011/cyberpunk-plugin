@@ -1,21 +1,25 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs"
 import { join } from "path"
 
 const HOME = process.env.HOME!
 const CONFIG = join(HOME, ".config", "opencode")
 const COMMANDS = join(CONFIG, "commands")
+const INSTRUCTIONS = join(CONFIG, "instructions")
 const PROMPTS = join(CONFIG, "prompts", "sdd")
 const SKILLS = join(CONFIG, "skills")
 const SOUNDS = join(CONFIG, "sounds")
 const THEMES = join(CONFIG, "themes")
 const OPENCODE_JSON = join(CONFIG, "opencode.json")
+const CONTEXT_MODE_ROUTING_PATH = join(INSTRUCTIONS, "context-mode-routing.md")
 const IS_MAC = process.platform === "darwin"
 const SHOW_INSTALL_NOTICES = process.env.OPENCODE_CYBERPUNK_INSTALL_NOTICES === "1"
 const SDD_REVIEW_PROMPT_PATH = join(PROMPTS, "sdd-review.md")
 const SDD_CLAUDE_REVIEW_PROMPT_PATH = join(PROMPTS, "sdd-claude-review.md")
 const SDD_REVIEW_SKILL_PATH = join(SKILLS, "sdd-review", "SKILL.md")
 const SDD_CLAUDE_REVIEW_SKILL_PATH = join(SKILLS, "sdd-claude-review", "SKILL.md")
+const CONTEXT_MODE_ROUTING_MARKER = "<!-- cyberpunk-managed:context-mode-routing -->"
+const CONTEXT_MODE_SDD_MARKER = "<!-- cyberpunk:context-mode-sdd -->"
 
 function fileRef(path: string) {
   return `{file:${path}}`
@@ -42,6 +46,57 @@ const SDD_REVIEW_PROMPT = `You are an SDD executor for the review phase, not the
 
 const SDD_CLAUDE_REVIEW_PROMPT = `You are an SDD executor for the claude-review phase, not the orchestrator. Do this phase's work yourself. Do NOT delegate, Do NOT call task/delegate, and Do NOT launch sub-agents. Read your skill file at ${SDD_CLAUDE_REVIEW_SKILL_PATH} and follow it exactly.
 `
+
+const CONTEXT_MODE_ROUTING = `${CONTEXT_MODE_ROUTING_MARKER}
+# Context-Mode Routing
+
+This file adds routing awareness for \`context-mode\`. It complements the global \`AGENTS.md\` memory rules; it does not replace them.
+
+## Purpose
+
+Use \`context-mode\` when a normal tool call would likely dump too much raw data into the chat context. The goal is token reduction, not changing how code edits are made.
+
+## Prefer \`context-mode\` for heavy-output work
+
+- Use \`ctx_batch_execute\` by default for multi-command inspection, git/test output, or broad searches.
+- Use \`ctx_execute\` when you need code to analyze, parse, transform, or summarize data before returning the result.
+- Use \`ctx_execute_file\` for large files, logs, generated output, or any source file you need to inspect without loading into chat.
+- Use \`ctx_fetch_and_index\` followed by \`ctx_search\` for arbitrary web pages or large remote documents.
+- Use \`ctx_search\` for follow-up questions on content that was already indexed by \`context-mode\`.
+
+## SDD Defaults
+
+- For \`sdd-explore\`, \`sdd-review\`, \`sdd-verify\`, and orchestration steps that inspect many files or commands, prefer \`ctx_*\` by default.
+- Keep normal \`read\`, \`glob\`, and \`grep\` for focused 1-3 file work when you need the literal contents in order to edit.
+- Keep normal edit tools for code changes; \`context-mode\` protects context, it does not replace editing workflows.
+
+## Tool boundaries in this stack
+
+- \`Engram\` is the persistent memory layer for decisions, discoveries, and session summaries.
+- \`context-mode\` is the context-protection and sandbox-routing layer.
+- \`Context7\` remains the preferred source for library and framework documentation.
+- \`Supermemory\` remains user-memory and preference recall.
+
+## Conflict handling
+
+- If a raw tool call is denied or redirected by \`context-mode\`, switch to the matching \`ctx_*\` tool instead of retrying the same path.
+- Do not duplicate memory behavior in \`context-mode\` instructions; follow the existing global \`AGENTS.md\` for \`Engram\` persistence rules.
+- Keep sandbox output intentionally small: print the answer or summary, not the whole dataset.
+`
+
+const CONTEXT_MODE_SDD_PROMPT_BLOCK = `${CONTEXT_MODE_SDD_MARKER}
+## Context-Mode Default
+
+Use \`context-mode\` by default for high-output SDD work.
+
+- Prefer \`ctx_batch_execute\` for multi-command inspection, git/test output, and broad searches.
+- Prefer \`ctx_execute\` when you need code to summarize or transform data before returning it.
+- Prefer \`ctx_execute_file\` for large files, logs, generated output, or source files that would be expensive to dump into chat.
+- Keep \`read\`, \`glob\`, and \`grep\` for focused 1-3 file inspection when you need literal contents for edits.
+- Keep normal edit tools for code changes.
+- If a raw tool call is denied or redirected by \`context-mode\`, switch to the matching \`ctx_*\` tool instead of retrying the same path.
+
+${CONTEXT_MODE_SDD_MARKER.replace("<!-- ", "<!-- /")}`
 
 const SDD_REVIEW_COMMAND = `---
 description: Code review against specs and design decisions after implementation
@@ -372,6 +427,42 @@ function ensureFile(path: string, content: string) {
   return true
 }
 
+function withTrailingNewline(content: string) {
+  return content.endsWith("\n") ? content : `${content}\n`
+}
+
+function ensureManagedFile(path: string, content: string, marker: string) {
+  const next = withTrailingNewline(content)
+
+  if (!existsSync(path)) {
+    writeFileSync(path, next)
+    return true
+  }
+
+  const current = readFileSync(path, "utf8")
+  if (!current.includes(marker)) return false
+  if (current === next) return false
+
+  writeFileSync(path, next)
+  return true
+}
+
+function appendBlockIfMissing(path: string, block: string, marker: string) {
+  if (!existsSync(path)) return false
+
+  const current = readFileSync(path, "utf8")
+  if (current.includes(marker)) return false
+
+  const next = `${current.replace(/\s*$/, "")}\n\n${block.trim()}\n`
+  writeFileSync(path, next)
+  return true
+}
+
+function patchInlinePrompt(prompt: string) {
+  if (prompt.includes(CONTEXT_MODE_SDD_MARKER)) return prompt
+  return `${prompt.replace(/\s*$/, "")}\n\n${CONTEXT_MODE_SDD_PROMPT_BLOCK.trim()}\n`
+}
+
 function installSddAssets() {
   mkdirSync(COMMANDS, { recursive: true })
   mkdirSync(PROMPTS, { recursive: true })
@@ -395,6 +486,41 @@ function installSddAssets() {
   logInstallNotice("\x1b[38;5;39m>> SDD REVIEW PHASES DETECTED // sdd-review + sdd-claude-review already installed\x1b[0m")
 }
 
+function installContextModeAssets() {
+  mkdirSync(INSTRUCTIONS, { recursive: true })
+
+  const routingChanged = ensureManagedFile(
+    CONTEXT_MODE_ROUTING_PATH,
+    CONTEXT_MODE_ROUTING,
+    CONTEXT_MODE_ROUTING_MARKER,
+  )
+
+  let promptsChanged = false
+
+  if (existsSync(PROMPTS)) {
+    for (const entry of readdirSync(PROMPTS, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      if (!entry.name.startsWith("sdd-") || !entry.name.endsWith(".md")) continue
+
+      const changed = appendBlockIfMissing(
+        join(PROMPTS, entry.name),
+        CONTEXT_MODE_SDD_PROMPT_BLOCK,
+        CONTEXT_MODE_SDD_MARKER,
+      )
+
+      promptsChanged = changed || promptsChanged
+    }
+  }
+
+  if (routingChanged) {
+    logInstallNotice("\x1b[38;5;45m>> CONTEXT-MODE ROUTING INSTALLED // global instructions ready\x1b[0m")
+  }
+
+  if (promptsChanged) {
+    logInstallNotice("\x1b[38;5;45m>> SDD CONTEXT PATCHED // ctx defaults added to SDD prompts\x1b[0m")
+  }
+}
+
 function patchSddContinueCommand() {
   const path = join(COMMANDS, "sdd-continue.md")
   if (!existsSync(path)) return
@@ -414,12 +540,51 @@ function patchSddContinueCommand() {
 }
 
 function patchOpencodeConfig() {
-  if (!existsSync(OPENCODE_JSON)) return
+  const data = existsSync(OPENCODE_JSON)
+    ? JSON.parse(readFileSync(OPENCODE_JSON, "utf8"))
+    : { "$schema": "https://opencode.ai/config.json" }
 
-  const current = readFileSync(OPENCODE_JSON, "utf8")
-  const data = JSON.parse(current)
   const agents = data.agent ?? {}
+  const plugins = Array.isArray(data.plugin) ? [...data.plugin] : []
+  const instructions = Array.isArray(data.instructions) ? [...data.instructions] : []
+  const mcp = data.mcp ?? {}
   let changed = false
+
+  if (!plugins.includes("context-mode")) {
+    plugins.push("context-mode")
+    changed = true
+  }
+
+  if (!instructions.includes(CONTEXT_MODE_ROUTING_PATH)) {
+    instructions.push(CONTEXT_MODE_ROUTING_PATH)
+    changed = true
+  }
+
+  const existingContextMode = mcp["context-mode"]
+  if (!existingContextMode) {
+    mcp["context-mode"] = {
+      type: "local",
+      command: ["context-mode"],
+    }
+    changed = true
+  } else {
+    const mergedContextMode = {
+      ...existingContextMode,
+      type: existingContextMode.type ?? "local",
+    }
+
+    if (
+      mergedContextMode.type === "local" &&
+      (!Array.isArray(mergedContextMode.command) || mergedContextMode.command.length === 0)
+    ) {
+      mergedContextMode.command = ["context-mode"]
+    }
+
+    if (JSON.stringify(existingContextMode) !== JSON.stringify(mergedContextMode)) {
+      mcp["context-mode"] = mergedContextMode
+      changed = true
+    }
+  }
 
   for (const [name, desired] of Object.entries(SDD_MANAGED_AGENTS)) {
     const existing = agents[name]
@@ -441,10 +606,28 @@ function patchOpencodeConfig() {
     }
   }
 
+  for (const [name, agent] of Object.entries(agents)) {
+    if (!name.startsWith("sdd-")) continue
+    if (!agent || typeof agent !== "object") continue
+
+    const prompt = (agent as Record<string, unknown>).prompt
+    if (typeof prompt !== "string") continue
+    if (prompt.startsWith("{file:")) continue
+
+    const nextPrompt = patchInlinePrompt(prompt)
+    if (nextPrompt === prompt) continue
+
+    ;(agent as Record<string, unknown>).prompt = nextPrompt
+    changed = true
+  }
+
   if (changed) {
     data.agent = agents
+    data.instructions = instructions
+    data.mcp = mcp
+    data.plugin = plugins
     writeFileSync(OPENCODE_JSON, JSON.stringify(data, null, 2) + "\n")
-    logInstallNotice("\x1b[38;5;45m>> AGENTS PATCHED // sdd-review + sdd-claude-review registered\x1b[0m")
+    logInstallNotice("\x1b[38;5;45m>> CONFIG PATCHED // context-mode + SDD bootstrap ready\x1b[0m")
   }
 }
 
@@ -478,6 +661,7 @@ async function install($: any) {
   }
 
   installSddAssets()
+  installContextModeAssets()
   patchSddContinueCommand()
   patchOpencodeConfig()
 }
