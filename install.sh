@@ -4,53 +4,30 @@ set -e
 echo ">> CYBERPUNK ENVIRONMENT INSTALLER"
 echo ""
 
-# --- OpenCode Plugin ---
-echo ">> Installing opencode plugin..."
-mkdir -p ~/.config/opencode/plugins
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cp "$SCRIPT_DIR/cyberpunk.ts" ~/.config/opencode/plugins/cyberpunk.ts
-echo "   Plugin installed at ~/.config/opencode/plugins/cyberpunk.ts"
+# Detect OS and architecture
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
 
-echo ">> Checking context-mode..."
-if command -v context-mode >/dev/null 2>&1; then
-  echo "   context-mode already installed"
-elif command -v npm >/dev/null 2>&1; then
-  npm install -g context-mode
-  echo "   context-mode installed globally"
-else
-  echo "   WARNING: npm not found, could not install context-mode automatically"
-fi
+# Normalize arch names
+case "$ARCH" in
+  x86_64)  ARCH="x64" ;;
+  aarch64) ARCH="arm64" ;;
+  arm64)   ARCH="arm64" ;;
+esac
 
-OBS_PLUGIN=~/.config/opencode/plugins/opencode-observability.ts
-if [ -f "$OBS_PLUGIN" ]; then
-  mv "$OBS_PLUGIN" "$OBS_PLUGIN.disabled"
-  echo "   Disabled noisy plugin at ~/.config/opencode/plugins/opencode-observability.ts"
-fi
+BINARY_NAME="cyberpunk-${OS}-${ARCH}"
+INSTALL_PATH="/usr/local/bin/cyberpunk"
 
-# --- Tmux Config ---
-echo ">> Installing tmux config..."
-if [ -f ~/.tmux.conf ]; then
-  BACKUP=~/.tmux.conf.bak.$(date +%Y%m%d%H%M%S)
-  cp ~/.tmux.conf "$BACKUP"
-  echo "   Existing config backed up to $BACKUP"
-fi
-cp "$SCRIPT_DIR/tmux.conf" ~/.tmux.conf
-echo "   Config installed at ~/.tmux.conf"
+echo ">> Downloading cyberpunk binary for ${OS}/${ARCH}..."
 
-# --- TPM (Tmux Plugin Manager) ---
-if [ ! -d ~/.tmux/plugins/tpm ]; then
-  echo ">> Installing TPM (Tmux Plugin Manager)..."
-  git clone -q https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-  echo "   TPM installed"
-else
-  echo ">> TPM already installed, skipping"
-fi
+# Download the latest binary from GitHub Releases
+curl -fsSL "https://github.com/kevin15011/cyberpunk-plugin/releases/latest/download/${BINARY_NAME}" \
+  -o "$INSTALL_PATH"
+chmod +x "$INSTALL_PATH"
 
-# --- Install tmux plugins ---
-echo ">> Installing tmux plugins..."
-~/.tmux/plugins/tpm/bin/install_plugins all 2>/dev/null || true
-echo "   Plugins installed"
-
+echo "   Binary installed at ${INSTALL_PATH}"
 echo ""
-echo ">> ALL SYSTEMS ONLINE // Cyberpunk environment ready"
-echo "   - Restart opencode or run: tmux source-file ~/.tmux.conf"
+
+# Run the TUI to let the user choose what to install
+echo ">> Launching cyberpunk TUI..."
+cyberpunk

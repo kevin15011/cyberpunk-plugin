@@ -1,0 +1,16 @@
+{
+  "name": "cyberpunk",
+  "version": "1.0.0",
+  "description": "Cyberpunk CLI — interactive TUI for managing your cyberpunk dev environment",
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0"
+  }
+}

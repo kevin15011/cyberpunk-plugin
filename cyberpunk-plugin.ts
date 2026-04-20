@@ -1,5 +1,6 @@
-// cyberpunk.ts — runtime plugin (installed by cyberpunk CLI)
-// ONLY handles sound playback on events — no installations, no config, no bootstrap.
+// cyberpunk-plugin.ts — bundled slimmed plugin source (runtime only)
+// The CLI plugin component copies this file to ~/.config/opencode/plugins/cyberpunk.ts
+
 import type { Plugin } from "@opencode-ai/plugin"
 import { existsSync } from "fs"
 import { join } from "path"
@@ -22,19 +23,19 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
       if (event.type === "session.idle") {
-        try { await playSound($, "idle.wav") } catch {}
+        try { await playSound($, "idle.m4a") } catch {}
       }
 
       if (event.type === "session.error") {
-        try { await playSound($, "error.wav") } catch {}
+        try { await playSound($, "error.m4a") } catch {}
       }
 
       if (event.type === "session.compacted") {
-        try { await playSound($, "compact.wav") } catch {}
+        try { await playSound($, "compact.m4a") } catch {}
       }
 
       if (event.type === "permission.asked") {
-        try { await playSound($, "permission.wav") } catch {}
+        try { await playSound($, "permission.m4a") } catch {}
       }
     },
   }
