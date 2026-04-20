@@ -10,6 +10,7 @@ import { COMPONENT_LABELS } from "../config/schema"
 
 const HOME = process.env.HOME || process.env.USERPROFILE || "~"
 const OPENCODE_DIR = join(HOME, ".config", "opencode")
+const OPENCODE_JSON_PATH = join(OPENCODE_DIR, "opencode.json")
 const INSTRUCTIONS_DIR = join(OPENCODE_DIR, "instructions")
 const ROUTING_PATH = join(INSTRUCTIONS_DIR, "context-mode-routing.md")
 const ROUTING_MARKER = "<!-- cyberpunk-managed:context-mode-routing -->"
@@ -110,6 +111,54 @@ function removeRoutingFile(): void {
   }
 }
 
+function patchOpencodeJsonMcp(): boolean {
+  if (!existsSync(OPENCODE_JSON_PATH)) return false
+
+  let config: Record<string, any>
+  try {
+    config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+  } catch {
+    return false
+  }
+
+  // Initialize mcp object if needed
+  if (!config.mcp) {
+    config.mcp = {}
+  }
+
+  // Check if already configured
+  if (config.mcp["context-mode"]?.type === "local") {
+    return false
+  }
+
+  // Add context-mode MCP server config
+  config.mcp["context-mode"] = {
+    command: ["context-mode"],
+    type: "local",
+    enabled: true,
+  }
+
+  writeFileSync(OPENCODE_JSON_PATH, JSON.stringify(config, null, 2), "utf8")
+  return true
+}
+
+function unpatchOpencodeJsonMcp(): boolean {
+  if (!existsSync(OPENCODE_JSON_PATH)) return false
+
+  let config: Record<string, any>
+  try {
+    config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+  } catch {
+    return false
+  }
+
+  if (!config.mcp?.["context-mode"]) return false
+
+  delete config.mcp["context-mode"]
+  writeFileSync(OPENCODE_JSON_PATH, JSON.stringify(config, null, 2), "utf8")
+  return true
+}
+
 export function getContextModeComponent(): ComponentModule {
   return {
     id: "context-mode",
@@ -143,6 +192,9 @@ export function getContextModeComponent(): ComponentModule {
       // Write routing instructions
       ensureRoutingFile()
 
+      // Add MCP configuration to opencode.json
+      const mcpPatched = patchOpencodeJsonMcp()
+
       const config = loadConfig()
       config.components["context-mode"] = {
         installed: true,
@@ -156,13 +208,18 @@ export function getContextModeComponent(): ComponentModule {
         component: "context-mode",
         action: "install",
         status: alreadyInstalled ? "skipped" : "success",
-        message: alreadyInstalled ? "context-mode ya instalado, routing actualizado" : undefined,
+        message: alreadyInstalled
+          ? "context-mode ya instalado, routing y MCP actualizados"
+          : mcpPatched
+            ? "context-mode instalado, routing y MCP configurados"
+            : undefined,
         path: ROUTING_PATH,
       }
     },
 
     async uninstall(): Promise<InstallResult> {
       removeRoutingFile()
+      unpatchOpencodeJsonMcp()
 
       const config = loadConfig()
       config.components["context-mode"] = { installed: false }
@@ -180,7 +237,16 @@ export function getContextModeComponent(): ComponentModule {
       const cmInstalled = isContextModeInstalled()
       const routingExists = existsSync(ROUTING_PATH)
 
-      if (cmInstalled && routingExists) {
+      // Check if MCP is configured in opencode.json
+      let mcpConfigured = false
+      if (existsSync(OPENCODE_JSON_PATH)) {
+        try {
+          const config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+          mcpConfigured = config.mcp?.["context-mode"]?.type === "local"
+        } catch {}
+      }
+
+      if (cmInstalled && routingExists && mcpConfigured) {
         return {
           id: "context-mode",
           label: COMPONENT_LABELS["context-mode"],
@@ -194,6 +260,15 @@ export function getContextModeComponent(): ComponentModule {
           label: COMPONENT_LABELS["context-mode"],
           status: "error",
           error: "npm no encontrado",
+        }
+      }
+
+      if (cmInstalled && !mcpConfigured) {
+        return {
+          id: "context-mode",
+          label: COMPONENT_LABELS["context-mode"],
+          status: "available",
+          error: "npm instalado pero MCP no configurado en opencode.json",
         }
       }
 

@@ -25,10 +25,17 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
 ## Install (everything)
 
 ```bash
-git clone git@github.com:kevin15011/cyberpunk-plugin.git
+curl -fsSL https://raw.githubusercontent.com/kevin15011/cyberpunk-plugin/main/install.sh | bash
+```
+
+This downloads the binary from the latest GitHub Release and launches the installer TUI.
+
+**Alternative**: Clone and build from source (for other platforms):
+```bash
+git clone https://github.com/kevin15011/cyberpunk-plugin.git
 cd cyberpunk-plugin
-chmod +x install.sh
-./install.sh
+bun install && bun run build
+./cyberpunk tui
 ```
 
 Then restart opencode. The plugin will auto-configure on first load, install both review phases, patch the local SDD flow, and re-bootstrap `context-mode` integration if OpenCode or Gentle AI updates overwrite those files.
@@ -66,11 +73,12 @@ tmux source-file ~/.tmux.conf
 ## Requirements
 
 - [opencode](https://opencode.ai)
-- [tmux](https://github.com/tmux/tmux) >= 3.2
-- **macOS** — `afplay` (built-in)
+- **Linux x64/arm64** — Pre-built binary available via curl install
+- **macOS/other** — Build from source with `bun`
 - **Linux** — `ffplay` (`sudo apt install ffmpeg`)
-- `ffmpeg` — Needed on first run to generate sound files
+- `npm` — Needed for `context-mode` component
 - `git` — For TPM installation
+- [bun](https://bun.sh) — Only needed if building from source
 
 ## Optional: Permission sound
 
