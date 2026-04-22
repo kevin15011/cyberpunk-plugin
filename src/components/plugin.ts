@@ -204,9 +204,28 @@ async function playSound($: any, file: string) {
   }
 }
 
+async function playCompletionSound($: any) {
+  const now = Date.now()
+  if (now - lastCompletionTime > COMPLETION_THROTTLE_MS) {
+    lastCompletionTime = now
+    try { await playSound($, "idle.wav") } catch {}
+  }
+}
+
 export const CyberpunkPlugin: Plugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
+      if (event.type === "session.idle") {
+        await playCompletionSound($)
+      }
+
+      if (event.type === "session.status") {
+        const status = (event as any).properties?.status
+        if (status?.type === "idle") {
+          await playCompletionSound($)
+        }
+      }
+
       if (event.type === "session.error") {
         try { await playSound($, "error.wav") } catch {}
       }
@@ -219,16 +238,6 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
         try { await playSound($, "permission.wav") } catch {}
       }
 
-      if (event.type === "message.updated") {
-        const info = (event as any).properties?.info
-        if (info?.finish) {
-          const now = Date.now()
-          if (now - lastCompletionTime > COMPLETION_THROTTLE_MS) {
-            lastCompletionTime = now
-            try { await playSound($, "idle.wav") } catch {}
-          }
-        }
-      }
     },
   }
 }

@@ -229,9 +229,9 @@ Old content that should be replaced.`
 // ── Sound Interaction Trigger Tests ────────────────────────────
 
 describe("PLUGIN_SOURCE: sound interaction trigger fix", () => {
-  // 3.1 — session.idle handler must NOT exist
-  test("must NOT contain session.idle completion handler", () => {
-    expect(PLUGIN_SOURCE).not.toContain('event.type === "session.idle"')
+  // 3.1 — session.idle handler must exist
+  test("must contain session.idle completion handler", () => {
+    expect(PLUGIN_SOURCE).toContain('event.type === "session.idle"')
   })
 
   // 3.2 — throttle constant exists
@@ -244,8 +244,8 @@ describe("PLUGIN_SOURCE: sound interaction trigger fix", () => {
     expect(PLUGIN_SOURCE).toContain("let lastCompletionTime = 0")
   })
 
-  // 3.4 — throttle guard pattern inside message.updated handler
-  test("must contain throttle guard in message.updated handler", () => {
+  // 3.4 — throttle guard pattern inside completion handler
+  test("must contain throttle guard in completion handler", () => {
     expect(PLUGIN_SOURCE).toContain("now - lastCompletionTime > COMPLETION_THROTTLE_MS")
   })
 
@@ -272,13 +272,19 @@ describe("PLUGIN_SOURCE: sound interaction trigger fix", () => {
     expect(PLUGIN_SOURCE).toContain('playSound($, "idle.wav")')
   })
 
-  // 3.9 — message.updated + info.finish completion behavior encoded
-  test("must gate completion on message.updated + info.finish", () => {
-    expect(PLUGIN_SOURCE).toContain('event.type === "message.updated"')
-    expect(PLUGIN_SOURCE).toContain("info?.finish")
+  // 3.9 — session.status idle completion behavior encoded
+  test("must gate completion on session.status idle", () => {
+    expect(PLUGIN_SOURCE).toContain('event.type === "session.status"')
+    expect(PLUGIN_SOURCE).toContain('status?.type === "idle"')
   })
 
-  // 3.10 — dead code lastSoundTime must be gone
+  // 3.10 — message.updated completion handler must be gone
+  test("must NOT contain message.updated completion handler", () => {
+    expect(PLUGIN_SOURCE).not.toContain('event.type === "message.updated"')
+    expect(PLUGIN_SOURCE).not.toContain("info?.finish")
+  })
+
+  // 3.11 — dead code lastSoundTime must be gone
   test("must NOT contain dead lastSoundTime variable", () => {
     expect(PLUGIN_SOURCE).not.toContain("lastSoundTime")
   })

@@ -2,46 +2,46 @@
 
 ## Purpose
 
-Defines which OpenCode lifecycle events trigger sound playback in the cyberpunk plugin, with dedupe rules for streaming-completion events.
+Defines which OpenCode lifecycle events trigger sound playback in the cyberpunk plugin, with dedupe rules for session-completion events.
 
 ## Requirements
 
 ### Requirement: Completion Sound Trigger
 
-The completion sound (`idle.wav`) MUST play exactly once when the assistant finishes responding. The trigger MUST be `message.updated` with `properties.info.finish` present. The system MUST NOT play the completion sound on `session.idle`. The system MUST NOT play the completion sound for intermediate streaming updates lacking `info.finish`.
-
-#### Scenario: Multiple streaming updates before completion
-
-- GIVEN the assistant is streaming a response
-- WHEN multiple `message.updated` events arrive without `info.finish`
-- THEN the completion sound MUST NOT play for any intermediate event
-
-#### Scenario: Final message with finish flag
-
-- GIVEN the assistant is streaming a response
-- WHEN a `message.updated` event arrives with `properties.info.finish` set
-- THEN the completion sound (`idle.wav`) MUST play exactly once
-
-#### Scenario: Duplicate terminal updates within throttle window
-
-- GIVEN a `message.updated` with `info.finish` already triggered the completion sound
-- WHEN another `message.updated` with `info.finish` arrives within 2 seconds
-- THEN the completion sound MUST NOT play again
-
-#### Scenario: Second completion beyond throttle window
-
-- GIVEN the completion sound played at time T
-- WHEN a new `message.updated` with `info.finish` arrives at T+3s
-- THEN the completion sound MUST play (throttle window elapsed)
-
-### Requirement: Session Idle Non-Trigger
-
-The `session.idle` event MUST NOT trigger any sound playback. No handler for `session.idle` SHALL exist in the plugin event system.
+The completion sound (`idle.wav`) MUST play exactly once when the OpenCode session finishes working and returns to the idle state. The trigger MUST be `session.idle` and/or `session.status` with `properties.status.type` set to `idle`. The system MUST NOT use `message.updated` as the completion trigger.
 
 #### Scenario: Session idle event received
 
 - GIVEN the plugin is active
 - WHEN a `session.idle` event is received
+- THEN the completion sound (`idle.wav`) MUST play exactly once
+
+#### Scenario: Session status transitions to idle
+
+- GIVEN the plugin is active
+- WHEN a `session.status` event arrives with `properties.status.type` set to `idle`
+- THEN the completion sound (`idle.wav`) MUST play exactly once
+
+#### Scenario: Duplicate idle signals within throttle window
+
+- GIVEN the completion sound already played for a session completion
+- WHEN another completion signal (`session.idle` or `session.status` with `idle`) arrives within 2 seconds
+- THEN the completion sound MUST NOT play again
+
+#### Scenario: Second completion beyond throttle window
+
+- GIVEN the completion sound played at time T
+- WHEN a new completion signal arrives at T+3s
+- THEN the completion sound MUST play (throttle window elapsed)
+
+### Requirement: Message Updated Non-Trigger
+
+The `message.updated` event MUST NOT trigger the completion sound. No completion logic SHALL rely on `properties.info.finish`.
+
+#### Scenario: Message updated event received
+
+- GIVEN the plugin is active
+- WHEN a `message.updated` event is received
 - THEN no sound SHALL be played
 
 ### Requirement: Permission Sound

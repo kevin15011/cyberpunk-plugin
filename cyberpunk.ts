@@ -7,6 +7,8 @@ import { join } from "path"
 const HOME = process.env.HOME!
 const SOUNDS = join(HOME, ".config", "opencode", "sounds")
 const IS_MAC = process.platform === "darwin"
+const COMPLETION_THROTTLE_MS = 2000
+let lastCompletionTime = 0
 
 async function playSound($: any, file: string) {
   const path = join(SOUNDS, file)
@@ -18,11 +20,26 @@ async function playSound($: any, file: string) {
   }
 }
 
+async function playCompletionSound($: any) {
+  const now = Date.now()
+  if (now - lastCompletionTime > COMPLETION_THROTTLE_MS) {
+    lastCompletionTime = now
+    try { await playSound($, "idle.wav") } catch {}
+  }
+}
+
 export const CyberpunkPlugin: Plugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
       if (event.type === "session.idle") {
-        try { await playSound($, "idle.wav") } catch {}
+        await playCompletionSound($)
+      }
+
+      if (event.type === "session.status") {
+        const status = (event as any).properties?.status
+        if (status?.type === "idle") {
+          await playCompletionSound($)
+        }
       }
 
       if (event.type === "session.error") {
