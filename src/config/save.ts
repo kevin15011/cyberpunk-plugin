@@ -1,15 +1,16 @@
 // src/config/save.ts — atomic write via .tmp then rename
 
 import { writeFileSync, renameSync } from "fs"
-import { CONFIG_PATH, CONFIG_DIR } from "./load"
+import { getConfigPath } from "./load"
 import type { CyberpunkConfig } from "./schema"
 
 export function saveConfig(config: CyberpunkConfig): void {
-  const tmpPath = CONFIG_PATH + ".tmp"
+  const configPath = getConfigPath()
+  const tmpPath = configPath + ".tmp"
   const content = JSON.stringify(config, null, 2) + "\n"
 
   writeFileSync(tmpPath, content, "utf8")
-  renameSync(tmpPath, CONFIG_PATH)
+  renameSync(tmpPath, configPath)
 }
 
 /**

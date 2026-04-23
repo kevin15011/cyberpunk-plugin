@@ -6,17 +6,15 @@ import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
 
-// ── Resolve the actual config path that loadConfig uses ────────────
-// Bun caches module-level constants after first import. We import once
-// to discover the real CONFIG_PATH and use it for all test setups.
+// ── Resolve the actual config path helpers that loadConfig uses ─────
 
 let ACTUAL_CONFIG_PATH: string
 let ACTUAL_CONFIG_DIR: string
 
 beforeAll(async () => {
   const loadMod = await import("../src/config/load.ts?" + Date.now())
-  ACTUAL_CONFIG_PATH = loadMod.CONFIG_PATH as string
-  ACTUAL_CONFIG_DIR = loadMod.CONFIG_DIR as string
+  ACTUAL_CONFIG_PATH = loadMod.getConfigPath() as string
+  ACTUAL_CONFIG_DIR = loadMod.getConfigDir() as string
 })
 
 function defaultConfig(overrides?: Record<string, unknown>) {
@@ -46,16 +44,28 @@ function createBinaryTestEnv(testName: string) {
 
   mkdirSync(tempConfigDir, { recursive: true })
   mkdirSync(binDir, { recursive: true })
-  mkdirSync(ACTUAL_CONFIG_DIR, { recursive: true })
   const configJson = JSON.stringify(defaultConfig({ installMode: "binary" }), null, 2) + "\n"
   writeFileSync(tempConfigPath, configJson, "utf8")
-  writeFileSync(ACTUAL_CONFIG_PATH, configJson, "utf8")
 
   return {
     home,
     configPath: tempConfigPath,
-    actualConfigPath: ACTUAL_CONFIG_PATH,
     binaryPath,
+  }
+}
+
+async function withMockedPlatform<T>(platform: NodeJS.Platform, arch: string, run: () => Promise<T> | T): Promise<T> {
+  const originalPlatform = process.platform
+  const originalArch = process.arch
+
+  Object.defineProperty(process, "platform", { value: platform, configurable: true })
+  Object.defineProperty(process, "arch", { value: arch, configurable: true })
+
+  try {
+    return await run()
+  } finally {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true })
+    Object.defineProperty(process, "arch", { value: originalArch, configurable: true })
   }
 }
 
@@ -103,6 +113,18 @@ describe("getPlatformAsset (from upgrade module)", () => {
     const mod = await import("../src/commands/upgrade.ts?" + Date.now())
     const asset = mod.getPlatformAsset()
     expect(asset).toMatch(/^cyberpunk-(linux|darwin)-(x64|arm64)$/)
+  })
+
+  test("returns darwin asset names for supported macOS architectures", async () => {
+    await withMockedPlatform("darwin", "x64", async () => {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      expect(mod.getPlatformAsset()).toBe("cyberpunk-darwin-x64")
+    })
+
+    await withMockedPlatform("darwin", "arm64", async () => {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      expect(mod.getPlatformAsset()).toBe("cyberpunk-darwin-arm64")
+    })
   })
 
   test("matches current platform", async () => {
@@ -185,7 +207,7 @@ describe("runUpgrade dispatch by installMode", () => {
   })
 
   test("binary config dispatches to binary upgrade path", async () => {
-    const { home, binaryPath, actualConfigPath } = createBinaryTestEnv("dispatch-binary")
+    const { home, binaryPath, configPath } = createBinaryTestEnv("dispatch-binary")
     const originalHome = process.env.HOME
     const originalFetch = globalThis.fetch
 
@@ -218,7 +240,157 @@ describe("runUpgrade dispatch by installMode", () => {
         filesUpdated: [binaryPath],
       })
       expect(readFileSync(binaryPath, "utf8")).toBe("dispatch-binary")
-      expect(JSON.parse(readFileSync(actualConfigPath, "utf8")).installMode).toBe("binary")
+      expect(JSON.parse(readFileSync(configPath, "utf8")).installMode).toBe("binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      process.env.HOME = originalHome
+      rmSync(home, { recursive: true, force: true })
+      rmSync(ACTUAL_CONFIG_PATH, { force: true })
+    }
+  })
+
+  test("binary mode still dispatches correctly after another module cached a different HOME", async () => {
+    const staleHome = join(tmpdir(), `cyberpunk-upgrade-stale-home-${Date.now()}`)
+    const { home, binaryPath } = createBinaryTestEnv("dispatch-after-stale-home")
+    const originalHome = process.env.HOME
+    const originalFetch = globalThis.fetch
+
+    mkdirSync(staleHome, { recursive: true })
+    process.env.HOME = staleHome
+    await import("../src/components/plugin.ts?" + Date.now())
+
+    process.env.HOME = home
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("stale-home-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      const result = await mod.runUpgrade()
+
+      expect(result).toMatchObject({
+        status: "upgraded",
+        fromVersion: "1.1.0",
+        toVersion: "9.9.9",
+        filesUpdated: [binaryPath],
+      })
+      expect(readFileSync(binaryPath, "utf8")).toBe("stale-home-binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      process.env.HOME = originalHome
+      rmSync(staleHome, { recursive: true, force: true })
+      rmSync(home, { recursive: true, force: true })
+      rmSync(ACTUAL_CONFIG_PATH, { force: true })
+    }
+  })
+
+  test("binary mode on darwin downloads the darwin x64 release asset", async () => {
+    const { home, binaryPath } = createBinaryTestEnv("dispatch-darwin-x64")
+    const originalHome = process.env.HOME
+    const originalFetch = globalThis.fetch
+    const fetchCalls: string[] = []
+
+    process.env.HOME = home
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      fetchCalls.push(url)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.endsWith("/releases/download/v9.9.9/cyberpunk-darwin-x64")) {
+        return new Response(Buffer.from("darwin-x64-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      await withMockedPlatform("darwin", "x64", async () => {
+        const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+        const result = await mod.runUpgrade()
+
+        expect(result).toMatchObject({
+          status: "upgraded",
+          fromVersion: "1.1.0",
+          toVersion: "9.9.9",
+          filesUpdated: [binaryPath],
+        })
+      })
+
+      expect(fetchCalls).toEqual([
+        "https://api.github.com/repos/kevin15011/cyberpunk-plugin/releases/latest",
+        "https://github.com/kevin15011/cyberpunk-plugin/releases/download/v9.9.9/cyberpunk-darwin-x64",
+      ])
+      expect(readFileSync(binaryPath, "utf8")).toBe("darwin-x64-binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      process.env.HOME = originalHome
+      rmSync(home, { recursive: true, force: true })
+      rmSync(ACTUAL_CONFIG_PATH, { force: true })
+    }
+  })
+
+  test("binary mode on darwin downloads the darwin arm64 release asset", async () => {
+    const { home, binaryPath } = createBinaryTestEnv("dispatch-darwin-arm64")
+    const originalHome = process.env.HOME
+    const originalFetch = globalThis.fetch
+    const fetchCalls: string[] = []
+
+    process.env.HOME = home
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      fetchCalls.push(url)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.endsWith("/releases/download/v9.9.9/cyberpunk-darwin-arm64")) {
+        return new Response(Buffer.from("darwin-arm64-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      await withMockedPlatform("darwin", "arm64", async () => {
+        const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+        const result = await mod.runUpgrade()
+
+        expect(result).toMatchObject({
+          status: "upgraded",
+          fromVersion: "1.1.0",
+          toVersion: "9.9.9",
+          filesUpdated: [binaryPath],
+        })
+      })
+
+      expect(fetchCalls).toEqual([
+        "https://api.github.com/repos/kevin15011/cyberpunk-plugin/releases/latest",
+        "https://github.com/kevin15011/cyberpunk-plugin/releases/download/v9.9.9/cyberpunk-darwin-arm64",
+      ])
+      expect(readFileSync(binaryPath, "utf8")).toBe("darwin-arm64-binary")
     } finally {
       globalThis.fetch = originalFetch
       process.env.HOME = originalHome
@@ -290,7 +462,7 @@ describe("checkUpgrade dispatch", () => {
 
 describe("binary upgrade stale-binary protection", () => {
   test("runUpgrade replaces the binary even when release semver matches local version", async () => {
-    const { home, configPath, actualConfigPath, binaryPath } = createBinaryTestEnv("same-version-download")
+    const { home, configPath, binaryPath } = createBinaryTestEnv("same-version-download")
     const originalHome = process.env.HOME
     const originalFetch = globalThis.fetch
     const downloadBytes = Buffer.from("fresh-binary")
@@ -330,9 +502,7 @@ describe("binary upgrade stale-binary protection", () => {
       expect(readFileSync(binaryPath)).toEqual(downloadBytes)
       expect(fetchCalls).toHaveLength(2)
 
-      const tempConfig = JSON.parse(readFileSync(configPath, "utf8"))
-      const actualConfig = JSON.parse(readFileSync(actualConfigPath, "utf8"))
-      const savedConfig = typeof tempConfig.lastUpgradeCheck === "string" ? tempConfig : actualConfig
+      const savedConfig = JSON.parse(readFileSync(configPath, "utf8"))
       expect(savedConfig.installMode).toBe("binary")
       expect(typeof savedConfig.lastUpgradeCheck).toBe("string")
     } finally {

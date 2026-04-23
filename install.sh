@@ -15,17 +15,25 @@ case "$ARCH" in
   arm64)   ARCH="arm64" ;;
 esac
 
-# Check for ffmpeg (needed for sounds)
-if ! command -v ffplay &> /dev/null; then
-  echo ">> WARNING: ffmpeg not found — sound generation will fail."
-  echo "   Install with: sudo apt install ffmpeg"
-  echo ""
-fi
-
 # For Linux x64 and arm64, download pre-built binary from GitHub Releases
 if [ "$OS" = "linux" ] && [ -f /etc/os-release ] && grep -qi "alpine\|musl" /etc/os-release 2>/dev/null; then
   echo ">> WARNING: Alpine Linux detected — downloading static binary..."
   OS="linux-musl"
+fi
+
+# Check for ffmpeg (needed for sounds)
+if ! command -v ffplay &> /dev/null; then
+  echo ">> WARNING: ffmpeg not found — sound generation will fail."
+
+  if [ "$OS" = "darwin" ]; then
+    echo "   Install with: brew install ffmpeg"
+  elif [ "$OS" = "linux" ] || [ "$OS" = "linux-musl" ]; then
+    echo "   Install with: sudo apt install ffmpeg"
+  else
+    echo "   Install ffmpeg using your system package manager."
+  fi
+
+  echo ""
 fi
 
 BINARY_NAME="cyberpunk-${OS}-${ARCH}"

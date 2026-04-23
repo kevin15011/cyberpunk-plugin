@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs"
 import { join } from "path"
 import { execSync } from "child_process"
-import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
+import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
@@ -265,6 +265,83 @@ export function getRtkComponent(): ComponentModule {
         label: COMPONENT_LABELS.rtk,
         status: "available",
       }
+    },
+
+    async doctor(ctx: DoctorContext): Promise<DoctorResult> {
+      const checks: DoctorCheck[] = []
+
+      // Check 1: rtk binary on PATH
+      const rtkInstalled = isRtkAvailable()
+      if (!rtkInstalled) {
+        checks.push({
+          id: "rtk:binary",
+          label: "rtk binary",
+          status: "fail",
+          message: "rtk no encontrado en PATH",
+          fixable: false, // Requires download, not doctor scope
+        })
+      } else {
+        const details = ctx.verbose ? ` (${getRtkCommand()})` : ""
+        checks.push({
+          id: "rtk:binary",
+          label: "rtk binary",
+          status: "pass",
+          message: `rtk disponible en PATH${details}`,
+          fixable: false,
+        })
+      }
+
+      // Check 2: routing file exists
+      if (!existsSync(RTK_ROUTING_PATH)) {
+        checks.push({
+          id: "rtk:routing",
+          label: "Archivo routing RTK",
+          status: "fail",
+          message: "rtk-routing.md no encontrado",
+          fixable: true,
+        })
+      } else {
+        const content = readFileSync(RTK_ROUTING_PATH, "utf8")
+        if (content.includes(RTK_ROUTING_MARKER)) {
+          checks.push({
+            id: "rtk:routing",
+            label: "Archivo routing RTK",
+            status: "pass",
+            message: "Archivo routing RTK existe y está gestionado",
+            fixable: false,
+          })
+        } else {
+          checks.push({
+            id: "rtk:routing",
+            label: "Archivo routing RTK",
+            status: "warn",
+            message: "Archivo routing RTK existe pero no contiene marcador cyberpunk",
+            fixable: false,
+          })
+        }
+      }
+
+      // Check 3: RTK plugin registered in OpenCode config
+      const pluginRegistered = isOpenCodePluginRegistered(RTK_PLUGIN_ENTRY)
+      if (!pluginRegistered) {
+        checks.push({
+          id: "rtk:registration",
+          label: "Plugin RTK en OpenCode",
+          status: "fail",
+          message: `"${RTK_PLUGIN_ENTRY}" no está en el array plugin de opencode.json`,
+          fixable: true,
+        })
+      } else {
+        checks.push({
+          id: "rtk:registration",
+          label: "Plugin RTK en OpenCode",
+          status: "pass",
+          message: "Plugin RTK registrado en opencode.json",
+          fixable: false,
+        })
+      }
+
+      return { component: "rtk", checks }
     },
   }
 }

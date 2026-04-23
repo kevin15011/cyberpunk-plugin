@@ -1,6 +1,6 @@
 // src/commands/config.ts — get/set/list/init config values
 
-import { loadConfig, ensureConfigExists, CONFIG_PATH } from "../config/load"
+import { loadConfig, ensureConfigExists } from "../config/load"
 import { saveConfig, setConfigValue, getConfigValue } from "../config/save"
 import { createDefaultConfig, COMPONENT_LABELS, type ComponentId } from "../config/schema"
 import type { CyberpunkConfig } from "../config/schema"

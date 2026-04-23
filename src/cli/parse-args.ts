@@ -3,7 +3,7 @@
 import type { ComponentId, COMPONENT_IDS } from "../config/schema"
 
 export interface ParsedArgs {
-  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "help"
+  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "doctor" | "help"
   components: ComponentId[]
   flags: {
     json: boolean
@@ -12,6 +12,7 @@ export interface ParsedArgs {
     check: boolean
     list: boolean
     init: boolean
+    fix: boolean
   }
   configKey?: string
   configValue?: string
@@ -25,6 +26,7 @@ const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   s: "status",
   up: "upgrade",
   c: "config",
+  d: "doctor",
   h: "help",
 }
 
@@ -39,6 +41,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       check: false,
       list: false,
       init: false,
+      fix: false,
     },
   }
 
@@ -75,6 +78,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--init":
         result.flags.init = true
         break
+      case "--fix":
+        result.flags.fix = true
+        break
       case "--help":
         result.command = "help"
         break
@@ -90,6 +96,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
         break
       case "--upgrade":
         if (result.command === "tui") result.command = "upgrade"
+        break
+      case "--doctor":
+        if (result.command === "tui") result.command = "doctor"
         break
       // Component flags
       case "--plugin":
@@ -109,7 +118,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     const cmd = positionals[0]
     if (COMMAND_ALIASES[cmd]) {
       result.command = COMMAND_ALIASES[cmd]
-    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "help") {
+    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "doctor" || cmd === "help") {
       result.command = cmd
     }
 

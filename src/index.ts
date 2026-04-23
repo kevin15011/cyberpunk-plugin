@@ -1,20 +1,25 @@
 // src/index.ts — entry point: argv parse → command dispatch
 
 import { parseArgs } from "./cli/parse-args"
-import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult } from "./cli/output"
+import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson } from "./cli/output"
 import { runInstall, runUninstall } from "./commands/install"
 import { collectStatus } from "./commands/status"
 import { runConfigCommand, formatConfigOutput } from "./commands/config"
 import { checkUpgrade, runUpgrade } from "./commands/upgrade"
+import { runDoctor } from "./commands/doctor"
 import { runTUI } from "./tui/index"
-import { CONFIG_PATH, ensureConfigExists } from "./config/load"
+import { ensureConfigExists } from "./config/load"
 import { green, red, cyan } from "./tui/theme"
 
 async function main() {
-  // Ensure config directory and file exist on any command first-run
-  ensureConfigExists()
-
+  // Parse args first — doctor command must be read-only, so we skip config auto-creation
   const args = parseArgs()
+
+  // Ensure config directory and file exist on any command EXCEPT doctor
+  // Doctor needs to observe the raw state without side effects
+  if (args.command !== "doctor") {
+    ensureConfigExists()
+  }
 
   try {
     switch (args.command) {
@@ -79,6 +84,22 @@ async function main() {
         })
         console.log(formatConfigOutput(result, args.flags.json))
         process.exit(result.success ? 0 : 1)
+        break
+      }
+
+      case "doctor": {
+        const result = await runDoctor({
+          fix: args.flags.fix,
+          verbose: args.flags.verbose,
+          components: args.components.length > 0 ? args.components : undefined,
+        })
+        console.log(
+          args.flags.json
+            ? formatDoctorJson(result)
+            : formatDoctorText(result, args.flags.verbose)
+        )
+        // Exit 0 if no remaining failures, 1 otherwise
+        process.exit(result.summary.remainingFailures > 0 ? 1 : 0)
         break
       }
     }

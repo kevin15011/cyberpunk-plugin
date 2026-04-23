@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "fs"
 import { join } from "path"
 import { execSync } from "child_process"
-import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
+import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
@@ -277,6 +277,109 @@ export function getContextModeComponent(): ComponentModule {
         label: COMPONENT_LABELS["context-mode"],
         status: "available",
       }
+    },
+
+    async doctor(ctx: DoctorContext): Promise<DoctorResult> {
+      const checks: DoctorCheck[] = []
+
+      // Check 1: npm available
+      if (!ctx.prerequisites.npm && !ctx.prerequisites.bun) {
+        checks.push({
+          id: "context-mode:npm",
+          label: "npm/bun para context-mode",
+          status: "warn",
+          message: "npm/bun no encontrado — context-mode no disponible",
+          fixable: false,
+        })
+      } else {
+        const which = ctx.prerequisites.npm ? "npm" : "bun"
+        checks.push({
+          id: "context-mode:npm",
+          label: "npm/bun para context-mode",
+          status: "pass",
+          message: `${which} disponible`,
+          fixable: false,
+        })
+      }
+
+      // Check 2: context-mode binary installed
+      const cmInstalled = isContextModeInstalled()
+      if (!cmInstalled) {
+        checks.push({
+          id: "context-mode:binary",
+          label: "context-mode binary",
+          status: "fail",
+          message: "context-mode no encontrado en PATH",
+          fixable: false, // Requires npm install, not doctor scope
+        })
+      } else {
+        checks.push({
+          id: "context-mode:binary",
+          label: "context-mode binary",
+          status: "pass",
+          message: "context-mode instalado",
+          fixable: false,
+        })
+      }
+
+      // Check 3: routing file exists
+      if (!existsSync(ROUTING_PATH)) {
+        checks.push({
+          id: "context-mode:routing",
+          label: "Archivo routing",
+          status: "fail",
+          message: "context-mode-routing.md no encontrado",
+          fixable: true,
+        })
+      } else {
+        const content = readFileSync(ROUTING_PATH, "utf8")
+        if (content.includes(ROUTING_MARKER)) {
+          checks.push({
+            id: "context-mode:routing",
+            label: "Archivo routing",
+            status: "pass",
+            message: "Archivo routing existe y está gestionado",
+            fixable: false,
+          })
+        } else {
+          checks.push({
+            id: "context-mode:routing",
+            label: "Archivo routing",
+            status: "warn",
+            message: "Archivo routing existe pero no contiene marcador cyberpunk",
+            fixable: false,
+          })
+        }
+      }
+
+      // Check 4: MCP configured in opencode.json
+      let mcpConfigured = false
+      if (existsSync(OPENCODE_JSON_PATH)) {
+        try {
+          const config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+          mcpConfigured = config.mcp?.["context-mode"]?.type === "local"
+        } catch {}
+      }
+
+      if (!mcpConfigured) {
+        checks.push({
+          id: "context-mode:mcp",
+          label: "MCP en opencode.json",
+          status: "fail",
+          message: "context-mode MCP no configurado en opencode.json",
+          fixable: true,
+        })
+      } else {
+        checks.push({
+          id: "context-mode:mcp",
+          label: "MCP en opencode.json",
+          status: "pass",
+          message: "context-mode MCP configurado",
+          fixable: false,
+        })
+      }
+
+      return { component: "context-mode", checks }
     },
   }
 }

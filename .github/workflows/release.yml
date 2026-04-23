@@ -127,3 +127,87 @@ jobs:
           omitPrereleaseDuringUpdate: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-darwin-x64:
+    needs:
+      - resolve-tag
+      - build
+    if: needs.resolve-tag.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary for macOS x64
+        run: |
+          bun build --compile --target=bun-darwin-x64 ./src/index.ts --outfile ./cyberpunk-darwin-x64
+          chmod +x ./cyberpunk-darwin-x64
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.resolve-tag.outputs.tag }}
+          commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
+          artifacts: ./cyberpunk-darwin-x64
+          artifactContentType: application/octet-stream
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-darwin-arm64:
+    needs:
+      - resolve-tag
+      - build
+    if: needs.resolve-tag.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary for macOS arm64
+        run: |
+          bun build --compile --target=bun-darwin-arm64 ./src/index.ts --outfile ./cyberpunk-darwin-arm64
+          chmod +x ./cyberpunk-darwin-arm64
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.resolve-tag.outputs.tag }}
+          commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
+          artifacts: ./cyberpunk-darwin-arm64
+          artifactContentType: application/octet-stream
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,6 +3,7 @@
 import type { ComponentStatus } from "../components/types"
 import type { InstallResult } from "../components/types"
 import type { UpgradeResult, UpgradeStatus } from "../commands/upgrade"
+import type { DoctorRunResult, DoctorResult, DoctorCheck } from "../components/types"
 import { COMPONENT_LABELS } from "../config/schema"
 import { cyan, green, red, yellow, gray, bold } from "../tui/theme"
 
@@ -94,6 +95,87 @@ export function formatUpgradeResult(result: UpgradeResult, asJson: boolean): str
   }
 }
 
+export function formatDoctorJson(results: DoctorRunResult): string {
+  // Spec contract: --json outputs DoctorResult[] (array of {component, checks})
+  // Uses the structured results array directly — includes empty entries for modules without doctor()
+  return JSON.stringify(results.results, null, 2)
+}
+
+export function formatDoctorText(results: DoctorRunResult, verbose: boolean): string {
+  const lines: string[] = []
+  const { checks, fixes, summary } = results
+
+  // Column widths (minimum)
+  const colCheck = 30
+  const colStatus = 8
+  const colFixable = 9
+  const colFixed = 7
+
+  // Header
+  if (verbose) {
+    lines.push(
+      bold("CHECK".padEnd(colCheck)) + "  " +
+      bold("STATUS".padEnd(colStatus)) + "  " +
+      bold("FIXABLE".padEnd(colFixable)) + "  " +
+      bold("FIXED".padEnd(colFixed)) + "  " +
+      bold("MESSAGE")
+    )
+  } else {
+    lines.push(
+      bold("CHECK".padEnd(colCheck)) + "  " +
+      bold("STATUS".padEnd(colStatus)) + "  " +
+      bold("MESSAGE")
+    )
+  }
+
+  // Separator line
+  const sep = "─".repeat(verbose ? colCheck + colStatus + colFixable + colFixed + 60 : colCheck + colStatus + 60)
+  lines.push(gray(sep))
+
+  // Data rows
+  for (const c of checks) {
+    const statusStr = c.status === "pass" ? green("pass".padEnd(colStatus))
+      : c.status === "warn" ? yellow("warn".padEnd(colStatus))
+      : c.fixed ? green("fixed".padEnd(colStatus))
+      : red("fail".padEnd(colStatus))
+
+    const checkStr = c.id.padEnd(colCheck)
+
+    if (verbose) {
+      const fixableStr = String(c.fixable).padEnd(colFixable)
+      const fixedStr = (c.fixed != null ? String(c.fixed) : "-").padEnd(colFixed)
+      lines.push(`${checkStr}  ${statusStr}  ${fixableStr}  ${fixedStr}  ${c.message}`)
+    } else {
+      lines.push(`${checkStr}  ${statusStr}  ${c.message}`)
+    }
+  }
+
+  // Show fix results if any fixes were applied
+  if (fixes.length > 0) {
+    lines.push("")
+    lines.push(bold("REPARACIONES"))
+    const fixSep = "─".repeat(60)
+    lines.push(gray(fixSep))
+    for (const fix of fixes) {
+      const icon = fix.status === "fixed" ? green("✓")
+        : fix.status === "failed" ? red("✗")
+        : yellow("○")
+      lines.push(`  ${icon} ${fix.checkId}: ${fix.message}`)
+    }
+  }
+
+  // Summary line
+  lines.push("")
+  const parts: string[] = []
+  if (summary.healthy > 0) parts.push(green(`${summary.healthy} OK`))
+  if (summary.warnings > 0) parts.push(yellow(`${summary.warnings} warnings`))
+  if (summary.remainingFailures > 0) parts.push(red(`${summary.remainingFailures} failures`))
+  if (summary.fixed > 0) parts.push(green(`${summary.fixed} repaired`))
+  lines.push(`Resumen: ${parts.join(" | ")}`)
+
+  return lines.join("\n")
+}
+
 export function formatHelp(): string {
   return `
 ${bold(cyan("CYBERPUNK"))} — gestor de entorno cyberpunk
@@ -107,6 +189,7 @@ ${bold("COMANDOS")}
   uninstall (u)  Desinstalar componentes
   status   (s)  Ver estado de componentes
   upgrade (up)  Actualizar a la última versión
+  doctor   (d)  Diagnóstico y reparación
   config   (c)  Leer/escribir configuración
   help     (h)  Mostrar esta ayuda
 
@@ -119,6 +202,7 @@ ${bold("FLAGS")}
   --all           Todos los componentes
   --json          Salida en JSON
   --verbose       Log detallado
+  --fix           Aplicar reparaciones (doctor)
   --check         Solo verificar (upgrade)
   --list          Listar config
   --init          Crear config por defecto

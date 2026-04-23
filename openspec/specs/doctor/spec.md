@@ -1,0 +1,150 @@
+# Doctor Specification
+
+## Purpose
+
+Diagnostics and auto-repair system. Runs health checks across all installed components and platform prerequisites, reports structured results, and optionally applies safe repairs.
+
+## CLI Interface
+
+```
+cyberpunk doctor [--fix] [--json] [--verbose] [components...]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--fix` | Apply repairs for detected issues |
+| `--json` | Output results as JSON |
+| `--verbose` | Show raw values and repair details |
+| `--plugin --theme --sounds --context-mode --rtk --all` | Scope to specific components |
+
+## Data Models
+
+```typescript
+interface DoctorCheck {
+  id: string           // e.g. "plugin:patching", "platform:ffmpeg"
+  label: string
+  status: "pass" | "fail" | "warn"
+  message: string
+  fixable: boolean
+  fixed?: boolean      // true after successful --fix
+}
+
+interface DoctorResult {
+  component: ComponentId | "platform" | "config"
+  checks: DoctorCheck[]
+}
+```
+
+## Requirements
+
+### Requirement: Doctor Command Invocation
+
+The system SHALL register `doctor` as a top-level command. Without `--fix`, all checks MUST be read-only. Exit code MUST be 0 when all checks pass, 1 when any check fails.
+
+#### Scenario: All checks pass
+
+- GIVEN all components are correctly installed and configured
+- WHEN `cyberpunk doctor` is run
+- THEN exit code is 0 and every check shows `pass`
+
+#### Scenario: At least one check fails
+
+- GIVEN the plugin file is missing
+- WHEN `cyberpunk doctor` is run
+- THEN exit code is 1 and the plugin file check shows `fail`
+
+### Requirement: Platform Prerequisite Checks
+
+The system MUST verify availability of `ffmpeg`, `npm` (or `bun`), and `curl` on PATH. Missing prerequisites MUST report `warn` (not `fail`) and `fixable: false`.
+
+#### Scenario: ffmpeg missing
+
+- GIVEN ffmpeg is not on PATH
+- WHEN `cyberpunk doctor` is run
+- THEN the platform.ffmpeg check shows `warn` with message advising installation
+
+### Requirement: Plugin Component Checks
+
+The system SHALL verify: (1) plugin file exists at target path, (2) plugin is registered in OpenCode config, (3) Section E/F patching is applied in `sdd-phase-common.md`.
+
+#### Scenario: Patching drift detected
+
+- GIVEN `sdd-phase-common.md` exists but Section E markers are absent
+- WHEN `cyberpunk doctor` is run
+- THEN the `plugin:patching` check shows `fail` with `fixable: true`
+
+### Requirement: Theme Component Checks
+
+The system SHALL verify: (1) theme JSON file exists, (2) `tui.json` has `theme: "cyberpunk"`.
+
+#### Scenario: Theme file exists but tui.json deactivado
+
+- GIVEN `cyberpunk.json` exists but `tui.json` has a different theme
+- WHEN `cyberpunk doctor` is run
+- THEN `theme:activation` shows `fail` with `fixable: true`
+
+### Requirement: Sounds Component Checks
+
+The system SHALL verify ffmpeg availability and that all four `.wav` files exist.
+
+#### Scenario: Partial sound files
+
+- GIVEN only two of four `.wav` files exist
+- WHEN `cyberpunk doctor` is run
+- THEN `sounds:files` shows `fail` listing missing files with `fixable: true`
+
+### Requirement: Context-Mode Component Checks
+
+The system SHALL verify: (1) npm available, (2) context-mode installed globally, (3) routing file exists, (4) MCP configured in `opencode.json`.
+
+#### Scenario: MCP missing from opencode.json
+
+- GIVEN context-mode is installed but MCP entry is absent
+- WHEN `cyberpunk doctor` is run
+- THEN `context-mode:mcp` shows `fail` with `fixable: true`
+
+### Requirement: RTK Component Checks
+
+The system SHALL verify: (1) rtk binary on PATH, (2) routing file exists, (3) RTK plugin registered in OpenCode config.
+
+#### Scenario: rtk installed but not registered
+
+- GIVEN rtk binary is on PATH but `./plugins/rtk` is absent from plugin array
+- WHEN `cyberpunk doctor` is run
+- THEN `rtk:registration` shows `fail` with `fixable: true`
+
+### Requirement: Config Integrity Check
+
+The system SHALL verify the cyberpunk config file is JSON-parseable and contains required fields (`version`, `components`).
+
+#### Scenario: Corrupted config
+
+- GIVEN the config file contains invalid JSON
+- WHEN `cyberpunk doctor` is run
+- THEN the `config:integrity` check shows `fail` with `fixable: false`
+
+### Requirement: Auto-Repair with --fix
+
+When `--fix` is passed, the system MUST attempt repair for each check where `fixable: true`. Repairs MUST execute in order: patch → register → regenerate → report. Each repair MUST be atomic; a failure MUST NOT block subsequent repairs.
+
+#### Scenario: Fix plugin patching drift
+
+- GIVEN `plugin:patching` fails and `--fix` is passed
+- WHEN repair executes
+- THEN Section E/F is re-applied and the check shows `fixed: true`
+
+#### Scenario: Fix with partial failure
+
+- GIVEN `plugin:patching` and `context-mode:mcp` both fail
+- WHEN patching fix succeeds but MCP fix fails
+- THEN `plugin:patching` shows `fixed: true` and `context-mode:mcp` shows `fixed: false`
+
+### Requirement: Structured Output
+
+Default output MUST be a human-readable table (check / status / message). With `--json`, output MUST be a valid JSON array of `DoctorResult` objects. With `--verbose`, each check MUST include raw diagnostic values.
+
+#### Scenario: JSON output
+
+- GIVEN `--json` flag is passed
+- WHEN doctor completes
+- THEN stdout is valid JSON matching `DoctorResult[]` schema

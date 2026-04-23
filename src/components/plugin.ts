@@ -1,12 +1,12 @@
 // src/components/plugin.ts — copy plugin to ~/.config/opencode/plugins/cyberpunk.ts
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from "fs"
 import { join } from "path"
-import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
+import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
-import { registerCyberpunkPlugin, unregisterCyberpunkPlugin } from "../opencode-config"
+import { registerCyberpunkPlugin, unregisterCyberpunkPlugin, isOpenCodePluginRegistered, CYBERPUNK_PLUGIN_ENTRY } from "../opencode-config"
 
 const HOME = process.env.HOME || process.env.USERPROFILE || "~"
 const OPENCODE_PLUGINS_DIR = join(HOME, ".config", "opencode", "plugins")
@@ -81,7 +81,9 @@ function patchSddPhaseCommon(): boolean {
     const newContent = headingIndex !== -1
       ? content.slice(0, headingIndex) + markedSection
       : content.trimEnd() + "\n\n" + markedSection
-    writeFileSync(SDD_PHASE_COMMON_PATH, newContent, "utf8")
+    const tmpPath = SDD_PHASE_COMMON_PATH + ".tmp"
+    writeFileSync(tmpPath, newContent, "utf8")
+    renameSync(tmpPath, SDD_PHASE_COMMON_PATH)
     return true
   }
 
@@ -96,7 +98,9 @@ function patchSddPhaseCommon(): boolean {
     START_MARKER + "\n" + MANAGED_SDD_TEMPLATE + "\n" +
     END_MARKER +
     extracted.after
-  writeFileSync(SDD_PHASE_COMMON_PATH, newContent, "utf8")
+  const tmpPath = SDD_PHASE_COMMON_PATH + ".tmp"
+  writeFileSync(tmpPath, newContent, "utf8")
+  renameSync(tmpPath, SDD_PHASE_COMMON_PATH)
   return true
 }
 
@@ -255,6 +259,105 @@ export {
   END_MARKER,
 }
 
+// Export patching helper for doctor repair
+export function applyPatch(): boolean {
+  return patchSddPhaseCommon()
+}
+
+/**
+ * Plugin doctor checks: (1) plugin file exists, (2) registered in OpenCode config,
+ * (3) Section E/F patching applied in sdd-phase-common.md.
+ */
+export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = []
+  const verbose = ctx.verbose
+
+  // Check 1: plugin file exists
+  if (!existsSync(TARGET_PATH)) {
+    checks.push({
+      id: "plugin:file",
+      label: "Archivo de plugin",
+      status: "fail",
+      message: `Plugin no encontrado en ${TARGET_PATH}`,
+      fixable: false, // Requires full install, not doctor scope
+    })
+  } else {
+    const details = verbose ? ` (${TARGET_PATH})` : ""
+    checks.push({
+      id: "plugin:file",
+      label: "Archivo de plugin",
+      status: "pass",
+      message: `Plugin existe${details}`,
+      fixable: false,
+    })
+  }
+
+  // Check 2: registered in OpenCode config
+  const isRegistered = isOpenCodePluginRegistered(CYBERPUNK_PLUGIN_ENTRY)
+  if (!isRegistered) {
+    checks.push({
+      id: "plugin:registration",
+      label: "Registro en OpenCode",
+      status: "fail",
+      message: `"${CYBERPUNK_PLUGIN_ENTRY}" no está en el array plugin de opencode.json`,
+      fixable: true,
+    })
+  } else {
+    checks.push({
+      id: "plugin:registration",
+      label: "Registro en OpenCode",
+      status: "pass",
+      message: "Plugin registrado en opencode.json",
+      fixable: false,
+    })
+  }
+
+  // Check 3: Section E/F patching applied
+  const SDD_PHASE_COMMON_PATH = join(HOME, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md")
+  if (!existsSync(SDD_PHASE_COMMON_PATH)) {
+    checks.push({
+      id: "plugin:patching",
+      label: "Patching sdd-phase-common.md",
+      status: "warn",
+      message: "sdd-phase-common.md no encontrado — patching no aplicable",
+      fixable: false,
+    })
+  } else {
+    const content = readFileSync(SDD_PHASE_COMMON_PATH, "utf8")
+    if (!content.includes(START_MARKER)) {
+      checks.push({
+        id: "plugin:patching",
+        label: "Patching sdd-phase-common.md",
+        status: "fail",
+        message: "Marcadores Section E/F ausentes en sdd-phase-common.md",
+        fixable: true,
+      })
+    } else {
+      // Check if content matches expected
+      const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
+      if (extracted && extracted.managed.trim() === MANAGED_SDD_TEMPLATE) {
+        checks.push({
+          id: "plugin:patching",
+          label: "Patching sdd-phase-common.md",
+          status: "pass",
+          message: "Section E/F correctamente aplicada",
+          fixable: false,
+        })
+      } else {
+        checks.push({
+          id: "plugin:patching",
+          label: "Patching sdd-phase-common.md",
+          status: "fail",
+          message: "Contenido de Section E/F no coincide con el esperado (drift detectado)",
+          fixable: true,
+        })
+      }
+    }
+  }
+
+  return checks
+}
+
 export function getPluginComponent(): ComponentModule {
   return {
     id: "plugin",
@@ -358,6 +461,11 @@ export function getPluginComponent(): ComponentModule {
         label: COMPONENT_LABELS.plugin,
         status: "installed",
       }
+    },
+
+    async doctor(ctx: DoctorContext): Promise<DoctorResult> {
+      const checks = await checkPluginDoctor(ctx)
+      return { component: "plugin", checks }
     },
   }
 }

@@ -2,7 +2,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs"
 import { join } from "path"
-import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
+import type { ComponentModule, InstallResult, ComponentStatus, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
@@ -207,6 +207,12 @@ export function getThemeComponent(): ComponentModule {
         label: COMPONENT_LABELS.theme,
         status: "installed",
       }
+    },
+
+    async doctor(ctx: DoctorContext): Promise<DoctorResult> {
+      const { checkThemeDoctor } = await import("./theme-doctor")
+      const checks = await checkThemeDoctor(ctx)
+      return { component: "theme", checks }
     },
   }
 }

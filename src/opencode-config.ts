@@ -12,17 +12,17 @@ export interface OpenCodePluginUpdateResult {
   warning?: string
 }
 
-interface OpenCodeConfig {
+export interface OpenCodeConfig {
   plugin?: string[]
   [key: string]: unknown
 }
 
-function getOpenCodeConfigDir(): string {
+export function getOpenCodeConfigDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE || "~"
   return join(home, ".config", "opencode")
 }
 
-function getOpenCodeConfigPath(): string {
+export function getOpenCodeConfigPath(): string {
   return join(getOpenCodeConfigDir(), "opencode.json")
 }
 
@@ -33,8 +33,9 @@ function hasValidPluginArray(config: OpenCodeConfig): config is OpenCodeConfig &
 /**
  * Read OpenCode config from disk. Returns null if file doesn't exist
  * or can't be parsed.
+ * Exported for doctor diagnostics.
  */
-function readOpenCodeConfig(): OpenCodeConfig | null {
+export function readOpenCodeConfig(): OpenCodeConfig | null {
   const configPath = getOpenCodeConfigPath()
   if (!existsSync(configPath)) return null
   try {
@@ -47,8 +48,9 @@ function readOpenCodeConfig(): OpenCodeConfig | null {
 
 /**
  * Atomic write: write to .tmp then rename over target.
+ * Exported for doctor repair helpers.
  */
-function writeOpenCodeConfig(config: OpenCodeConfig): void {
+export function writeOpenCodeConfig(config: OpenCodeConfig): void {
   const configDir = getOpenCodeConfigDir()
   const configPath = getOpenCodeConfigPath()
   mkdirSync(configDir, { recursive: true })

@@ -31,9 +31,16 @@ curl -fsSL https://raw.githubusercontent.com/kevin15011/cyberpunk-plugin/main/in
 
 This downloads the binary from the latest GitHub Release, installs it to `~/.local/bin/cyberpunk`, and launches the installer TUI.
 
+Pre-built binaries are published for Linux (`x64`, `arm64`) and macOS (`x64`, `arm64`) using the shared `cyberpunk-{os}-{arch}` asset naming convention.
+
 If `~/.local/bin` is not already in your `PATH`, the script prints the export line you need to add.
 
-**Alternative**: Clone and build from source (for other platforms):
+### macOS notes
+
+- If macOS blocks the first launch because the binary is unsigned, use Finder → right-click `cyberpunk` → **Open** once, then confirm the prompt.
+- Install ffmpeg before using sound generation features: `brew install ffmpeg`
+
+**Alternative**: Clone and build from source (for unsupported platforms or local development):
 ```bash
 git clone https://github.com/kevin15011/cyberpunk-plugin.git
 cd cyberpunk-plugin
@@ -77,12 +84,19 @@ tmux source-file ~/.tmux.conf
 
 - [opencode](https://opencode.ai)
 - **Linux x64/arm64** — Pre-built binary available via curl install
-- **macOS/other** — Build from source with `bun`
+- **macOS x64/arm64** — Pre-built binary available via curl install
 - **Linux** — `ffplay` (`sudo apt install ffmpeg`)
+- **macOS** — `ffplay` (`brew install ffmpeg`)
 - `npm` — Needed for `context-mode` component
 - `curl` — Needed for `rtk` component (if rtk not already installed)
 - `git` — For TPM installation
 - [bun](https://bun.sh) — Only needed if building from source
+
+## Current macOS limitations
+
+- macOS binaries are currently unsigned.
+- Signing and notarization are deferred and not part of this MVP.
+- Automated macOS CI validation is also deferred; release validation is currently manual.
 
 ## Optional: Permission sound
 

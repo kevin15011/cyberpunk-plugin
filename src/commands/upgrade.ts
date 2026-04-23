@@ -8,11 +8,14 @@ import { saveConfig } from "../config/save"
 import type { InstallMode } from "../config/schema"
 
 const REPO = "kevin15011/cyberpunk-plugin"
-const BINARY_INSTALL_DIR = join(
-  (process.env.HOME || process.env.USERPROFILE || "~"),
-  ".local", "bin"
-)
-const BINARY_PATH = join(BINARY_INSTALL_DIR, "cyberpunk")
+
+function getBinaryPath(): string {
+  return join(
+    (process.env.HOME || process.env.USERPROFILE || "~"),
+    ".local", "bin",
+    "cyberpunk"
+  )
+}
 
 export interface UpgradeStatus {
   currentVersion: string
@@ -83,6 +86,8 @@ export function compareSemver(a: string, b: string): number {
 
 /**
  * Detect platform asset suffix for GitHub release download.
+ * Release assets follow the shared `cyberpunk-{os}-{arch}` contract used by
+ * both the GitHub workflow and install.sh bootstrapper.
  */
 export function getPlatformAsset(): string {
   const os = process.platform === "darwin" ? "darwin" : "linux"
@@ -115,8 +120,9 @@ export async function fetchLatestReleaseTag(): Promise<string> {
  * Download binary from GitHub release to a temp file, then rename over target.
  */
 async function downloadAndReplaceBinary(assetName: string, tag: string): Promise<void> {
+  const binaryPath = getBinaryPath()
   const downloadUrl = `https://github.com/${REPO}/releases/download/${tag}/${assetName}`
-  const tmpPath = BINARY_PATH + ".tmp"
+  const tmpPath = binaryPath + ".tmp"
 
   const resp = await fetch(downloadUrl, {
     headers: { "User-Agent": "cyberpunk-cli" },
@@ -136,7 +142,7 @@ async function downloadAndReplaceBinary(assetName: string, tag: string): Promise
   }
 
   // Atomic rename
-  renameSync(tmpPath, BINARY_PATH)
+  renameSync(tmpPath, binaryPath)
 }
 
 // ── Repo upgrade (existing path) ─────────────────────────────────
@@ -259,17 +265,19 @@ export async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
   const latestTag = await fetchLatestReleaseTag()
   const latestVersion = latestTag.replace(/^v/, "")
   const upToDate = compareSemver(currentVersion, latestVersion) >= 0
+  const binaryPath = getBinaryPath()
 
   return {
     currentVersion,
     latestVersion,
     upToDate,
-    changedFiles: upToDate ? [] : [BINARY_PATH],
+    changedFiles: upToDate ? [] : [binaryPath],
   }
 }
 
 export async function runBinaryUpgrade(): Promise<UpgradeResult> {
   const currentVersion = getAppVersion()
+  const binaryPath = getBinaryPath()
 
   let latestTag: string
   try {
@@ -294,7 +302,7 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
     await downloadAndReplaceBinary(assetName, latestTag)
   } catch (err) {
     // Clean up temp file on failure
-    const tmpPath = BINARY_PATH + ".tmp"
+    const tmpPath = binaryPath + ".tmp"
     if (existsSync(tmpPath)) {
       try { unlinkSync(tmpPath) } catch {}
     }
@@ -313,7 +321,7 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
     status: "upgraded",
     fromVersion: currentVersion,
     toVersion: latestVersion,
-    filesUpdated: [BINARY_PATH],
+    filesUpdated: [binaryPath],
   }
 }
 

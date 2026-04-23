@@ -149,8 +149,8 @@ describe("Config command success reporting", () => {
 
   beforeAll(async () => {
     const loadMod = await import("../src/config/load.ts?" + Date.now())
-    ACTUAL_CONFIG_PATH = loadMod.CONFIG_PATH as string
-    ACTUAL_CONFIG_DIR = loadMod.CONFIG_DIR as string
+    ACTUAL_CONFIG_PATH = loadMod.getConfigPath() as string
+    ACTUAL_CONFIG_DIR = loadMod.getConfigDir() as string
   })
 
   beforeEach(() => {

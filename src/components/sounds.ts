@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, unlinkSync } from "fs"
 import { join } from "path"
 import { execSync } from "child_process"
-import type { ComponentModule, InstallResult, ComponentStatus } from "./types"
+import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
@@ -186,6 +186,61 @@ export function getSoundsComponent(): ComponentModule {
         label: COMPONENT_LABELS.sounds,
         status: "available",
       }
+    },
+
+    async doctor(ctx: DoctorContext): Promise<DoctorResult> {
+      const checks: DoctorCheck[] = []
+
+      // Check 1: ffmpeg available
+      if (!ctx.prerequisites.ffmpeg) {
+        checks.push({
+          id: "sounds:ffmpeg",
+          label: "ffmpeg para sonidos",
+          status: "warn",
+          message: "ffmpeg no encontrado — sonidos no disponibles",
+          fixable: false,
+        })
+      } else {
+        checks.push({
+          id: "sounds:ffmpeg",
+          label: "ffmpeg para sonidos",
+          status: "pass",
+          message: "ffmpeg disponible",
+          fixable: false,
+        })
+      }
+
+      // Check 2: all 4 .wav files exist
+      const missing = SOUND_FILES.filter(f => !existsSync(join(SOUNDS_DIR, f)))
+      const canRegenerate = ctx.prerequisites.ffmpeg
+      if (missing.length === SOUND_FILES.length) {
+        checks.push({
+          id: "sounds:files",
+          label: "Archivos de sonido",
+          status: "fail",
+          message: `Ningún archivo de sonido encontrado (esperados: ${SOUND_FILES.join(", ")})`,
+          fixable: canRegenerate,
+        })
+      } else if (missing.length > 0) {
+        checks.push({
+          id: "sounds:files",
+          label: "Archivos de sonido",
+          status: "fail",
+          message: `Archivos faltantes: ${missing.join(", ")}`,
+          fixable: canRegenerate,
+        })
+      } else {
+        const details = ctx.verbose ? ` (${SOUNDS_DIR})` : ""
+        checks.push({
+          id: "sounds:files",
+          label: "Archivos de sonido",
+          status: "pass",
+          message: `Todos los archivos .wav existen${details}`,
+          fixable: false,
+        })
+      }
+
+      return { component: "sounds", checks }
     },
   }
 }
