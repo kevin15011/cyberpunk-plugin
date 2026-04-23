@@ -131,7 +131,7 @@ function formatConfigTree(config: CyberpunkConfig, indent = 0): string {
   lines.push(`${prefix}components:`)
   for (const [id, state] of Object.entries(config.components)) {
     const label = COMPONENT_LABELS[id as ComponentId] || id
-    const status = state.installed ? "✓ instalado" : "○ disponible"
+    const status = state.installed ? "instalado" : "disponible"
     lines.push(`${prefix}  ${id} (${label}): ${status}`)
     if (state.version) lines.push(`${prefix}    version: ${state.version}`)
     if (state.installedAt) lines.push(`${prefix}    installedAt: ${state.installedAt}`)

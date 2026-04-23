@@ -6,6 +6,7 @@ import { getThemeComponent } from "../components/theme"
 import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
 import { getRtkComponent } from "../components/rtk"
+import { getTmuxComponent } from "../components/tmux"
 import type { ComponentModule } from "../components/types"
 import { COMPONENT_IDS } from "../config/schema"
 import { loadConfig } from "../config/load"
@@ -17,6 +18,7 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   sounds: getSoundsComponent,
   "context-mode": getContextModeComponent,
   rtk: getRtkComponent,
+  tmux: getTmuxComponent,
 }
 
 export async function runInstall(

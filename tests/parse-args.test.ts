@@ -1,127 +1,7 @@
 // tests/parse-args.test.ts — tests for CLI argument parsing
 
 import { describe, test, expect } from "bun:test"
-
-// Inline the parseArgs function for testing to avoid module resolution issues
-// The actual module is at src/cli/parse-args.ts
-
-interface ParsedArgs {
-  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "help"
-  components: string[]
-  flags: {
-    json: boolean
-    verbose: boolean
-    all: boolean
-    check: boolean
-    list: boolean
-    init: boolean
-  }
-  configKey?: string
-  configValue?: string
-}
-
-const VALID_COMPONENTS = new Set(["plugin", "theme", "sounds", "context-mode"])
-
-const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
-  i: "install",
-  u: "uninstall",
-  s: "status",
-  up: "upgrade",
-  c: "config",
-  h: "help",
-}
-
-function parseArgs(argv: string[] = []): ParsedArgs {
-  const result: ParsedArgs = {
-    command: "tui",
-    components: [],
-    flags: {
-      json: false,
-      verbose: false,
-      all: false,
-      check: false,
-      list: false,
-      init: false,
-    },
-  }
-
-  const positionals: string[] = []
-  const flags: string[] = []
-
-  for (const arg of argv) {
-    if (arg.startsWith("--")) {
-      flags.push(arg)
-    } else {
-      positionals.push(arg)
-    }
-  }
-
-  for (const flag of flags) {
-    switch (flag) {
-      case "--json":
-        result.flags.json = true
-        break
-      case "--verbose":
-        result.flags.verbose = true
-        break
-      case "--all":
-        result.flags.all = true
-        break
-      case "--check":
-        result.flags.check = true
-        break
-      case "--list":
-        result.flags.list = true
-        break
-      case "--init":
-        result.flags.init = true
-        break
-      case "--help":
-        result.command = "help"
-        break
-      case "--install":
-        if (result.command === "tui") result.command = "install"
-        break
-      case "--uninstall":
-        if (result.command === "tui") result.command = "uninstall"
-        break
-      case "--status":
-        if (result.command === "tui") result.command = "status"
-        break
-      case "--upgrade":
-        if (result.command === "tui") result.command = "upgrade"
-        break
-      case "--plugin":
-      case "--theme":
-      case "--sounds":
-      case "--context-mode":
-        result.components.push(flag.slice(2))
-        break
-    }
-  }
-
-  if (positionals.length > 0) {
-    const cmd = positionals[0]
-    if (COMMAND_ALIASES[cmd]) {
-      result.command = COMMAND_ALIASES[cmd]
-    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "help") {
-      result.command = cmd as ParsedArgs["command"]
-    }
-
-    if (result.command === "config" && positionals.length > 1) {
-      result.configKey = positionals[1]
-      if (positionals.length > 2) {
-        result.configValue = positionals.slice(2).join(" ")
-      }
-    }
-  }
-
-  if (result.flags.all) {
-    result.components = ["plugin", "theme", "sounds", "context-mode"]
-  }
-
-  return result
-}
+import { parseArgs } from "../src/cli/parse-args"
 
 describe("parseArgs", () => {
   test("no args → TUI mode", () => {
@@ -144,7 +24,7 @@ describe("parseArgs", () => {
   test("install command with --all", () => {
     const result = parseArgs(["install", "--all"])
     expect(result.command).toBe("install")
-    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode"])
+    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
   })
 
   test("--install --plugin bypasses TUI (non-interactive)", () => {
@@ -156,7 +36,7 @@ describe("parseArgs", () => {
   test("--install --all bypasses TUI", () => {
     const result = parseArgs(["--install", "--all"])
     expect(result.command).toBe("install")
-    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode"])
+    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
   })
 
   test("--status --json", () => {
@@ -221,5 +101,93 @@ describe("parseArgs", () => {
   test("--verbose flag", () => {
     const result = parseArgs(["--install", "--plugin", "--verbose"])
     expect(result.flags.verbose).toBe(true)
+  })
+
+  test("--doctor --fix", () => {
+    const result = parseArgs(["--doctor", "--fix"])
+    expect(result.command).toBe("doctor")
+    expect(result.flags.fix).toBe(true)
+  })
+
+  test("--tmux component flag", () => {
+    const result = parseArgs(["install", "--tmux"])
+    expect(result.components).toEqual(["tmux"])
+  })
+
+  test("--rtk component flag", () => {
+    const result = parseArgs(["install", "--rtk"])
+    expect(result.components).toEqual(["rtk"])
+  })
+
+  test("--preset minimal sets preset field", () => {
+    const result = parseArgs(["install", "--preset", "minimal"])
+    expect(result.command).toBe("install")
+    expect(result.preset).toBe("minimal")
+    expect(result.components).toEqual([])
+    expect(result.parseErrors).toEqual([])
+  })
+
+  test("--preset full sets preset field", () => {
+    const result = parseArgs(["install", "--preset", "full"])
+    expect(result.preset).toBe("full")
+    expect(result.parseErrors).toEqual([])
+  })
+
+  test("--preset without value produces parse error", () => {
+    const result = parseArgs(["install", "--preset"])
+    expect(result.preset).toBeUndefined()
+    expect(result.parseErrors.length).toBeGreaterThan(0)
+    expect(result.parseErrors[0]).toMatch(/--preset/)
+  })
+
+  test("--preset with --all produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "full", "--all"])
+    expect(result.preset).toBe("full")
+    expect(result.parseErrors).toEqual(
+      expect.arrayContaining([expect.stringContaining("--preset")])
+    )
+  })
+
+  test("--preset with component flag produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "full", "--theme"])
+    expect(result.preset).toBe("full")
+    expect(result.parseErrors).toEqual(
+      expect.arrayContaining([expect.stringContaining("--preset")])
+    )
+  })
+
+  test("--preset with --plugin produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "minimal", "--plugin"])
+    expect(result.parseErrors.length).toBeGreaterThan(0)
+  })
+
+  test("--preset with --context-mode produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "minimal", "--context-mode"])
+    expect(result.parseErrors.length).toBeGreaterThan(0)
+  })
+
+  test("--preset with --sounds produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "minimal", "--sounds"])
+    expect(result.parseErrors.length).toBeGreaterThan(0)
+  })
+
+  test("--preset with --rtk produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "full", "--rtk"])
+    expect(result.parseErrors.length).toBeGreaterThan(0)
+  })
+
+  test("--preset with --tmux produces mutual exclusion error", () => {
+    const result = parseArgs(["install", "--preset", "full", "--tmux"])
+    expect(result.parseErrors.length).toBeGreaterThan(0)
+  })
+
+  test("parseErrors is empty by default", () => {
+    const result = parseArgs(["install", "--plugin"])
+    expect(result.parseErrors).toEqual([])
+  })
+
+  test("--preset before last arg with no value produces error", () => {
+    const result = parseArgs(["--preset"])
+    expect(result.parseErrors.length).toBeGreaterThan(0)
   })
 })

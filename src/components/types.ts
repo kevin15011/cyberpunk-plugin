@@ -2,7 +2,7 @@
 
 import type { CyberpunkConfig } from "../config/schema"
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk"
+export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux"
 
 export interface InstallResult {
   component: ComponentId

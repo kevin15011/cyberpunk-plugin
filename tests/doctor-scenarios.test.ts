@@ -29,6 +29,7 @@ let SOUNDS_DIR: string
 let INSTRUCTIONS_DIR: string
 let CM_ROUTING_PATH: string
 let RTK_ROUTING_PATH: string
+let TMUX_CONF_PATH: string
 
 const SOUND_FILES = ["idle.wav", "error.wav", "compact.wav", "permission.wav"]
 
@@ -110,6 +111,10 @@ function createHealthyRouting() {
   writeFileSync(RTK_ROUTING_PATH, `<!-- cyberpunk-managed:rtk-routing -->\n# RTK\n`)
 }
 
+function createHealthyTmux() {
+  writeFileSync(TMUX_CONF_PATH, `# user config\n# cyberpunk-managed:start\nset -g prefix C-a\n# cyberpunk-managed:end\n`)
+}
+
 /** Full healthy fixture */
 function createFullHealthyFixture() {
   createHealthyConfig()
@@ -119,6 +124,7 @@ function createFullHealthyFixture() {
   createHealthyTheme()
   createHealthySounds()
   createHealthyRouting()
+  createHealthyTmux()
 }
 
 /** Clear all fixture files and dirs */
@@ -163,6 +169,7 @@ beforeAll(async () => {
   INSTRUCTIONS_DIR = join(OPENCODE_DIR, "instructions")
   CM_ROUTING_PATH = join(INSTRUCTIONS_DIR, "context-mode-routing.md")
   RTK_ROUTING_PATH = join(INSTRUCTIONS_DIR, "rtk-routing.md")
+  TMUX_CONF_PATH = join(tempDir, ".tmux.conf")
 
   // Import doctor.ts ONCE so all sub-modules get HOME=tempDir
   const mod = await import("../src/commands/doctor.ts?" + Date.now())
@@ -392,7 +399,7 @@ describe("Doctor Spec Scenarios", () => {
     expect(prefixes.has("platform")).toBe(true)
     expect(prefixes.has("config")).toBe(true)
     // Each component that has doctor() should emit at least one check
-    for (const comp of ["plugin", "theme", "sounds", "context-mode", "rtk"]) {
+    for (const comp of ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"]) {
       expect(prefixes.has(comp)).toBe(true)
     }
   })
@@ -616,5 +623,86 @@ describe("Doctor structured output — table and verbose raw values", () => {
     // Table should have separator lines (─ chars) between header and data
     const separatorLines = lines.filter(l => /^[─\-\s]+$/.test(l) && l.replace(/\s/g, "").length > 5)
     expect(separatorLines.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tmux-specific doctor scenario evidence
+// ---------------------------------------------------------------------------
+
+describe("Doctor tmux scenarios", () => {
+  test("tmux:config fails when managed block missing, fixable=true", async () => {
+    createMinimalConfig()
+    // tmux.conf exists but has no managed block
+    writeFileSync(TMUX_CONF_PATH, "# user content\nset -g prefix C-b\n", "utf8")
+
+    const result = await runDoctorFn({ fix: false, verbose: false, components: ["tmux"] })
+
+    const configCheck = result.checks.find(c => c.id === "tmux:config")
+    expect(configCheck).toBeDefined()
+    expect(configCheck!.status).toBe("fail")
+    expect(configCheck!.fixable).toBe(true)
+  })
+
+  test("tmux:config passes when managed block present", async () => {
+    createMinimalConfig()
+    createHealthyTmux()
+
+    const result = await runDoctorFn({ fix: false, verbose: false, components: ["tmux"] })
+
+    const configCheck = result.checks.find(c => c.id === "tmux:config")
+    expect(configCheck).toBeDefined()
+    expect(configCheck!.status).toBe("pass")
+  })
+
+  test("--fix restores managed block without altering unmanaged content", async () => {
+    createMinimalConfig()
+    writeFileSync(TMUX_CONF_PATH, "# user header\nset -g prefix C-b\n", "utf8")
+
+    const result = await runDoctorFn({ fix: true, verbose: false, components: ["tmux"] })
+
+    // tmux:config fix should be applied
+    const tmuxFix = result.fixes.find(f => f.checkId === "tmux:config")
+    expect(tmuxFix).toBeDefined()
+    expect(tmuxFix!.status).toBe("fixed")
+
+    // Verify file content: managed block present AND user content preserved
+    const onDisk = readFileSync(TMUX_CONF_PATH, "utf8")
+    expect(onDisk).toContain("# cyberpunk-managed:start")
+    expect(onDisk).toContain("# cyberpunk-managed:end")
+    expect(onDisk).toContain("# user header")
+    expect(onDisk).toContain("set -g prefix C-b")
+  })
+
+  test("tmux:tpm and tmux:gitmux are warn-only, not fixable", async () => {
+    createMinimalConfig()
+    createHealthyTmux()
+
+    const result = await runDoctorFn({ fix: true, verbose: false, components: ["tmux"] })
+
+    const tpmCheck = result.checks.find(c => c.id === "tmux:tpm")
+    expect(tpmCheck).toBeDefined()
+    expect(tpmCheck!.fixable).toBe(false)
+
+    const gitmuxCheck = result.checks.find(c => c.id === "tmux:gitmux")
+    expect(gitmuxCheck).toBeDefined()
+    expect(gitmuxCheck!.fixable).toBe(false)
+
+    // No fixes attempted for TPM or gitmux
+    const tpmFix = result.fixes.find(f => f.checkId === "tmux:tpm")
+    const gitmuxFix = result.fixes.find(f => f.checkId === "tmux:gitmux")
+    expect(tpmFix).toBeUndefined()
+    expect(gitmuxFix).toBeUndefined()
+  })
+
+  test("tmux checks appear in full doctor run (S1 coverage)", async () => {
+    createFullHealthyFixture()
+    const result = await runDoctorFn({ fix: false, verbose: false })
+
+    const tmuxChecks = result.checks.filter(c => c.id.startsWith("tmux:"))
+    expect(tmuxChecks.length).toBeGreaterThanOrEqual(1)
+
+    const prefixes = new Set(result.checks.map(c => c.id.split(":")[0]))
+    expect(prefixes.has("tmux")).toBe(true)
   })
 })

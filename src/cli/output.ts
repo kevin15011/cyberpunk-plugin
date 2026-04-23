@@ -4,6 +4,7 @@ import type { ComponentStatus } from "../components/types"
 import type { InstallResult } from "../components/types"
 import type { UpgradeResult, UpgradeStatus } from "../commands/upgrade"
 import type { DoctorRunResult, DoctorResult, DoctorCheck } from "../components/types"
+import type { ResolvedPreset } from "../presets/definitions"
 import { COMPONENT_LABELS } from "../config/schema"
 import { cyan, green, red, yellow, gray, bold } from "../tui/theme"
 
@@ -64,7 +65,7 @@ export function formatUpgradeStatus(status: UpgradeStatus, asJson: boolean): str
   }
 
   const lines: string[] = []
-  lines.push(yellow("↻ Actualización disponible"))
+  lines.push(yellow("Actualización disponible"))
   lines.push(`  Actual: ${gray(status.currentVersion)}`)
   lines.push(`  Remoto:  ${cyan(status.latestVersion)}`)
   if (status.changedFiles.length > 0) {
@@ -176,6 +177,20 @@ export function formatDoctorText(results: DoctorRunResult, verbose: boolean): st
   return lines.join("\n")
 }
 
+export function formatPresetSummary(resolved: ResolvedPreset): string {
+  const lines: string[] = []
+  lines.push(bold(cyan(`Preset: ${resolved.label}`)))
+  lines.push(`  Componentes: ${resolved.components.map(id => COMPONENT_LABELS[id] || id).join(", ")}`)
+  if (resolved.warnings.length > 0) {
+    lines.push("")
+    lines.push(yellow("Avisos:"))
+    for (const w of resolved.warnings) {
+      lines.push("  - " + w)
+    }
+  }
+  return lines.join("\n")
+}
+
 export function formatHelp(): string {
   return `
 ${bold(cyan("CYBERPUNK"))} — gestor de entorno cyberpunk
@@ -193,13 +208,15 @@ ${bold("COMANDOS")}
   config   (c)  Leer/escribir configuración
   help     (h)  Mostrar esta ayuda
 
-${bold("FLAGS")}
+ ${bold("FLAGS")}
   --plugin        Componente: plugin
   --theme         Componente: tema
   --sounds        Componente: sonidos
   --context-mode  Componente: context-mode
   --rtk           Componente: RTK (token proxy)
+  --tmux          Componente: tmux config
   --all           Todos los componentes
+  --preset <name> Instalar desde preset (minimal, full)
   --json          Salida en JSON
   --verbose       Log detallado
   --fix           Aplicar reparaciones (doctor)
@@ -207,12 +224,14 @@ ${bold("FLAGS")}
   --list          Listar config
   --init          Crear config por defecto
 
-${bold("EJEMPLOS")}
-  cyberpunk                    # Abre TUI interactivo
-  cyberpunk install --all      # Instalar todo
-  cyberpunk status --json      # Estado en JSON
-  cyberpunk upgrade --check    # Verificar actualizaciones
-  cyberpunk config --list      # Ver configuración
+ ${bold("EJEMPLOS")}
+  cyberpunk                         # Abre TUI interactivo
+  cyberpunk install --all           # Instalar todo
+  cyberpunk install --preset minimal  # Instalar preset mínimo
+  cyberpunk install --preset full   # Instalar preset completo
+  cyberpunk status --json           # Estado en JSON
+  cyberpunk upgrade --check         # Verificar actualizaciones
+  cyberpunk config --list           # Ver configuración
   cyberpunk config repoUrl "https://github.com/user/repo"
 `.trim()
 }

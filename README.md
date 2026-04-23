@@ -73,12 +73,29 @@ curl -o ~/.config/opencode/plugins/cyberpunk.ts https://raw.githubusercontent.co
 
 ## Install (tmux config only)
 
+The cyberpunk CLI can manage your tmux config non-destructively using marker-managed blocks. Only the cyberpunk-owned section of `~/.tmux.conf` is modified; any personal tmux settings are preserved.
+
 ```bash
-cp tmux.conf ~/.tmux.conf
+cyberpunk install --tmux
+```
+
+This inserts the cyberpunk tmux configuration between `# cyberpunk-managed:start` / `# cyberpunk-managed:end` markers in `~/.tmux.conf`. To remove only the cyberpunk block:
+
+```bash
+cyberpunk uninstall --tmux
+```
+
+### TPM and plugins
+
+TPM (Tmux Plugin Manager) and plugins listed in the config (resurrect, continuum, tmux-cpu, gitmux, etc.) are **not** auto-installed by the cyberpunk CLI. Install TPM manually:
+
+```bash
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 ~/.tmux/plugins/tpm/bin/install_plugins all
 tmux source-file ~/.tmux.conf
 ```
+
+Run `cyberpunk doctor` to check the status of TPM, gitmux, and other optional tmux dependencies.
 
 ## Requirements
 
@@ -113,10 +130,13 @@ To hear the permission alert sound, add this to your `opencode.json`:
 ## Uninstall
 
 ```bash
-rm ~/.config/opencode/plugins/cyberpunk.ts
-rm -rf ~/.config/opencode/sounds/
+cyberpunk uninstall --all
+# Or individually:
+cyberpunk uninstall --plugin
+cyberpunk uninstall --theme
+cyberpunk uninstall --sounds
+cyberpunk uninstall --tmux
 rm -f ~/.local/bin/cyberpunk
-rm ~/.tmux.conf
 # Optional: remove RTK routing instructions
 rm -f ~/.config/opencode/instructions/rtk-routing.md
 ```

@@ -173,3 +173,52 @@ The `ComponentModule` interface SHALL include an optional `doctor()` method retu
 - GIVEN a component module does not implement `doctor()`
 - WHEN the doctor command collects results
 - THEN the module produces an empty `DoctorResult` (no checks, no failures)
+
+### Requirement: Tmux Component Lifecycle
+
+The system SHALL support `--tmux` for install and uninstall flows. Install MUST manage only the `# cyberpunk-managed:start` / `# cyberpunk-managed:end` block in `~/.tmux.conf`, preserving unmanaged content, and uninstall MUST remove only that managed block.
+
+#### Scenario: Install tmux into existing user config
+
+- GIVEN `~/.tmux.conf` already contains user-defined content outside the managed markers
+- WHEN `cyberpunk install --tmux` is run
+- THEN the bundled tmux configuration is present inside one managed block and unmanaged content remains unchanged
+
+#### Scenario: Uninstall tmux removes only managed content
+
+- GIVEN `~/.tmux.conf` contains both unmanaged content and the cyberpunk-managed block
+- WHEN `cyberpunk uninstall --tmux` is run
+- THEN only the managed block is removed and unrelated user content remains in place
+
+### Requirement: Preset-Based Install Selection
+
+The install command MUST accept `--preset <name>` for named install presets, MUST resolve the preset into existing component IDs before execution, and MUST reject combining `--preset` with per-component flags or `--all`.
+
+#### Scenario: Install minimal preset from CLI
+
+- GIVEN the user runs `cyberpunk install --preset minimal`
+- WHEN preset selection is resolved
+- THEN the system installs only `plugin` and `theme` using existing component installers
+
+#### Scenario: Reject conflicting install selectors
+
+- GIVEN the user runs `cyberpunk install --preset full --theme`
+- WHEN command validation runs
+- THEN the system reports that `--preset` cannot be combined with component flags or `--all`
+
+### Requirement: Preset Scope and Preflight Disclosure
+
+Slice 1 presets MUST include only `minimal` and `full`. The system MUST show each preset's component contents before execution and MUST disclose optional dependency failures and tmux managed-block behavior. Environment-specific presets such as `wsl` and `mac` SHALL be deferred from slice 1 and MUST be rejected as unsupported preset names.
+
+#### Scenario: Show full preset disclosures before install
+
+- GIVEN the user selects the `full` preset
+- WHEN the command reaches preflight confirmation
+- THEN the system shows the preset component list and warns that optional dependencies may still fail per component
+- AND the system states that tmux changes affect only the managed block in `~/.tmux.conf`
+
+#### Scenario: Reject deferred preset names
+
+- GIVEN the user runs `cyberpunk install --preset wsl`
+- WHEN preset lookup runs
+- THEN the system reports that `wsl` is not available in slice 1

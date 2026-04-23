@@ -57,7 +57,7 @@ export function bright(text: string): string { return styled(text, grayBright) }
 // Banner
 export const BANNER = `
 ${neonCyan}  ╔══════════════════════════════════════════╗
-${neonCyan}  ║${neonPink}   ⚡ CYBERPUNK ENVIRONMENT MANAGER ⚡    ${neonCyan}║
+${neonCyan}  ║${neonPink}     CYBERPUNK ENVIRONMENT MANAGER      ${neonCyan}║
 ${neonCyan}  ╚══════════════════════════════════════════╝${RESET}
 `
 

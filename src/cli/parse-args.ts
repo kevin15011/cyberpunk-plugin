@@ -14,11 +14,13 @@ export interface ParsedArgs {
     init: boolean
     fix: boolean
   }
+  preset?: string
+  parseErrors: string[]
   configKey?: string
   configValue?: string
 }
 
-const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode", "rtk"])
+const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
 
 const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   i: "install",
@@ -43,17 +45,26 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       init: false,
       fix: false,
     },
+    parseErrors: [],
   }
 
-  // Separate positional args from flags
+  // Separate positional args from flags, handle --preset <value> specially
   const positionals: string[] = []
   const flags: string[] = []
 
-  for (const arg of argv) {
-    if (arg.startsWith("--")) {
-      flags.push(arg)
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--preset") {
+      const next = argv[i + 1]
+      if (next && !next.startsWith("--")) {
+        result.preset = next
+        i++ // skip the value
+      } else {
+        result.parseErrors.push("--preset requiere un nombre de preset")
+      }
+    } else if (argv[i].startsWith("--")) {
+      flags.push(argv[i])
     } else {
-      positionals.push(arg)
+      positionals.push(argv[i])
     }
   }
 
@@ -110,6 +121,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--rtk":
         result.components.push("rtk" as ComponentId)
         break
+      case "--tmux":
+        result.components.push("tmux" as ComponentId)
+        break
     }
   }
 
@@ -133,7 +147,17 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
 
   // If --all flag, include all components
   if (result.flags.all) {
-    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk"]
+    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"]
+  }
+
+  // Validate: --preset is mutually exclusive with --all and component flags
+  if (result.preset) {
+    if (result.flags.all) {
+      result.parseErrors.push("--preset no se puede combinar con --all")
+    }
+    if (result.components.length > 0) {
+      result.parseErrors.push("--preset no se puede combinar con flags de componentes")
+    }
   }
 
   return result

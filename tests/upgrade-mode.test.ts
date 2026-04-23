@@ -6,6 +6,10 @@ import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
 
+const CURRENT_VERSION = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8")
+).version as string
+
 // ── Resolve the actual config path helpers that loadConfig uses ─────
 
 let ACTUAL_CONFIG_PATH: string
@@ -235,7 +239,7 @@ describe("runUpgrade dispatch by installMode", () => {
 
       expect(result).toMatchObject({
         status: "upgraded",
-        fromVersion: "1.1.0",
+        fromVersion: CURRENT_VERSION,
         toVersion: "9.9.9",
         filesUpdated: [binaryPath],
       })
@@ -283,7 +287,7 @@ describe("runUpgrade dispatch by installMode", () => {
 
       expect(result).toMatchObject({
         status: "upgraded",
-        fromVersion: "1.1.0",
+        fromVersion: CURRENT_VERSION,
         toVersion: "9.9.9",
         filesUpdated: [binaryPath],
       })
@@ -329,7 +333,7 @@ describe("runUpgrade dispatch by installMode", () => {
 
         expect(result).toMatchObject({
           status: "upgraded",
-          fromVersion: "1.1.0",
+          fromVersion: CURRENT_VERSION,
           toVersion: "9.9.9",
           filesUpdated: [binaryPath],
         })
@@ -380,7 +384,7 @@ describe("runUpgrade dispatch by installMode", () => {
 
         expect(result).toMatchObject({
           status: "upgraded",
-          fromVersion: "1.1.0",
+          fromVersion: CURRENT_VERSION,
           toVersion: "9.9.9",
           filesUpdated: [binaryPath],
         })
@@ -476,13 +480,13 @@ describe("binary upgrade stale-binary protection", () => {
       fetchCalls.push(url)
 
       if (url.includes("/releases/latest")) {
-        return new Response(JSON.stringify({ tag_name: "v1.1.0" }), {
+        return new Response(JSON.stringify({ tag_name: `v${CURRENT_VERSION}` }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         })
       }
 
-      if (url.includes("/releases/download/v1.1.0/")) {
+      if (url.includes(`/releases/download/v${CURRENT_VERSION}/`)) {
         return new Response(downloadBytes, { status: 200 })
       }
 
@@ -495,8 +499,8 @@ describe("binary upgrade stale-binary protection", () => {
 
       expect(result).toMatchObject({
         status: "upgraded",
-        fromVersion: "1.1.0",
-        toVersion: "1.1.0",
+        fromVersion: CURRENT_VERSION,
+        toVersion: CURRENT_VERSION,
         filesUpdated: [binaryPath],
       })
       expect(readFileSync(binaryPath)).toEqual(downloadBytes)
@@ -528,7 +532,7 @@ describe("binary upgrade stale-binary protection", () => {
       fetchCalls.push(url)
 
       if (url.includes("/releases/latest")) {
-        return new Response(JSON.stringify({ tag_name: "v1.1.0" }), {
+        return new Response(JSON.stringify({ tag_name: `v${CURRENT_VERSION}` }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         })
@@ -542,8 +546,8 @@ describe("binary upgrade stale-binary protection", () => {
       const status = await mod.checkBinaryUpgrade()
 
       expect(status).toEqual({
-        currentVersion: "1.1.0",
-        latestVersion: "1.1.0",
+        currentVersion: CURRENT_VERSION,
+        latestVersion: CURRENT_VERSION,
         upToDate: true,
         changedFiles: [],
       })

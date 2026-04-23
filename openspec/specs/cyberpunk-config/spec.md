@@ -159,10 +159,26 @@ The `CyberpunkConfig` interface SHALL include an optional `installMode` field wi
 
 ### Requirement: Version Bump
 
-The `package.json` version SHALL be incremented from `1.0.1` to `1.1.0` to trigger a new GitHub Release on merge to main via the existing `release.yml` workflow.
+The `package.json` version SHALL be incremented from `1.1.0` to `1.2.0` to trigger a new GitHub Release on merge to main via the existing `release.yml` workflow.
 
 #### Scenario: Version bumped for release
 
-- GIVEN the current `package.json` version is `1.0.1`
+- GIVEN the current `package.json` version is `1.1.0`
 - WHEN this change is merged to main
-- THEN the version is `1.1.0` and the release workflow publishes a new GitHub Release
+- THEN the version is `1.2.0` and the release workflow publishes a new GitHub Release
+
+### Requirement: Tmux Component State Persistence
+
+The system SHALL persist `components.tmux` in the cyberpunk config model. Successful tmux install and uninstall flows MUST keep that state synchronized with the managed tmux component on disk.
+
+#### Scenario: Config reflects tmux install
+
+- GIVEN `components.tmux.installed` is `false`
+- WHEN `cyberpunk install --tmux` succeeds
+- THEN `components.tmux.installed` becomes `true` and tmux installation metadata is stored
+
+#### Scenario: Config reflects tmux uninstall
+
+- GIVEN `components.tmux.installed` is `true`
+- WHEN `cyberpunk uninstall --tmux` succeeds
+- THEN `components.tmux.installed` becomes `false` and tmux-specific path/version metadata is cleared

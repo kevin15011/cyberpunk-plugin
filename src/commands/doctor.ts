@@ -6,12 +6,15 @@ import { getThemeComponent } from "../components/theme"
 import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
 import { getRtkComponent } from "../components/rtk"
+import { getTmuxComponent } from "../components/tmux"
 import { COMPONENT_IDS } from "../config/schema"
 import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
 import { checkPlatformPrerequisites } from "../components/platform"
 import { checkConfigDoctor, repairConfigDefaults } from "../components/config-doctor"
 import { repairThemeActivation } from "../components/theme-doctor"
+import { join } from "path"
+import { insertManagedBlock, BUNDLED_TMUX_CONF } from "../components/tmux"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -19,6 +22,7 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   sounds: getSoundsComponent,
   "context-mode": getContextModeComponent,
   rtk: getRtkComponent,
+  tmux: getTmuxComponent,
 }
 
 /**
@@ -132,6 +136,11 @@ export async function runDoctor(
     // 6. RTK routing + registration (only if rtk binary on PATH)
     for (const check of fixable.filter(c => c.id.startsWith("rtk:"))) {
       fixes.push(await applyRtkFix(check, prerequisites))
+    }
+
+    // 7. Tmux config block repair (safe — only restores managed block)
+    for (const check of fixable.filter(c => c.id.startsWith("tmux:"))) {
+      fixes.push(await applyTmuxFix(check))
     }
 
     // Mark fixed checks
@@ -535,4 +544,37 @@ Use \`rtk\` commands as drop-in replacements for common CLI tools to reduce toke
   }
 
   return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+}
+
+async function applyTmuxFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  if (check.id !== "tmux:config") {
+    return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+  }
+
+  try {
+    const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+    const TMUX_CONF_PATH = join(HOME, ".tmux.conf")
+
+    const { readFileSync, existsSync, writeFileSync, renameSync } = await import("fs")
+
+    let existingContent = ""
+    if (existsSync(TMUX_CONF_PATH)) {
+      existingContent = readFileSync(TMUX_CONF_PATH, "utf8")
+      // Backup
+      writeFileSync(TMUX_CONF_PATH + ".bak", existingContent, "utf8")
+    }
+
+    const newContent = insertManagedBlock(existingContent, BUNDLED_TMUX_CONF)
+    const tmpPath = TMUX_CONF_PATH + ".tmp"
+    writeFileSync(tmpPath, newContent, "utf8")
+    renameSync(tmpPath, TMUX_CONF_PATH)
+
+    return { checkId: check.id, status: "fixed", message: "Bloque cyberpunk restaurado en ~/.tmux.conf" }
+  } catch (err) {
+    return {
+      checkId: check.id,
+      status: "failed",
+      message: `Error reparando config tmux: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
 }

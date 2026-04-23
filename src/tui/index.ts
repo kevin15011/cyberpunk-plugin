@@ -5,6 +5,8 @@ import { BANNER, separator, cyan, green, red, yellow, pink, gray, bold } from ".
 import { collectStatus } from "../commands/status"
 import { runInstall, runUninstall } from "../commands/install"
 import { formatInstallResults } from "../cli/output"
+import { formatPresetSummary } from "../cli/output"
+import { resolvePreset, PRESET_NAMES } from "../presets"
 import type { ComponentStatus, ComponentId } from "../components/types"
 
 export async function runTUI(): Promise<void> {
@@ -33,10 +35,10 @@ export async function runTUI(): Promise<void> {
     const action = await clack.select({
       message: "¿Qué querés hacer?",
       options: [
-        { value: "install", label: "📦 Instalar componentes", hint: "Seleccioná qué instalar" },
-        { value: "uninstall", label: "🗑️  Desinstalar componentes", hint: "Seleccioná qué remover" },
-        { value: "status", label: "📊 Ver estado", hint: "Mostrar estado actual" },
-        { value: "quit", label: "❌ Salir", hint: "" },
+        { value: "install", label: "Instalar componentes", hint: "Seleccioná qué instalar" },
+        { value: "uninstall", label: "Desinstalar componentes", hint: "Seleccioná qué remover" },
+        { value: "status", label: "Ver estado", hint: "Mostrar estado actual" },
+        { value: "quit", label: "Salir", hint: "" },
       ],
     })
 
@@ -82,11 +84,73 @@ export async function runTUI(): Promise<void> {
     }
   }
 
-  clack.outro(bold(pink("Hasta la próxima, choomer ⚡")))
+  clack.outro(bold(pink("Hasta la próxima, choomer")))
   process.exit(0)
 }
 
-async function handleInstall(currentStatus: ComponentStatus[]): Promise<void> {
+export async function handleInstall(currentStatus: ComponentStatus[]): Promise<void> {
+  // Build preset choices from PRESET_NAMES (excludes deferred presets automatically)
+  const presetOptions: { value: string; label: string; hint: string }[] = [
+    ...PRESET_NAMES.map(p => ({ value: p.value, label: p.label, hint: p.hint })),
+    { value: "manual", label: "Selección manual", hint: "Elegir componentes individualmente" },
+  ]
+
+  const presetChoice = await clack.select({
+    message: "Elegí un preset o seleccioná componentes manualmente",
+    options: presetOptions,
+  })
+
+  if (clack.isCancel(presetChoice)) {
+    clack.note(yellow("Operación cancelada"), "Cancelado")
+    return
+  }
+
+  if (presetChoice === "manual") {
+    // Fall through to existing multiselect flow
+    await handleManualInstall(currentStatus)
+    return
+  }
+
+  // Preset selected — resolve and confirm
+  const resolved = resolvePreset(presetChoice as string)
+
+  // Show preset summary
+  clack.note(formatPresetSummary(resolved), `Preset: ${resolved.label}`)
+
+  // Confirm before executing
+  const confirmed = await clack.confirm({
+    message: `¿Instalar preset "${resolved.label}" con ${resolved.components.length} componentes?`,
+  })
+
+  if (clack.isCancel(confirmed) || !confirmed) {
+    clack.note(yellow("Operación cancelada"), "Cancelado")
+    return
+  }
+
+  const s = clack.spinner()
+  s.start("Instalando...")
+
+  const results = await runInstall(resolved.components)
+  s.stop("Completado")
+
+  console.log(separator())
+  console.log(formatInstallResults(results, false))
+  console.log(separator())
+
+  const successCount = results.filter(r => r.status === "success").length
+  const failCount = results.filter(r => r.status === "error").length
+
+  if (failCount > 0) {
+    clack.note(
+      `${successCount} instalados, ${failCount} errores`,
+      "Parcial"
+    )
+  } else {
+    clack.note(`${successCount} componentes instalados correctamente`, "Completado")
+  }
+}
+
+async function handleManualInstall(currentStatus: ComponentStatus[]): Promise<void> {
   const selected = await clack.multiselect({
     message: "Seleccioná componentes para instalar o reparar",
     options: currentStatus.map(s => ({
@@ -124,10 +188,10 @@ async function handleInstall(currentStatus: ComponentStatus[]): Promise<void> {
   if (failCount > 0) {
     clack.note(
       `${successCount} instalados, ${failCount} errores`,
-      failCount > 0 ? "⚠️ Parcial" : "✓ Completado"
+      failCount > 0 ? "Parcial" : "Completado"
     )
   } else {
-    clack.note(`${successCount} componentes instalados correctamente`, "✓ Completado")
+    clack.note(`${successCount} componentes instalados correctamente`, "Completado")
   }
 }
 
@@ -166,5 +230,5 @@ async function handleUninstall(currentStatus: ComponentStatus[]): Promise<void> 
   console.log(separator())
 
   const successCount = results.filter(r => r.status === "success").length
-  clack.note(`${successCount} componentes removidos`, "✓ Completado")
+  clack.note(`${successCount} componentes removidos`, "Completado")
 }

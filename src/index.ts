@@ -1,7 +1,7 @@
 // src/index.ts — entry point: argv parse → command dispatch
 
 import { parseArgs } from "./cli/parse-args"
-import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson } from "./cli/output"
+import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson, formatPresetSummary } from "./cli/output"
 import { runInstall, runUninstall } from "./commands/install"
 import { collectStatus } from "./commands/status"
 import { runConfigCommand, formatConfigOutput } from "./commands/config"
@@ -9,9 +9,10 @@ import { checkUpgrade, runUpgrade } from "./commands/upgrade"
 import { runDoctor } from "./commands/doctor"
 import { runTUI } from "./tui/index"
 import { ensureConfigExists } from "./config/load"
+import { resolvePreset } from "./presets"
 import { green, red, cyan } from "./tui/theme"
 
-async function main() {
+export async function main() {
   // Parse args first — doctor command must be read-only, so we skip config auto-creation
   const args = parseArgs()
 
@@ -22,6 +23,14 @@ async function main() {
   }
 
   try {
+    // Print parse errors and exit if any
+    if (args.parseErrors.length > 0) {
+      for (const err of args.parseErrors) {
+        console.error(red(`Error: ${err}`))
+      }
+      process.exit(1)
+    }
+
     switch (args.command) {
       case "help":
         console.log(formatHelp())
@@ -32,7 +41,20 @@ async function main() {
         break
 
       case "install": {
-        const results = await runInstall(args.components, "install")
+        let componentIds = args.components
+
+        if (args.preset) {
+          try {
+            const resolved = resolvePreset(args.preset)
+            console.log(formatPresetSummary(resolved))
+            componentIds = resolved.components
+          } catch (err) {
+            console.error(red(`Error: ${err instanceof Error ? err.message : err}`))
+            process.exit(1)
+          }
+        }
+
+        const results = await runInstall(componentIds, "install")
         console.log(formatInstallResults(results, args.flags.json))
 
         const hasErrors = results.some(r => r.status === "error")
@@ -112,4 +134,6 @@ async function main() {
   }
 }
 
-main()
+if (import.meta.main) {
+  main()
+}

@@ -8,7 +8,7 @@ const result = await build({
 })
 
 if (!result.success) {
-  console.error("✗ Build failed:")
+  console.error("Build failed:")
   for (const log of result.logs) {
     console.error(log)
   }
@@ -25,8 +25,8 @@ const proc = spawn([
 
 const exitCode = await proc.exited
 if (exitCode === 0) {
-  console.log("✓ Binary built: ./cyberpunk")
+  console.log("Binary built: ./cyberpunk")
 } else {
-  console.error("✗ Compile failed")
+  console.error("Compile failed")
   process.exit(1)
 }
