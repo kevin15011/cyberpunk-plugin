@@ -4,7 +4,7 @@ import type { ComponentStatus } from "../components/types"
 import type { InstallResult } from "../components/types"
 import type { UpgradeResult, UpgradeStatus } from "../commands/upgrade"
 import type { DoctorRunResult, DoctorResult, DoctorCheck } from "../components/types"
-import type { ResolvedPreset } from "../presets/definitions"
+import type { PresetPreflightSummary } from "../commands/preflight"
 import { COMPONENT_LABELS } from "../config/schema"
 import { cyan, green, red, yellow, gray, bold } from "../tui/theme"
 
@@ -177,17 +177,60 @@ export function formatDoctorText(results: DoctorRunResult, verbose: boolean): st
   return lines.join("\n")
 }
 
-export function formatPresetSummary(resolved: ResolvedPreset): string {
+export function formatPresetPreflight(summary: PresetPreflightSummary): string {
   const lines: string[] = []
-  lines.push(bold(cyan(`Preset: ${resolved.label}`)))
-  lines.push(`  Componentes: ${resolved.components.map(id => COMPONENT_LABELS[id] || id).join(", ")}`)
-  if (resolved.warnings.length > 0) {
+
+  lines.push(bold(cyan(`Preset: ${summary.preset.label}`)))
+  lines.push("")
+  lines.push(bold("Componentes"))
+
+  for (const component of summary.components) {
+    const label = COMPONENT_LABELS[component.id] || component.id
+    const installedText = component.installed ? green("ya instalado") : gray("pendiente")
+    const readinessText = component.readiness === "ready"
+      ? green("listo")
+      : yellow("degradado")
+    const depsText = component.dependencyIds.length > 0
+      ? gray(` deps: ${component.dependencyIds.join(", ")}`)
+      : ""
+    lines.push(`  ${label} — ${installedText} · ${readinessText}${depsText}`)
+  }
+
+  if (summary.dependencies.length > 0) {
+    lines.push("")
+    lines.push(bold("Dependencias"))
+    for (const dependency of summary.dependencies) {
+      const availability = dependency.available ? green("disponible") : yellow("no disponible")
+      lines.push(`  ${dependency.label} — ${availability} · ${dependency.requiredBy.join(", ")} · ${dependency.message}`)
+    }
+  }
+
+  lines.push("")
+  lines.push(bold("Archivos"))
+  lines.push(gray("  Advisory: solo se muestran los detalles conocidos."))
+  for (const component of summary.components) {
+    const label = COMPONENT_LABELS[component.id] || component.id
+    for (const fileTouch of component.fileTouches) {
+      lines.push(`  ${label} → ${fileTouch}`)
+    }
+  }
+
+  if (summary.notes.length > 0) {
+    lines.push("")
+    lines.push(bold("Notas"))
+    for (const note of summary.notes) {
+      lines.push(`  - ${note}`)
+    }
+  }
+
+  if (summary.warnings.length > 0) {
     lines.push("")
     lines.push(yellow("Avisos:"))
-    for (const w of resolved.warnings) {
+    for (const w of summary.warnings) {
       lines.push("  - " + w)
     }
   }
+
   return lines.join("\n")
 }
 

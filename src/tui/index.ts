@@ -5,7 +5,8 @@ import { BANNER, separator, cyan, green, red, yellow, pink, gray, bold } from ".
 import { collectStatus } from "../commands/status"
 import { runInstall, runUninstall } from "../commands/install"
 import { formatInstallResults } from "../cli/output"
-import { formatPresetSummary } from "../cli/output"
+import { formatPresetPreflight } from "../cli/output"
+import { buildPresetPreflight } from "../commands/preflight"
 import { resolvePreset, PRESET_NAMES } from "../presets"
 import type { ComponentStatus, ComponentId } from "../components/types"
 
@@ -113,9 +114,10 @@ export async function handleInstall(currentStatus: ComponentStatus[]): Promise<v
 
   // Preset selected — resolve and confirm
   const resolved = resolvePreset(presetChoice as string)
+  const preflight = await buildPresetPreflight(resolved)
 
   // Show preset summary
-  clack.note(formatPresetSummary(resolved), `Preset: ${resolved.label}`)
+  clack.note(formatPresetPreflight(preflight), `Preset: ${resolved.label}`)
 
   // Confirm before executing
   const confirmed = await clack.confirm({

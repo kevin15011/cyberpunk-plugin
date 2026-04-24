@@ -1,9 +1,10 @@
 // src/index.ts — entry point: argv parse → command dispatch
 
 import { parseArgs } from "./cli/parse-args"
-import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson, formatPresetSummary } from "./cli/output"
+import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson, formatPresetPreflight } from "./cli/output"
 import { runInstall, runUninstall } from "./commands/install"
 import { collectStatus } from "./commands/status"
+import { buildPresetPreflight } from "./commands/preflight"
 import { runConfigCommand, formatConfigOutput } from "./commands/config"
 import { checkUpgrade, runUpgrade } from "./commands/upgrade"
 import { runDoctor } from "./commands/doctor"
@@ -46,7 +47,8 @@ export async function main() {
         if (args.preset) {
           try {
             const resolved = resolvePreset(args.preset)
-            console.log(formatPresetSummary(resolved))
+            const preflight = await buildPresetPreflight(resolved)
+            console.log(formatPresetPreflight(preflight))
             componentIds = resolved.components
           } catch (err) {
             console.error(red(`Error: ${err instanceof Error ? err.message : err}`))

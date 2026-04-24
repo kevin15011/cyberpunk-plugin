@@ -26,6 +26,36 @@ function registerCliMocks() {
     }),
     runUninstall: mock(async () => []),
   }))
+
+  mock.module("../src/commands/preflight", () => ({
+    buildPresetPreflight: mock(async (resolved: { id: string; label: string; components: string[]; warnings: string[] }) => ({
+      preset: resolved,
+      components: resolved.components.map(id => ({
+        id,
+        installed: id === "plugin",
+        readiness: id === "sounds" || id === "context-mode" || id === "rtk" ? "degraded" : "ready",
+        dependencyIds:
+          id === "sounds" ? ["ffmpeg"]
+            : id === "context-mode" ? ["npm", "bun"]
+              : id === "rtk" ? ["curl"]
+                : [],
+        fileTouches:
+          id === "plugin" ? ["~/.config/opencode/plugins/cyberpunk.ts"]
+            : id === "theme" ? ["~/.config/opencode/themes/cyberpunk.json", "~/.config/opencode/themes/tui.json"]
+              : id === "sounds" ? ["~/.config/opencode/sounds/*.wav"]
+                : id === "context-mode" ? ["~/.config/opencode/opencode.json"]
+                  : id === "rtk" ? ["~/.config/opencode/ROUTING.md"]
+                    : ["Managed block in ~/.tmux.conf"],
+      })),
+      dependencies: [
+        ...(resolved.components.includes("sounds") ? [{ id: "ffmpeg", label: "ffmpeg", requiredBy: ["sounds"], available: false, severity: "warn", message: "No disponible" }] : []),
+        ...(resolved.components.includes("context-mode") ? [{ id: "npm", label: "npm", requiredBy: ["context-mode"], available: true, severity: "info", message: "Disponible" }] : []),
+        ...(resolved.components.includes("rtk") ? [{ id: "curl", label: "curl", requiredBy: ["rtk"], available: false, severity: "warn", message: "No disponible" }] : []),
+      ],
+      warnings: resolved.warnings,
+      notes: [],
+    })),
+  }))
 }
 
 let mainFn: () => Promise<void>
@@ -92,7 +122,7 @@ describe("CLI preset execution path", () => {
     console.error = origError
   }
 
-  test("install --preset minimal: prints summary and forwards to runInstall", async () => {
+  test("install --preset minimal: prints preflight and forwards to runInstall", async () => {
     setupMocks(["bun", "src/index.ts", "install", "--preset", "minimal"])
 
     try {
@@ -104,18 +134,16 @@ describe("CLI preset execution path", () => {
     restoreMocks()
 
     const allOutput = capturedLogs.join("\n")
-    expect(
-      allOutput.includes("Mínimo") ||
-      allOutput.includes("Plugin de OpenCode") ||
-      allOutput.includes("Componentes")
-    ).toBe(true)
+    expect(allOutput).toContain("Preset: Mínimo")
+    expect(allOutput).toContain("Componentes")
+    expect(allOutput).toContain("Archivos")
 
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0].ids).toEqual(["plugin", "theme"])
     expect(runInstallCalls[0].action).toBe("install")
   })
 
-  test("install --preset full: prints warnings and forwards all components", async () => {
+  test("install --preset full: prints dependency preflight and forwards all components", async () => {
     setupMocks(["bun", "src/index.ts", "install", "--preset", "full"])
 
     try {
@@ -127,11 +155,10 @@ describe("CLI preset execution path", () => {
     restoreMocks()
 
     const allOutput = capturedLogs.join("\n")
-    expect(
-      allOutput.includes("tmux.conf") ||
-      allOutput.includes("ffmpeg") ||
-      allOutput.includes("Avisos")
-    ).toBe(true)
+    expect(allOutput).toContain("Dependencias")
+    expect(allOutput).toContain("ffmpeg")
+    expect(allOutput).toContain("Avisos")
+    expect(allOutput).toContain("tmux.conf")
 
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0].ids).toEqual([
@@ -156,7 +183,7 @@ describe("CLI preset execution path", () => {
     expect(runInstallCalls.length).toBe(0)
   })
 
-  test("install --preset wsl: prints summary, mismatch warning, and forwards wsl components", async () => {
+  test("install --preset wsl: prints preflight, mismatch warning, and forwards wsl components", async () => {
     detectedEnvironment = "linux"
     setupMocks(["bun", "src/index.ts", "install", "--preset", "wsl"])
 
@@ -171,6 +198,7 @@ describe("CLI preset execution path", () => {
     const allOutput = capturedLogs.join("\n")
     expect(allOutput).toContain("WSL")
     expect(allOutput).toContain("Avisos")
+    expect(allOutput).toContain("Dependencias")
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0].ids).toEqual(["plugin", "theme", "sounds", "tmux"])
   })

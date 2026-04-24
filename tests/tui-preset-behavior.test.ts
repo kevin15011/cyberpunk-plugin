@@ -7,6 +7,7 @@ let selectValue: string = "minimal"
 let confirmValue: boolean = true
 let isCancelValue: boolean = false
 let detectedEnvironment: "linux" | "wsl" | "darwin" = "linux"
+let preflightOverride: any | null = null
 
 const runInstallCalls: string[][] = []
 const noteCalls: { message: string; title: string }[] = []
@@ -44,6 +45,38 @@ mock.module("../src/commands/install", () => ({
   runUninstall: mock(async () => []),
 }))
 
+mock.module("../src/commands/preflight", () => ({
+  buildPresetPreflight: mock(async (resolved: { id: string; label: string; components: string[]; warnings: string[] }) => (
+    preflightOverride ?? {
+      preset: resolved,
+      components: resolved.components.map(id => ({
+        id,
+        installed: id === "plugin",
+        readiness: id === "sounds" || id === "context-mode" || id === "rtk" ? "degraded" : "ready",
+        dependencyIds:
+          id === "sounds" ? ["ffmpeg"]
+            : id === "context-mode" ? ["npm", "bun"]
+              : id === "rtk" ? ["curl"]
+                : [],
+        fileTouches:
+          id === "plugin" ? ["~/.config/opencode/plugins/cyberpunk.ts"]
+            : id === "theme" ? ["~/.config/opencode/themes/cyberpunk.json", "~/.config/opencode/themes/tui.json"]
+              : id === "sounds" ? ["~/.config/opencode/sounds/*.wav"]
+                : id === "context-mode" ? ["~/.config/opencode/opencode.json"]
+                  : id === "rtk" ? ["~/.config/opencode/ROUTING.md"]
+                    : ["Managed block in ~/.tmux.conf"],
+      })),
+      dependencies: [
+        ...(resolved.components.includes("sounds") ? [{ id: "ffmpeg", label: "ffmpeg", requiredBy: ["sounds"], available: false, severity: "warn", message: "No disponible" }] : []),
+        ...(resolved.components.includes("context-mode") ? [{ id: "npm", label: "npm", requiredBy: ["context-mode"], available: true, severity: "info", message: "Disponible" }] : []),
+        ...(resolved.components.includes("rtk") ? [{ id: "curl", label: "curl", requiredBy: ["rtk"], available: false, severity: "warn", message: "No disponible" }] : []),
+      ],
+      warnings: resolved.warnings,
+      notes: [],
+    }
+  )),
+}))
+
 let handleInstall: (status: any[]) => Promise<void>
 
 describe("TUI preset install flow", () => {
@@ -57,6 +90,7 @@ describe("TUI preset install flow", () => {
     confirmValue = true
     isCancelValue = false
     detectedEnvironment = "linux"
+    preflightOverride = null
     runInstallCalls.length = 0
     noteCalls.length = 0
     console.log = (..._args: any[]) => {}
@@ -89,7 +123,7 @@ describe("TUI preset install flow", () => {
     expect(runInstallCalls.length).toBe(0)
   })
 
-  test("full preset: summary shown with warnings before runInstall", async () => {
+  test("full preset: preflight shown with dependencies and warnings before runInstall", async () => {
     selectValue = "full"
     confirmValue = true
 
@@ -110,6 +144,7 @@ describe("TUI preset install flow", () => {
     expect(summaryNote.title).toContain("Completo")
 
     const summaryMessage = String(summaryNote.message)
+    expect(summaryMessage).toContain("Dependencias")
     expect(summaryMessage).toContain("tmux.conf")
     expect(summaryMessage).toContain("ffmpeg")
 
@@ -131,6 +166,7 @@ describe("TUI preset install flow", () => {
 
     expect(summaryNote.title).toContain("WSL")
     expect(summaryMessage).toContain("WSL")
+    expect(summaryMessage).toContain("Dependencias")
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0]).toEqual(["plugin", "theme", "sounds", "tmux"])
   })
@@ -149,6 +185,7 @@ describe("TUI preset install flow", () => {
     expect(summaryMessage).toContain("macOS")
     expect(summaryMessage).toContain("Context-Mode")
     expect(summaryMessage).toContain("RTK")
+    expect(summaryMessage).toContain("Dependencias")
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0]).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk"])
   })
@@ -166,6 +203,58 @@ describe("TUI preset install flow", () => {
         String(n.message).includes("cancelada")
       )
     ).toBe(true)
+  })
+
+  test("partial advisory disclosure stays unstated and still allows preset confirmation", async () => {
+    selectValue = "full"
+    confirmValue = true
+    preflightOverride = {
+      preset: {
+        id: "full",
+        label: "Completo",
+        components: ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"],
+        warnings: [],
+      },
+      components: [
+        {
+          id: "plugin",
+          installed: true,
+          readiness: "ready",
+          dependencyIds: [],
+          fileTouches: ["~/.config/opencode/plugins/cyberpunk.ts"],
+        },
+        {
+          id: "theme",
+          installed: false,
+          readiness: "ready",
+          dependencyIds: [],
+          fileTouches: [],
+        },
+        {
+          id: "context-mode",
+          installed: false,
+          readiness: "ready",
+          dependencyIds: [],
+          fileTouches: ["~/.config/opencode/opencode.json"],
+        },
+      ],
+      dependencies: [],
+      warnings: [],
+      notes: [],
+    }
+
+    await handleInstall([] as any[])
+
+    const summaryNote = noteCalls[0]
+    const summaryMessage = String(summaryNote.message)
+
+    expect(summaryMessage).toContain("solo se muestran los detalles conocidos")
+    expect(summaryMessage).toContain("~/.config/opencode/plugins/cyberpunk.ts")
+    expect(summaryMessage).toContain("~/.config/opencode/opencode.json")
+    expect(summaryMessage).not.toContain("~/.config/opencode/themes/cyberpunk.json")
+    expect(summaryMessage).not.toContain("~/.config/opencode/themes/tui.json")
+    expect(runInstallCalls.length).toBe(1)
+    expect(runInstallCalls[0]).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
   })
 
   test("preset options are built from PRESET_NAMES including wsl and mac", async () => {
