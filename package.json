@@ -7,9 +7,7 @@
     "build": "bun run build.ts",
     "dev": "bun run src/index.ts"
   },
-  "dependencies": {
-    "@clack/prompts": "^0.9.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/bun": "^1.1.0",
     "typescript": "^5.9.3"

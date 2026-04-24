@@ -11,6 +11,7 @@ import type { ComponentModule } from "../components/types"
 import { COMPONENT_IDS } from "../config/schema"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
+import type { TaskHooks } from "../tui/types"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -23,7 +24,8 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
 
 export async function runInstall(
   componentIds: ComponentId[],
-  action: "install" | "uninstall" = "install"
+  action: "install" | "uninstall" = "install",
+  hooks?: TaskHooks
 ): Promise<InstallResult[]> {
   // Default to all components if none specified
   const ids = componentIds.length > 0 ? componentIds : [...COMPONENT_IDS]
@@ -43,18 +45,22 @@ export async function runInstall(
     }
 
     const module = factory()
+    hooks?.onComponentStart?.(id)
     try {
       const result = action === "install"
         ? await module.install()
         : await module.uninstall()
       results.push(result)
+      hooks?.onComponentFinish?.(result)
     } catch (err) {
-      results.push({
+      const errorResult: InstallResult = {
         component: id,
         action,
         status: "error",
         message: err instanceof Error ? err.message : String(err),
-      })
+      }
+      results.push(errorResult)
+      hooks?.onComponentFinish?.(errorResult)
     }
   }
 

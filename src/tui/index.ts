@@ -1,236 +1,171 @@
-// src/tui/index.ts — Interactive TUI with @clack/prompts, keyboard nav, component toggles
+// src/tui/index.ts — Interactive TUI shell: raw mode bootstrap, main loop, cleanup
 
-import * as clack from "@clack/prompts"
-import { BANNER, separator, cyan, green, red, yellow, pink, gray, bold } from "./theme"
-import { collectStatus } from "../commands/status"
-import { runInstall, runUninstall } from "../commands/install"
-import { formatInstallResults } from "../cli/output"
-import { formatPresetPreflight } from "../cli/output"
-import { buildPresetPreflight } from "../commands/preflight"
-import { resolvePreset, PRESET_NAMES } from "../presets"
-import type { ComponentStatus, ComponentId } from "../components/types"
+import { createApp, update, view } from "./app"
+import { enableRawMode, disableRawMode, clearScreen, writeLines, hideCursor, showCursor, readKey } from "./terminal"
+import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall } from "./adapters"
+import { route, pushRoute } from "./router"
+import { pink, bold } from "./theme"
+import type { TUIState } from "./types"
+import type { ComponentId, InstallResult } from "../components/types"
 
 export async function runTUI(): Promise<void> {
-  console.clear()
-  console.log(BANNER)
+  // Bootstrap: gather initial status
+  const statuses = await collectFreshStatus()
+  let state = createApp(statuses)
 
-  clack.intro(bold(cyan("cyberpunk environment")))
+  // Setup terminal
+  enableRawMode()
+  hideCursor()
 
-  // Gather current status
-  const statuses = await collectStatus()
+  // Cleanup handler
+  const cleanup = () => {
+    showCursor()
+    disableRawMode()
+    clearScreen()
+    console.log(bold(pink("Hasta la próxima, choomer")))
+    process.exit(0)
+  }
 
-  // Build options for the multiselect
-  const options: { value: ComponentId; label: string; hint: string }[] = statuses.map(s => {
-    const icon = s.status === "installed" ? green("✓") : s.status === "error" ? red("✗") : cyan("○")
-    const hint = s.status === "installed" ? "instalado" : s.status === "error" ? `error: ${s.error}` : "disponible"
-    return {
-      value: s.id,
-      label: `${icon} ${s.label}`,
-      hint,
-    }
-  })
+  process.on("SIGINT", cleanup)
+  process.on("SIGTERM", cleanup)
 
-  // Main menu loop
-  let running = true
-  while (running) {
-    const action = await clack.select({
-      message: "¿Qué querés hacer?",
-      options: [
-        { value: "install", label: "Instalar componentes", hint: "Seleccioná qué instalar" },
-        { value: "uninstall", label: "Desinstalar componentes", hint: "Seleccioná qué remover" },
-        { value: "status", label: "Ver estado", hint: "Mostrar estado actual" },
-        { value: "quit", label: "Salir", hint: "" },
-      ],
-    })
+  // Main loop
+  const stdin = process.stdin
 
-    if (clack.isCancel(action)) {
-      break
-    }
+  try {
+    // Initial render
+    clearScreen()
+    writeLines(view(state))
 
-    switch (action) {
-      case "install":
-        await handleInstall(statuses)
-        // Refresh statuses
-        const newStatusesInstall = await collectStatus()
-        statuses.length = 0
-        statuses.push(...newStatusesInstall)
-        break
+    await new Promise<void>((resolve) => {
+      stdin.on("data", async (data: Buffer) => {
+        const key = readKey(data)
 
-      case "uninstall":
-        await handleUninstall(statuses)
-        const newStatusesUninstall = await collectStatus()
-        statuses.length = 0
-        statuses.push(...newStatusesUninstall)
-        break
+        // Handle the key through the app
+        state = update(state, key)
 
-      case "status": {
-        const currentStatus = await collectStatus()
-        console.log(separator())
-        for (const s of currentStatus) {
-          const icon = s.status === "installed" ? green("✓") : s.status === "error" ? red("✗") : cyan("○")
-          const statusText = s.status === "installed"
-            ? green("instalado")
-            : s.status === "error"
-              ? red(`error: ${s.error}`)
-              : gray("disponible")
-          console.log(`  ${icon} ${s.label}  ${statusText}`)
+        // Check if a screen emitted a confirm/selection that needs task execution
+        if (needsTaskExecution(state, key)) {
+          state = await executeTask(state)
         }
-        console.log(separator())
-        break
+
+        // Handle quit
+        if (state.quit) {
+          cleanup()
+          resolve()
+          return
+        }
+
+        // Re-render
+        clearScreen()
+        writeLines(view(state))
+      })
+    })
+  } finally {
+    showCursor()
+    disableRawMode()
+  }
+}
+
+/** Check if the current state + key combination requires a task to be started */
+function needsTaskExecution(state: TUIState, key: import("./types").KeyEvent): boolean {
+  if (key.type !== "enter") return false
+
+  // Install screen: only trigger task when in confirm phase with selection
+  if (state.route.id === "install") {
+    if (state._installPhase !== "confirm") return false
+    return state.selectedComponents.length > 0 || !!state.selectedPreset
+  }
+
+  // Uninstall screen confirmation
+  if (state.route.id === "uninstall") {
+    return state.selectedComponents.length > 0
+  }
+
+  return false
+}
+
+/** Execute a task and update state accordingly */
+async function executeTask(state: TUIState): Promise<TUIState> {
+  const isInstall = state.route.id === "install"
+  const action = isInstall ? "install" as const : "uninstall" as const
+  let results: InstallResult[]
+
+  // Push to task screen
+  state = pushRoute(state, route("task", { action }))
+  state = {
+    ...state,
+    task: { action, step: undefined, log: [], done: false },
+  }
+
+  // Render task screen while working
+  clearScreen()
+  writeLines(view(state))
+
+  const hooks = {
+    onComponentStart: (id: ComponentId) => {
+      state = {
+        ...state,
+        task: {
+          ...state.task!,
+          step: id,
+          log: [...state.task!.log, `→ Iniciando ${id}...`],
+        },
       }
+      clearScreen()
+      writeLines(view(state))
+    },
+    onComponentFinish: (result: InstallResult) => {
+      const icon = result.status === "success" ? "✓" : result.status === "error" ? "✗" : "○"
+      state = {
+        ...state,
+        task: {
+          ...state.task!,
+          log: [...state.task!.log, `  ${icon} ${result.component}: ${result.status}`],
+        },
+      }
+      clearScreen()
+      writeLines(view(state))
+    },
+  }
 
-      case "quit":
-        running = false
-        break
+  try {
+    if (isInstall && state.selectedPreset) {
+      results = await startPresetInstall(state.selectedPreset, hooks)
+    } else if (isInstall) {
+      results = await startInstallTask(state.selectedComponents as ComponentId[], hooks)
+    } else {
+      results = await startUninstallTask(state.selectedComponents as ComponentId[], hooks)
     }
+  } catch (err) {
+    results = [{
+      component: "plugin" as ComponentId,
+      action,
+      status: "error",
+      message: err instanceof Error ? err.message : String(err),
+    }]
   }
 
-  clack.outro(bold(pink("Hasta la próxima, choomer")))
-  process.exit(0)
-}
-
-export async function handleInstall(currentStatus: ComponentStatus[]): Promise<void> {
-  // Build preset choices from PRESET_NAMES (excludes deferred presets automatically)
-  const presetOptions: { value: string; label: string; hint: string }[] = [
-    ...PRESET_NAMES.map(p => ({ value: p.value, label: p.label, hint: p.hint })),
-    { value: "manual", label: "Selección manual", hint: "Elegir componentes individualmente" },
-  ]
-
-  const presetChoice = await clack.select({
-    message: "Elegí un preset o seleccioná componentes manualmente",
-    options: presetOptions,
-  })
-
-  if (clack.isCancel(presetChoice)) {
-    clack.note(yellow("Operación cancelada"), "Cancelado")
-    return
+  // Mark task as done, store results
+  state = {
+    ...state,
+    task: { ...state.task!, done: true, step: undefined },
+    lastResults: results,
+    selectedComponents: [],
+    selectedPreset: undefined,
+    _installPhase: undefined,
   }
 
-  if (presetChoice === "manual") {
-    // Fall through to existing multiselect flow
-    await handleManualInstall(currentStatus)
-    return
+  // Refresh statuses
+  try {
+    const freshStatuses = await collectFreshStatus()
+    state = { ...state, statuses: freshStatuses }
+  } catch {
+    // Keep existing statuses if refresh fails
   }
 
-  // Preset selected — resolve and confirm
-  const resolved = resolvePreset(presetChoice as string)
-  const preflight = await buildPresetPreflight(resolved)
+  // Push to results screen
+  state = pushRoute(state, route("results"))
 
-  // Show preset summary
-  clack.note(formatPresetPreflight(preflight), `Preset: ${resolved.label}`)
-
-  // Confirm before executing
-  const confirmed = await clack.confirm({
-    message: `¿Instalar preset "${resolved.label}" con ${resolved.components.length} componentes?`,
-  })
-
-  if (clack.isCancel(confirmed) || !confirmed) {
-    clack.note(yellow("Operación cancelada"), "Cancelado")
-    return
-  }
-
-  const s = clack.spinner()
-  s.start("Instalando...")
-
-  const results = await runInstall(resolved.components)
-  s.stop("Completado")
-
-  console.log(separator())
-  console.log(formatInstallResults(results, false))
-  console.log(separator())
-
-  const successCount = results.filter(r => r.status === "success").length
-  const failCount = results.filter(r => r.status === "error").length
-
-  if (failCount > 0) {
-    clack.note(
-      `${successCount} instalados, ${failCount} errores`,
-      "Parcial"
-    )
-  } else {
-    clack.note(`${successCount} componentes instalados correctamente`, "Completado")
-  }
-}
-
-async function handleManualInstall(currentStatus: ComponentStatus[]): Promise<void> {
-  const selected = await clack.multiselect({
-    message: "Seleccioná componentes para instalar o reparar",
-    options: currentStatus.map(s => ({
-      value: s.id,
-      label: s.label,
-      hint: s.status === "installed"
-        ? "instalado (reparar)"
-        : s.status === "error"
-          ? `error: ${s.error}`
-          : "disponible",
-    })),
-    required: false,
-  })
-
-  if (clack.isCancel(selected) || (selected as ComponentId[]).length === 0) {
-    clack.note(yellow("Ningún componente seleccionado"), "Cancelado")
-    return
-  }
-
-  const ids = selected as ComponentId[]
-  const s = clack.spinner()
-  s.start("Instalando...")
-
-  const results = await runInstall(ids)
-  s.stop("Completado")
-
-  console.log(separator())
-  console.log(formatInstallResults(results, false))
-  console.log(separator())
-
-  // Show summary
-  const successCount = results.filter(r => r.status === "success").length
-  const failCount = results.filter(r => r.status === "error").length
-
-  if (failCount > 0) {
-    clack.note(
-      `${successCount} instalados, ${failCount} errores`,
-      failCount > 0 ? "Parcial" : "Completado"
-    )
-  } else {
-    clack.note(`${successCount} componentes instalados correctamente`, "Completado")
-  }
-}
-
-async function handleUninstall(currentStatus: ComponentStatus[]): Promise<void> {
-  const installed = currentStatus.filter(s => s.status === "installed")
-
-  if (installed.length === 0) {
-    clack.note(gray("No hay componentes instalados"), "Estado")
-    return
-  }
-
-  const selected = await clack.multiselect({
-    message: "Seleccioná componentes para desinstalar",
-    options: installed.map(s => ({
-      value: s.id,
-      label: s.label,
-      hint: "instalado",
-    })),
-    required: false,
-  })
-
-  if (clack.isCancel(selected) || (selected as ComponentId[]).length === 0) {
-    clack.note(yellow("Ningún componente seleccionado"), "Cancelado")
-    return
-  }
-
-  const ids = selected as ComponentId[]
-  const s = clack.spinner()
-  s.start("Desinstalando...")
-
-  const results = await runUninstall(ids)
-  s.stop("Completado")
-
-  console.log(separator())
-  console.log(formatInstallResults(results, false))
-  console.log(separator())
-
-  const successCount = results.filter(r => r.status === "success").length
-  clack.note(`${successCount} componentes removidos`, "Completado")
+  return state
 }
