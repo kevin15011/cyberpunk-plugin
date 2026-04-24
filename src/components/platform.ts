@@ -7,6 +7,7 @@ export interface PlatformPrerequisites {
   npm: boolean
   bun: boolean
   curl: boolean
+  git: boolean
 }
 
 function isOnPath(command: string): boolean {
@@ -28,5 +29,6 @@ export function checkPlatformPrerequisites(): PlatformPrerequisites {
     npm: isOnPath("npm"),
     bun: isOnPath("bun"),
     curl: isOnPath("curl"),
+    git: isOnPath("git"),
   }
 }

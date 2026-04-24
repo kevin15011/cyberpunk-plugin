@@ -1,11 +1,11 @@
 // tests/doctor.test.ts — tests for doctor command, parse-args doctor flags, and summary derivation
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test"
 import { parseArgs } from "../src/cli/parse-args"
-import { mkdirSync, writeFileSync } from "fs"
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { join } from "path"
 
-import { createTempHome, importAfterHomeSet } from "./helpers/test-home"
+import { createTempHome, importAfterHomeSet, setDefaultConfig } from "./helpers/test-home"
 
 type TestHome = ReturnType<typeof createTempHome>
 
@@ -22,6 +22,77 @@ async function withHome<T>(home: string, run: () => Promise<T> | T): Promise<T> 
       process.env.HOME = originalHome
     }
   }
+}
+
+function writeExecutable(filePath: string, content: string) {
+  writeFileSync(filePath, content, "utf8")
+  chmodSync(filePath, 0o755)
+}
+
+function createFakeGitFixture(
+  fixture: TestHome,
+  options: {
+    cloneSucceeds: boolean
+    installSucceeds: boolean
+  }
+) {
+  const binDir = join(fixture.home, "test-bin")
+  const logPath = join(fixture.home, "tmux-bootstrap.log")
+  mkdirSync(binDir, { recursive: true })
+
+  writeExecutable(join(binDir, "git"), `#!/bin/sh
+log=${JSON.stringify(logPath)}
+
+if [ "$1" = "clone" ]; then
+  printf 'tpm\n' >> "$log"
+  dest="$3"
+  ${options.cloneSucceeds ? `/bin/mkdir -p "$dest/bin"
+  cat > "$dest/bin/install_plugins" <<'EOF'
+#!/bin/sh
+printf 'plugins\n' >> ${JSON.stringify(logPath)}
+${options.installSucceeds ? "exit 0" : "exit 1"}
+EOF
+  chmod +x "$dest/bin/install_plugins"
+  printf '#!/bin/sh\n' > "$dest/tpm"
+  exit 0` : "exit 1"}
+fi
+
+exit 1
+`)
+
+  return {
+    binDir: `${binDir}:${process.env.PATH || ""}`,
+    logPath,
+  }
+}
+
+function runDoctorIsolated(
+  home: string,
+  path: string,
+  options: { fix: boolean; verbose: boolean; components?: string[] }
+) {
+  const evalCode = `
+    import { runDoctor } from ${JSON.stringify(join(process.cwd(), "src/commands/doctor.ts"))};
+    const result = await runDoctor(${JSON.stringify(options)});
+    process.stdout.write(JSON.stringify(result));
+  `
+
+  const proc = Bun.spawnSync([process.execPath, "--eval", evalCode], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      HOME: home,
+      PATH: path,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+
+  if (proc.exitCode !== 0) {
+    throw new Error(Buffer.from(proc.stderr).toString("utf8") || `runDoctor subprocess failed with exit ${proc.exitCode}`)
+  }
+
+  return JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>
 }
 
 describe("parseArgs — doctor flags", () => {
@@ -225,5 +296,46 @@ ${END_MARKER}
     // This is a logical test, not an exit() test
     expect(typeof exitCode).toBe("number")
     expect(exitCode === 0 || exitCode === 1).toBe(true)
+  })
+})
+
+describe("runDoctor tmux fix orchestration", () => {
+  let fixture: TestHome
+
+  beforeEach(() => {
+    fixture = createTempHome("cyberpunk-doctor-tmux-fix")
+  })
+
+  afterEach(() => {
+    mock.restore()
+    fixture.cleanup()
+  })
+
+  test("doctor --fix runs tmux fixes in config -> tpm -> plugins order", async () => {
+    setDefaultConfig(fixture.configDir)
+    writeFileSync(join(fixture.home, ".tmux.conf"), "# user header\nset -g prefix C-b\n", "utf8")
+    const fakeGit = createFakeGitFixture(fixture, { cloneSucceeds: true, installSucceeds: true })
+    const result = runDoctorIsolated(fixture.home, fakeGit.binDir, { fix: true, verbose: false, components: ["tmux"] })
+
+    expect(result.fixes.filter(f => f.checkId.startsWith("tmux:")).map(f => f.checkId)).toEqual(["tmux:config", "tmux:tpm", "tmux:plugins"])
+    expect(result.fixes.filter(f => f.checkId.startsWith("tmux:")).map(f => f.status)).toEqual(["fixed", "fixed", "fixed"])
+    expect(readFileSync(fakeGit.logPath, "utf8").trim().split("\n")).toEqual(["tpm", "plugins"])
+  })
+
+  test("doctor --fix keeps tmux bootstrap failures advisory and continues later fixes", async () => {
+    setDefaultConfig(fixture.configDir)
+    writeFileSync(
+      join(fixture.home, ".tmux.conf"),
+      "# user config\n# cyberpunk-managed:start\nset -g prefix C-a\n# cyberpunk-managed:end\n",
+      "utf8"
+    )
+    const fakeGit = createFakeGitFixture(fixture, { cloneSucceeds: false, installSucceeds: false })
+    const result = runDoctorIsolated(fixture.home, fakeGit.binDir, { fix: true, verbose: false, components: ["tmux"] })
+
+    expect(result.fixes.filter(f => f.checkId.startsWith("tmux:")).map(f => f.checkId)).toEqual(["tmux:tpm", "tmux:plugins"])
+    expect(result.fixes.find(f => f.checkId === "tmux:tpm")?.status).toBe("failed")
+    expect(result.fixes.find(f => f.checkId === "tmux:plugins")?.status).toBe("failed")
+    expect(result.fixes.find(f => f.checkId === "tmux:plugins")?.message).toContain("TPM")
+    expect(readFileSync(fakeGit.logPath, "utf8").trim().split("\n")).toEqual(["tpm"])
   })
 })

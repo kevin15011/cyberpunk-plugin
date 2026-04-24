@@ -98,15 +98,41 @@ cyberpunk uninstall --tmux
 
 ### TPM and plugins
 
-TPM (Tmux Plugin Manager) and plugins listed in the config (resurrect, continuum, tmux-cpu, gitmux, etc.) are **not** auto-installed by the cyberpunk CLI. Install TPM manually:
+`cyberpunk install --tmux` now makes a **best-effort** TPM bootstrap after writing the managed tmux block. When `git` is available and `~/.tmux/plugins/tpm` is missing, the CLI tries to clone TPM and run its plugin install script automatically.
+
+This bootstrap step is advisory-only:
+
+- your managed `~/.tmux.conf` block is kept even if TPM clone or plugin install fails
+- unmanaged tmux content is never modified
+- no active tmux session reload is attempted automatically
+
+If you want to remove only the cyberpunk block later:
+
+```bash
+cyberpunk uninstall --tmux
+```
+
+If automatic bootstrap cannot complete, troubleshoot with:
+
+```bash
+cyberpunk doctor --tmux
+cyberpunk doctor --fix --tmux
+```
+
+Common advisory cases:
+
+- `git` missing → install `git`, then re-run `cyberpunk install --tmux` or `cyberpunk doctor --fix --tmux`
+- TPM clone failure → re-run once network/auth access to GitHub works again
+- TPM script missing/failing → run TPM manually if your local checkout uses different helper paths
+
+Manual fallback remains:
 
 ```bash
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 ~/.tmux/plugins/tpm/bin/install_plugins all
-tmux source-file ~/.tmux.conf
 ```
 
-Run `cyberpunk doctor` to check the status of TPM, gitmux, and other optional tmux dependencies.
+Run `cyberpunk doctor` to check the status of TPM, plugin readiness, gitmux, and other optional tmux dependencies.
 
 ## Requirements
 

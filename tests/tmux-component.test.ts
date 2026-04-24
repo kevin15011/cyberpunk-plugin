@@ -6,8 +6,8 @@
 // evaluates with the correct temp paths. Config load/save read HOME at call time,
 // so they also resolve to tempDir.
 
-import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test"
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs"
+import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from "bun:test"
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync as ensureDirSync } from "fs"
 import { join } from "path"
 
 import { createTempHome, setDefaultConfig } from "./helpers/test-home"
@@ -17,6 +17,7 @@ let getTmuxComponentFn: typeof import("../src/components/tmux").getTmuxComponent
 let BUNDLED_TMUX_CONF: string
 let insertManagedBlockFn: typeof import("../src/components/tmux").insertManagedBlock
 let removeManagedBlockFn: typeof import("../src/components/tmux").removeManagedBlock
+let bootstrapTpmFn: typeof import("../src/components/tmux").bootstrapTpm
 
 let tempDir: string
 let originalHome: string | undefined
@@ -44,6 +45,7 @@ beforeAll(async () => {
   BUNDLED_TMUX_CONF = mod.BUNDLED_TMUX_CONF
   insertManagedBlockFn = mod.insertManagedBlock
   removeManagedBlockFn = mod.removeManagedBlock
+  bootstrapTpmFn = mod.bootstrapTpm
 })
 
 afterAll(() => {
@@ -55,6 +57,11 @@ beforeEach(() => {
   // Reset file state between tests
   if (existsSync(TMUX_CONF_PATH)) rmSync(TMUX_CONF_PATH)
   if (existsSync(CONFIG_DIR)) rmSync(CONFIG_DIR, { recursive: true, force: true })
+  if (existsSync(join(tempDir, ".tmux"))) rmSync(join(tempDir, ".tmux"), { recursive: true, force: true })
+})
+
+afterEach(() => {
+  mock.restore()
 })
 
 // --- Fixture helpers ---
@@ -283,7 +290,7 @@ describe("Spec S5: Warn about optional tmux dependencies", () => {
     const result = await comp.doctor({
       cyberpunkConfig: null,
       verbose: false,
-      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false },
+      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
     })
 
     expect(result.component).toBe("tmux")
@@ -313,14 +320,50 @@ describe("Spec S5: Warn about optional tmux dependencies", () => {
     const result = await comp.doctor({
       cyberpunkConfig: null,
       verbose: false,
-      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false },
+      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
     })
 
     const ids = result.checks.map(c => c.id)
     expect(ids).toContain("tmux:binary")
     expect(ids).toContain("tmux:config")
     expect(ids).toContain("tmux:tpm")
+    expect(ids).toContain("tmux:plugins")
     expect(ids).toContain("tmux:gitmux")
+  })
+
+  test("tmux:tpm becomes fixable when git prerequisite is available", async () => {
+    createMixedTmuxConf()
+
+    const comp = getTmuxComponentFn()
+    const result = await comp.doctor({
+      cyberpunkConfig: null,
+      verbose: false,
+      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: true },
+    })
+
+    const tpmCheck = result.checks.find(c => c.id === "tmux:tpm")
+    expect(tpmCheck).toBeDefined()
+    expect(tpmCheck!.status).toBe("warn")
+    expect(tpmCheck!.fixable).toBe(true)
+  })
+
+  test("tmux:plugins warns and is fixable when TPM exists", async () => {
+    createMixedTmuxConf()
+    const tpmDir = join(tempDir, ".tmux", "plugins", "tpm")
+    ensureDirSync(tpmDir, { recursive: true })
+    writeFileSync(join(tpmDir, "tpm"), "#!/bin/sh\n", "utf8")
+
+    const comp = getTmuxComponentFn()
+    const result = await comp.doctor({
+      cyberpunkConfig: null,
+      verbose: false,
+      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
+    })
+
+    const pluginsCheck = result.checks.find(c => c.id === "tmux:plugins")
+    expect(pluginsCheck).toBeDefined()
+    expect(pluginsCheck!.status).toBe("warn")
+    expect(pluginsCheck!.fixable).toBe(true)
   })
 })
 
@@ -336,7 +379,7 @@ describe("Spec S6: Fix missing managed tmux block safely", () => {
     const result = await comp.doctor({
       cyberpunkConfig: null,
       verbose: false,
-      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false },
+      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
     })
 
     const configCheck = result.checks.find(c => c.id === "tmux:config")
@@ -374,7 +417,7 @@ describe("Spec S6: Fix missing managed tmux block safely", () => {
     const result = await comp.doctor({
       cyberpunkConfig: null,
       verbose: false,
-      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false },
+      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
     })
 
     const configCheck = result.checks.find(c => c.id === "tmux:config")
@@ -436,6 +479,139 @@ describe("Bundled content integrity", () => {
     // Template literal escapes (e.g. \\; → \;) are resolved at runtime,
     // so the comparison should use the runtime value.
     expect(BUNDLED_TMUX_CONF.trim()).toBe(repoConf.trim())
+  })
+})
+
+describe("TPM bootstrap advisories", () => {
+  async function importTmuxWithExec(execImpl: (command: string) => unknown) {
+    mock.module("child_process", () => ({
+      execSync: mock((command: string) => execImpl(command)),
+    }))
+
+    return await import(`../src/components/tmux.ts?bootstrap=${Date.now()}-${Math.random()}`)
+  }
+
+  test("install keeps managed config and reports advisory when git is missing", async () => {
+    seedCyberpunkConfig()
+    createUserTmuxConf("# user\n")
+
+    const mod = await importTmuxWithExec((command) => {
+      if (command.includes("which tmux")) return "/usr/bin/tmux\n"
+      if (command.includes("which git")) throw new Error("git missing")
+      if (command.includes("which gitmux")) throw new Error("gitmux missing")
+      return ""
+    })
+
+    const result = await mod.getTmuxComponent().install()
+
+    expect(result.status).toBe("success")
+    expect(result.message).toContain("git")
+    expect(existsSync(TMUX_CONF_PATH)).toBe(true)
+    expect(readFileSync(TMUX_CONF_PATH, "utf8")).toContain(MANAGED_START)
+
+    mock.restore()
+  })
+
+  test("install keeps managed config and reports clone failure as advisory", async () => {
+    seedCyberpunkConfig()
+    createUserTmuxConf("# user\n")
+
+    const mod = await importTmuxWithExec((command) => {
+      if (command.includes("which tmux")) return "/usr/bin/tmux\n"
+      if (command.includes("which git")) return "/usr/bin/git\n"
+      if (command.includes("which gitmux")) throw new Error("gitmux missing")
+      if (command.includes("git clone")) throw new Error("clone failed")
+      return ""
+    })
+
+    const result = await mod.getTmuxComponent().install()
+
+    expect(result.status).toBe("success")
+    expect(result.message).toContain("TPM")
+    expect(result.message).toContain("clon")
+    expect(readFileSync(TMUX_CONF_PATH, "utf8")).toContain(MANAGED_START)
+
+    mock.restore()
+  })
+
+  test("install keeps managed config and reports plugin script failure as advisory", async () => {
+    seedCyberpunkConfig()
+    createUserTmuxConf("# user\n")
+
+    const mod = await importTmuxWithExec((command) => {
+      if (command.includes("which tmux")) return "/usr/bin/tmux\n"
+      if (command.includes("which git")) return "/usr/bin/git\n"
+      if (command.includes("which gitmux")) throw new Error("gitmux missing")
+      if (command.includes("git clone")) {
+        const tpmDir = join(tempDir, ".tmux", "plugins", "tpm", "bin")
+        ensureDirSync(tpmDir, { recursive: true })
+        writeFileSync(join(tempDir, ".tmux", "plugins", "tpm", "tpm"), "#!/bin/sh\n", "utf8")
+        writeFileSync(join(tpmDir, "install_plugins"), "#!/bin/sh\n", "utf8")
+        return "cloned"
+      }
+      if (command.includes("install_plugins")) throw new Error("install failed")
+      return ""
+    })
+
+    const result = await mod.getTmuxComponent().install()
+
+    expect(result.status).toBe("success")
+    expect(result.message).toContain("plugins")
+    expect(result.message).toContain("fall")
+    expect(readFileSync(TMUX_CONF_PATH, "utf8")).toContain(MANAGED_START)
+
+    mock.restore()
+  })
+
+  test("bootstrapTpm is idempotent when TPM already exists", async () => {
+    const tpmDir = join(tempDir, ".tmux", "plugins", "tpm", "bin")
+    ensureDirSync(tpmDir, { recursive: true })
+    writeFileSync(join(tempDir, ".tmux", "plugins", "tpm", "tpm"), "#!/bin/sh\n", "utf8")
+    writeFileSync(join(tpmDir, "install_plugins"), "#!/bin/sh\n", "utf8")
+
+    const mod = await importTmuxWithExec((command) => {
+      if (command.includes("which git")) return "/usr/bin/git\n"
+      if (command.includes("install_plugins")) return "ok"
+      throw new Error(`unexpected command: ${command}`)
+    })
+
+    const result = mod.bootstrapTpm(tempDir)
+
+    expect(result.tpmState).toBe("present")
+    expect(["ready", "updated", "installed"]).toContain(result.pluginsState)
+    expect(result.warnings).toHaveLength(0)
+
+    mock.restore()
+  })
+
+  test("install bootstraps TPM by cloning first and then running install_plugins", async () => {
+    seedCyberpunkConfig()
+    createUserTmuxConf("# user\n")
+
+    const commands: string[] = []
+    const mod = await importTmuxWithExec((command) => {
+      commands.push(command)
+      if (command.includes("which tmux")) return "/usr/bin/tmux\n"
+      if (command.includes("which git")) return "/usr/bin/git\n"
+      if (command.includes("which gitmux")) throw new Error("gitmux missing")
+      if (command.includes("git clone")) {
+        const tpmDir = join(tempDir, ".tmux", "plugins", "tpm", "bin")
+        ensureDirSync(tpmDir, { recursive: true })
+        writeFileSync(join(tempDir, ".tmux", "plugins", "tpm", "tpm"), "#!/bin/sh\n", "utf8")
+        writeFileSync(join(tpmDir, "install_plugins"), "#!/bin/sh\n", "utf8")
+        return "cloned"
+      }
+      if (command.includes("install_plugins")) return "installed"
+      throw new Error(`unexpected command: ${command}`)
+    })
+
+    const result = await mod.getTmuxComponent().install()
+
+    expect(result.status).toBe("success")
+    expect(existsSync(TMUX_CONF_PATH)).toBe(true)
+    expect(result.message).toBeUndefined()
+    expect(commands.some(command => command.includes("git clone"))).toBe(true)
+    expect(commands.some(command => command.includes("install_plugins"))).toBe(true)
   })
 })
 

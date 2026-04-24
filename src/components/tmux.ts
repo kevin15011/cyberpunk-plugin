@@ -3,14 +3,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "fs"
 import { join, dirname } from "path"
 import { execSync } from "child_process"
-import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
+import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult, TmuxBootstrapResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 
 function getTmuxConfPath(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDir()
   return join(home, ".tmux.conf")
+}
+
+function getHomeDir(): string {
+  return process.env.HOME || process.env.USERPROFILE || "~"
 }
 
 const MANAGED_START = "# cyberpunk-managed:start"
@@ -176,10 +180,129 @@ function isTmuxOnPath(): boolean {
   }
 }
 
-function isTpmInstalled(): boolean {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  const tpmPath = join(home, ".tmux", "plugins", "tpm", "tpm")
+export function isGitAvailable(): boolean {
+  try {
+    execSync("which git 2>/dev/null", { encoding: "utf8", stdio: "pipe" })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function getTpmDir(home = getHomeDir()): string {
+  return join(home, ".tmux", "plugins", "tpm")
+}
+
+function isTpmInstalled(home = getHomeDir()): boolean {
+  const tpmPath = join(getTpmDir(home), "tpm")
   return existsSync(tpmPath)
+}
+
+function areTmuxPluginsReady(home = getHomeDir()): boolean {
+  const pluginsDir = join(home, ".tmux", "plugins")
+  const requiredPlugins = [
+    "tmux-sensible",
+    "tmux-resurrect",
+    "tmux-continuum",
+    "tmux-cpu",
+    "tmux-yank",
+    "gitmux",
+  ]
+
+  return requiredPlugins.every(plugin => existsSync(join(pluginsDir, plugin)))
+}
+
+export function cloneTpm(home: string): boolean {
+  try {
+    mkdirSync(dirname(getTpmDir(home)), { recursive: true })
+    execSync(`git clone https://github.com/tmux-plugins/tpm ${JSON.stringify(getTpmDir(home))} >/dev/null 2>&1`, {
+      stdio: "pipe",
+      env: { ...process.env, HOME: home },
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function runTpmScript(
+  home: string,
+  script: "install_plugins" | "update_plugins"
+): "ok" | "script-missing" | "failed" {
+  const candidates = [
+    join(getTpmDir(home), "bin", script),
+    join(getTpmDir(home), "scripts", `${script}.sh`),
+  ]
+  const scriptPath = candidates.find(path => existsSync(path))
+
+  if (!scriptPath) return "script-missing"
+
+  try {
+    execSync(`${JSON.stringify(scriptPath)} all >/dev/null 2>&1`, {
+      stdio: "pipe",
+      env: { ...process.env, HOME: home },
+    })
+    return "ok"
+  } catch {
+    return "failed"
+  }
+}
+
+export function bootstrapTpm(home: string): TmuxBootstrapResult {
+  const warnings: string[] = []
+
+  if (!isTpmInstalled(home)) {
+    if (!isGitAvailable()) {
+      warnings.push("git no está disponible; TPM no pudo instalarse automáticamente")
+      return { tpmState: "missing-git", pluginsState: "install-failed", warnings }
+    }
+
+    if (!cloneTpm(home)) {
+      warnings.push("TPM no pudo clonarse automáticamente")
+      return { tpmState: "clone-failed", pluginsState: "install-failed", warnings }
+    }
+
+    const installResult = runTpmScript(home, "install_plugins")
+    if (installResult === "ok") {
+      return { tpmState: "cloned", pluginsState: "installed", warnings }
+    }
+
+    if (installResult === "script-missing") {
+      warnings.push("TPM fue clonado pero no se encontró el script de instalación de plugins")
+      return { tpmState: "cloned", pluginsState: "script-missing", warnings }
+    }
+
+    warnings.push("La instalación de plugins tmux falló después de clonar TPM")
+    return { tpmState: "cloned", pluginsState: "install-failed", warnings }
+  }
+
+  const updateResult = runTpmScript(home, "update_plugins")
+  if (updateResult === "ok") {
+    return { tpmState: "present", pluginsState: "updated", warnings }
+  }
+
+  if (updateResult === "failed") {
+    warnings.push("La actualización de plugins tmux falló")
+    return { tpmState: "present", pluginsState: "install-failed", warnings }
+  }
+
+  const installResult = runTpmScript(home, "install_plugins")
+  if (installResult === "ok") {
+    return { tpmState: "present", pluginsState: "ready", warnings }
+  }
+
+  if (installResult === "script-missing") {
+    warnings.push("TPM está presente pero no se encontró el script de instalación/actualización")
+    return { tpmState: "present", pluginsState: "script-missing", warnings }
+  }
+
+  warnings.push("La instalación de plugins tmux falló")
+  return { tpmState: "present", pluginsState: "install-failed", warnings }
+}
+
+function buildBootstrapMessage(baseMessage: string | undefined, result: TmuxBootstrapResult): string | undefined {
+  if (result.warnings.length === 0) return baseMessage
+  return [baseMessage, ...result.warnings].filter(Boolean).join(" — ")
 }
 
 function isGitmuxOnPath(): boolean {
@@ -220,11 +343,13 @@ export function getTmuxComponent(): ComponentModule {
             }
             saveConfig(config)
 
+            const bootstrapResult = bootstrapTpm(getHomeDir())
+
             return {
               component: "tmux",
               action: "install",
               status: "skipped",
-              message: "Config tmux ya instalada y actualizada",
+              message: buildBootstrapMessage("Config tmux ya instalada y actualizada", bootstrapResult),
               path: tmuxConfPath,
             }
           }
@@ -252,10 +377,13 @@ export function getTmuxComponent(): ComponentModule {
       }
       saveConfig(config)
 
+      const bootstrapResult = bootstrapTpm(getHomeDir())
+
       return {
         component: "tmux",
         action: "install",
         status: "success",
+        message: buildBootstrapMessage(undefined, bootstrapResult),
         path: tmuxConfPath,
       }
     },
@@ -392,11 +520,24 @@ export function getTmuxComponent(): ComponentModule {
         status: hasTpm ? "pass" : "warn",
         message: hasTpm
           ? "TPM instalado"
-          : "TPM no encontrado — instalá con: git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm",
-        fixable: false,
+          : ctx.prerequisites.git
+            ? "TPM no encontrado — doctor --fix puede clonarlo automáticamente"
+            : "TPM no encontrado — git no está disponible para instalarlo automáticamente",
+        fixable: !hasTpm && ctx.prerequisites.git,
       })
 
-      // Check 4: gitmux on PATH
+      const pluginsReady = areTmuxPluginsReady()
+      checks.push({
+        id: "tmux:plugins",
+        label: "Plugins tmux",
+        status: pluginsReady ? "pass" : "warn",
+        message: pluginsReady
+          ? "Plugins tmux instalados"
+          : "Plugins tmux no listos — doctor --fix intentará instalarlos sin tocar tu config no gestionada",
+        fixable: !pluginsReady && (hasTpm || ctx.prerequisites.git),
+      })
+
+      // Check 5: gitmux on PATH
       const hasGitmux = isGitmuxOnPath()
       checks.push({
         id: "tmux:gitmux",

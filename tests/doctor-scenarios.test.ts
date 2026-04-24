@@ -27,6 +27,35 @@ async function withHome<T>(home: string, run: () => Promise<T> | T): Promise<T> 
   }
 }
 
+function runDoctorIsolated(
+  home: string,
+  path: string,
+  options: { fix: boolean; verbose: boolean; components?: string[] }
+) {
+  const evalCode = `
+    import { runDoctor } from ${JSON.stringify(join(process.cwd(), "src/commands/doctor.ts"))};
+    const result = await runDoctor(${JSON.stringify(options)});
+    process.stdout.write(JSON.stringify(result));
+  `
+
+  const proc = Bun.spawnSync([process.execPath, "--eval", evalCode], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      HOME: home,
+      PATH: path,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+
+  if (proc.exitCode !== 0) {
+    throw new Error(Buffer.from(proc.stderr).toString("utf8") || `runDoctor subprocess failed with exit ${proc.exitCode}`)
+  }
+
+  return JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>
+}
+
 // --- Paths inside the shared tempDir ---
 let tempDir: string
 let originalHome: string | undefined
@@ -692,11 +721,11 @@ describe("Doctor tmux scenarios", () => {
     expect(onDisk).toContain("set -g prefix C-b")
   })
 
-  test("tmux:tpm and tmux:gitmux are warn-only, not fixable", async () => {
+  test("tmux:tpm is warn-only without git, while tmux:gitmux stays non-fixable", async () => {
     createMinimalConfig()
     createHealthyTmux()
 
-    const result = await runDoctorFn({ fix: true, verbose: false, components: ["tmux"] })
+    const result = runDoctorIsolated(tempDir, "/nonexistent", { fix: true, verbose: false, components: ["tmux"] })
 
     const tpmCheck = result.checks.find(c => c.id === "tmux:tpm")
     expect(tpmCheck).toBeDefined()

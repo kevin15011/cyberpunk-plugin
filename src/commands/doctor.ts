@@ -14,7 +14,7 @@ import { checkPlatformPrerequisites } from "../components/platform"
 import { checkConfigDoctor, repairConfigDefaults } from "../components/config-doctor"
 import { repairThemeActivation } from "../components/theme-doctor"
 import { join } from "path"
-import { insertManagedBlock, BUNDLED_TMUX_CONF } from "../components/tmux"
+import { insertManagedBlock, BUNDLED_TMUX_CONF, cloneTpm, runTpmScript } from "../components/tmux"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -138,9 +138,20 @@ export async function runDoctor(
       fixes.push(await applyRtkFix(check, prerequisites))
     }
 
-    // 7. Tmux config block repair (safe — only restores managed block)
-    for (const check of fixable.filter(c => c.id.startsWith("tmux:"))) {
-      fixes.push(await applyTmuxFix(check))
+    // 7. Tmux config/block/bootstrap repair
+    for (const check of fixable.filter(c => c.id === "tmux:config")) {
+      fixes.push(await applyTmuxFix(check, prerequisites))
+    }
+
+    let tmuxTpmRepairSucceeded: boolean | undefined
+    for (const check of fixable.filter(c => c.id === "tmux:tpm")) {
+      const fix = await applyTmuxFix(check, prerequisites)
+      fixes.push(fix)
+      tmuxTpmRepairSucceeded = fix.status === "fixed"
+    }
+
+    for (const check of fixable.filter(c => c.id === "tmux:plugins")) {
+      fixes.push(await applyTmuxFix(check, prerequisites, tmuxTpmRepairSucceeded))
     }
 
     // Mark fixed checks
@@ -190,6 +201,14 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
     label: "curl",
     status: prerequisites.curl ? "pass" : "warn",
     message: prerequisites.curl ? "curl disponible en PATH" : "curl no encontrado",
+    fixable: false,
+  })
+
+  checks.push({
+    id: "platform:git",
+    label: "git",
+    status: prerequisites.git ? "pass" : "warn",
+    message: prerequisites.git ? "git disponible en PATH" : "git no encontrado — TPM no podrá instalarse automáticamente",
     fixable: false,
   })
 
@@ -547,8 +566,12 @@ Use \`rtk\` commands as drop-in replacements for common CLI tools to reduce toke
   return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
 }
 
-async function applyTmuxFix(check: DoctorCheck): Promise<DoctorFixResult> {
-  if (check.id !== "tmux:config") {
+async function applyTmuxFix(
+  check: DoctorCheck,
+  prerequisites: ReturnType<typeof checkPlatformPrerequisites>,
+  tmuxTpmRepairSucceeded?: boolean
+): Promise<DoctorFixResult> {
+  if (!["tmux:config", "tmux:tpm", "tmux:plugins"].includes(check.id)) {
     return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
   }
 
@@ -557,6 +580,46 @@ async function applyTmuxFix(check: DoctorCheck): Promise<DoctorFixResult> {
     const TMUX_CONF_PATH = join(HOME, ".tmux.conf")
 
     const { readFileSync, existsSync, writeFileSync, renameSync } = await import("fs")
+
+    if (check.id === "tmux:tpm") {
+      if (!prerequisites.git) {
+        return { checkId: check.id, status: "failed", message: "git no disponible — TPM no pudo repararse automáticamente" }
+      }
+
+      return cloneTpm(HOME)
+        ? { checkId: check.id, status: "fixed", message: "TPM clonado en ~/.tmux/plugins/tpm" }
+        : { checkId: check.id, status: "failed", message: "TPM no pudo clonarse automáticamente" }
+    }
+
+    if (check.id === "tmux:plugins") {
+      const tpmPath = join(HOME, ".tmux", "plugins", "tpm", "tpm")
+      const hasTpm = existsSync(tpmPath)
+
+      if (!hasTpm) {
+        if (tmuxTpmRepairSucceeded === false) {
+          return { checkId: check.id, status: "failed", message: "TPM sigue faltando; la instalación de plugins queda como advertencia" }
+        }
+
+        if (!prerequisites.git) {
+          return { checkId: check.id, status: "failed", message: "TPM no está instalado y git no está disponible" }
+        }
+
+        if (!cloneTpm(HOME)) {
+          return { checkId: check.id, status: "failed", message: "TPM no pudo clonarse automáticamente antes de instalar plugins" }
+        }
+      }
+
+      const result = runTpmScript(HOME, "install_plugins")
+      if (result === "ok") {
+        return { checkId: check.id, status: "fixed", message: "Plugins tmux instalados mediante TPM" }
+      }
+
+      if (result === "script-missing") {
+        return { checkId: check.id, status: "failed", message: "TPM está presente pero no se encontró el script install_plugins" }
+      }
+
+      return { checkId: check.id, status: "failed", message: "TPM ejecutó install_plugins pero la instalación falló" }
+    }
 
     let existingContent = ""
     if (existsSync(TMUX_CONF_PATH)) {

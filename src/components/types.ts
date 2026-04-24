@@ -12,6 +12,12 @@ export interface InstallResult {
   path?: string
 }
 
+export interface TmuxBootstrapResult {
+  tpmState: "present" | "cloned" | "missing-git" | "clone-failed"
+  pluginsState: "ready" | "installed" | "updated" | "script-missing" | "install-failed"
+  warnings: string[]
+}
+
 export interface ComponentStatus {
   id: ComponentId
   label: string
@@ -45,6 +51,7 @@ export interface DoctorContext {
     npm: boolean
     bun: boolean
     curl: boolean
+    git: boolean
   }
 }
 
