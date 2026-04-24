@@ -142,19 +142,25 @@ describe("compareSemver (from upgrade module)", () => {
 describe("getPlatformAsset (from upgrade module)", () => {
   test("returns expected format matching cyberpunk-{os}-{arch}", async () => {
     const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+    if (process.platform === "darwin" && process.arch === "x64") {
+      expect(() => mod.getPlatformAsset()).toThrow(/macOS x64 binaries are no longer published/i)
+      return
+    }
     const asset = mod.getPlatformAsset()
     expect(asset).toMatch(/^cyberpunk-(linux|darwin)-(x64|arm64)$/)
   })
 
-  test("returns darwin asset names for supported macOS architectures", async () => {
-    await withMockedPlatform("darwin", "x64", async () => {
-      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
-      expect(mod.getPlatformAsset()).toBe("cyberpunk-darwin-x64")
-    })
-
+  test("returns darwin asset name for supported macOS architecture", async () => {
     await withMockedPlatform("darwin", "arm64", async () => {
       const mod = await import("../src/commands/upgrade.ts?" + Date.now())
       expect(mod.getPlatformAsset()).toBe("cyberpunk-darwin-arm64")
+    })
+  })
+
+  test("throws on unsupported darwin x64 binary target", async () => {
+    await withMockedPlatform("darwin", "x64", async () => {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      expect(() => mod.getPlatformAsset()).toThrow(/macOS x64 binaries are no longer published/i)
     })
   })
 
@@ -325,59 +331,6 @@ describe("runUpgrade dispatch by installMode", () => {
     }
   })
 
-  test("binary mode on darwin downloads the darwin x64 release asset", async () => {
-    const { home, binaryPath, cleanup } = createBinaryTestEnv("dispatch-darwin-x64")
-    const originalFetch = globalThis.fetch
-    const fetchCalls: string[] = []
-
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = String(input)
-      fetchCalls.push(url)
-
-      if (url.includes("/releases/latest")) {
-        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
-      }
-
-      if (url.endsWith("/releases/download/v9.9.9/cyberpunk-darwin-x64")) {
-        return new Response(Buffer.from("darwin-x64-binary"), { status: 200 })
-      }
-
-      throw new Error(`unexpected fetch: ${url}`)
-    }) as typeof fetch
-
-    try {
-      await withMockedPlatform("darwin", "x64", async () => {
-        const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
-        mod.__setUpgradeTestOverrides({
-          fetchChecksums: async () => MOCK_HASH,
-          computeFileSha256: () => MOCK_HASH,
-          smokeTestBinary: () => true,
-          prepareDarwinBinary: () => ({ attempted: true }),
-        })
-        const result = await withHome(home, () => mod.runUpgrade())
-
-        expect(result).toMatchObject({
-          status: "upgraded",
-          fromVersion: CURRENT_VERSION,
-          toVersion: "9.9.9",
-          filesUpdated: [binaryPath],
-        })
-      })
-
-      expect(fetchCalls).toEqual([
-        "https://api.github.com/repos/kevin15011/cyberpunk-plugin/releases/latest",
-        "https://github.com/kevin15011/cyberpunk-plugin/releases/download/v9.9.9/cyberpunk-darwin-x64",
-      ])
-      expect(readFileSync(binaryPath, "utf8")).toBe("darwin-x64-binary")
-    } finally {
-      globalThis.fetch = originalFetch
-      cleanup()
-    }
-  })
-
   test("binary mode on darwin downloads the darwin arm64 release asset", async () => {
     const { home, binaryPath, cleanup } = createBinaryTestEnv("dispatch-darwin-arm64")
     const originalFetch = globalThis.fetch
@@ -425,6 +378,35 @@ describe("runUpgrade dispatch by installMode", () => {
         "https://github.com/kevin15011/cyberpunk-plugin/releases/download/v9.9.9/cyberpunk-darwin-arm64",
       ])
       expect(readFileSync(binaryPath, "utf8")).toBe("darwin-arm64-binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+
+  test("binary mode on darwin x64 fails with source-build guidance", async () => {
+    const { home, binaryPath, cleanup } = createBinaryTestEnv("dispatch-darwin-x64-unsupported")
+    const originalFetch = globalThis.fetch
+    const fetchCalls: string[] = []
+
+    writeFileSync(binaryPath, "stub-binary", "utf8")
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      fetchCalls.push(String(input))
+      throw new Error(`unexpected fetch: ${String(input)}`)
+    }) as typeof fetch
+
+    try {
+      await withMockedPlatform("darwin", "x64", async () => {
+        const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+        const result = await withHome(home, () => mod.runUpgrade())
+
+        expect(result.status).toBe("error")
+        expect(result.error).toMatch(/macOS x64 binaries are no longer published/i)
+        expect(readFileSync(binaryPath, "utf8")).toBe("stub-binary")
+      })
+
+      expect(fetchCalls).toHaveLength(0)
     } finally {
       globalThis.fetch = originalFetch
       cleanup()
@@ -567,7 +549,9 @@ describe("checkUpgrade dispatch", () => {
     try {
       const status = await withHome(fixture.home, () => mod.checkUpgrade())
       expect(status.latestVersion).toBe("9.9.9")
-      expect(status.changedFiles).toHaveLength(1)
+      expect(status.changedFiles).toHaveLength(2)
+      expect(status.changedFiles.some(path => path.endsWith("/cyberpunk"))).toBe(true)
+      expect(status.changedFiles).toContain("cyberpunk-linux-x64")
     } finally {
       globalThis.fetch = originalFetch
     }

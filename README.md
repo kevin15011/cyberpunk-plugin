@@ -31,12 +31,13 @@ curl -fsSL https://raw.githubusercontent.com/kevin15011/cyberpunk-plugin/main/in
 
 This downloads the binary from the latest GitHub Release, installs it to `~/.local/bin/cyberpunk`, prints shell-aware PATH guidance when needed, shows a short verification summary (`cyberpunk help`), and then launches the installer TUI.
 
-Pre-built binaries are published for Linux (`x64`, `arm64`) and macOS (`x64`, `arm64`) using the shared `cyberpunk-{os}-{arch}` asset naming convention.
+Pre-built binaries are published for Linux (`x64`, `arm64`) and macOS (`arm64`) using the shared `cyberpunk-{os}-{arch}` asset naming convention.
 
 If `~/.local/bin` is not already in your `PATH`, the script prints shell-aware PATH guidance that points to the likely profile file (`~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`) plus the reload command to apply it.
 
 ### macOS notes
 
+- Pre-built macOS binaries are currently published for **Apple Silicon (`arm64`) only**. Intel Mac users should build from source.
 - The installer attempts to remove the quarantine attribute automatically after download. If that step cannot run, use: `xattr -d com.apple.quarantine ~/.local/bin/cyberpunk`
 - If macOS still blocks the first launch because the binary is unsigned, use Finder → right-click `cyberpunk` → **Open** once, then confirm the prompt.
 - Install ffmpeg before using sound generation features: `brew install ffmpeg`
@@ -138,7 +139,8 @@ Run `cyberpunk doctor` to check the status of TPM, plugin readiness, gitmux, and
 
 - [opencode](https://opencode.ai)
 - **Linux x64/arm64** — Pre-built binary available via curl install
-- **macOS x64/arm64** — Pre-built binary available via curl install
+- **macOS arm64** — Pre-built binary available via curl install
+- **macOS Intel (x64)** — Build from source
 - **Linux** — `ffplay` (`sudo apt install ffmpeg`)
 - **macOS** — `ffplay` (`brew install ffmpeg`)
 - `npm` — Needed for `context-mode` component

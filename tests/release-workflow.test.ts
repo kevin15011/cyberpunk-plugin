@@ -15,11 +15,6 @@ const binaryJobs = [
     checksumArtifact: "checksums-linux-arm64",
   },
   {
-    job: "build-darwin-x64",
-    binary: "cyberpunk-darwin-x64",
-    checksumArtifact: "checksums-darwin-x64",
-  },
-  {
     job: "build-darwin-arm64",
     binary: "cyberpunk-darwin-arm64",
     checksumArtifact: "checksums-darwin-arm64",
@@ -55,7 +50,6 @@ describe("release workflow hardening", () => {
 
     expect(checksumsJob).toContain("- build")
     expect(checksumsJob).toContain("- build-linux-arm64")
-    expect(checksumsJob).toContain("- build-darwin-x64")
     expect(checksumsJob).toContain("- build-darwin-arm64")
     expect(checksumsJob).toContain("actions/download-artifact@v5")
     expect(checksumsJob).toContain("cat ./checksums/**/*.txt > ./checksums.txt")

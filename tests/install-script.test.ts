@@ -178,4 +178,22 @@ fi
     expect(result.stdout).toContain("xattr -d com.apple.quarantine")
     expect(result.stdout).toContain("Remaining action: install ffmpeg")
   })
+
+  test("fails early on unsupported macOS Intel with source-build guidance", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-macos-intel")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Darwin
+else
+  echo x86_64
+fi
+`)
+
+    const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain("macOS Intel is no longer provided as a pre-built binary target")
+    expect(result.stdout).toContain("Please build Cyberpunk from source on this machine")
+    expect(result.stdout).toContain("bun install && bun run build")
+  })
 })

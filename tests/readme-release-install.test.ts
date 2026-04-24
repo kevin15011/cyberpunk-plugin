@@ -15,6 +15,13 @@ describe("README release install polish docs", () => {
     expect(readme).toContain("xattr -d com.apple.quarantine ~/.local/bin/cyberpunk")
   })
 
+  test("macOS support docs say prebuilt binaries are arm64-only", () => {
+    expect(readme).toContain("Apple Silicon (`arm64`) only")
+    expect(readme).toContain("macOS arm64")
+    expect(readme).toContain("macOS Intel")
+    expect(readme).toContain("Build from source")
+  })
+
   test("release docs explain checksum verification", () => {
     expect(readme).toContain("## Verifying downloads")
     expect(readme).toContain("sha256sum -c checksums.txt")

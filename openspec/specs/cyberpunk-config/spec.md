@@ -159,13 +159,13 @@ The `CyberpunkConfig` interface SHALL include an optional `installMode` field wi
 
 ### Requirement: Version Bump
 
-The `package.json` version SHALL be incremented from `1.4.0` to `1.5.0` to trigger a new GitHub Release on merge to main via the existing `release.yml` workflow.
+The `package.json` version SHALL be incremented from `1.5.0` to `1.6.0` to trigger a new GitHub Release on merge to main via the existing `release.yml` workflow.
 
 #### Scenario: Version bumped for release
 
-- GIVEN the current `package.json` version is `1.4.0`
+- GIVEN the current `package.json` version is `1.5.0`
 - WHEN this change is merged to main
-- THEN the version is `1.5.0` and the release workflow publishes a new GitHub Release
+- THEN the version is `1.6.0` and the release workflow publishes a new GitHub Release
 
 ### Requirement: Tmux Component State Persistence
 

@@ -127,6 +127,9 @@ export function compareSemver(a: string, b: string): number {
 export function getPlatformAsset(): string {
   const os = process.platform === "darwin" ? "darwin" : "linux"
   let arch = process.arch
+  if (os === "darwin" && arch === "x64") {
+    throw new Error("Pre-built macOS x64 binaries are no longer published. Build Cyberpunk from source on Intel Macs.")
+  }
   if (arch === "x64") arch = "x64"
   else if (arch === "arm64") arch = "arm64"
   else arch = "x64" // fallback
@@ -409,6 +412,7 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
 
 export async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
   const currentVersion = getAppVersion()
+  const assetName = getPlatformAsset()
   const latestTag = await fetchLatestReleaseTag()
   const latestVersion = latestTag.replace(/^v/, "")
   const upToDate = compareSemver(currentVersion, latestVersion) >= 0
@@ -418,13 +422,23 @@ export async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
     currentVersion,
     latestVersion,
     upToDate,
-    changedFiles: upToDate ? [] : [binaryPath],
+    changedFiles: upToDate ? [] : [binaryPath, assetName],
   }
 }
 
 export async function runBinaryUpgrade(): Promise<UpgradeResult> {
   const currentVersion = getAppVersion()
   const binaryPath = getBinaryPath()
+  let assetName: string
+
+  try {
+    assetName = getPlatformAsset()
+  } catch (err) {
+    return {
+      status: "error",
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
 
   let latestTag: string
   try {
@@ -444,7 +458,6 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
   // a release asset is rebuilt under the same version tag.
 
   // Download and replace (with verification)
-  const assetName = getPlatformAsset()
   try {
     await downloadAndReplaceBinary(assetName, latestTag)
   } catch (err) {

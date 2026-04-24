@@ -178,6 +178,16 @@ case "$ARCH" in
   arm64)   ARCH="arm64" ;;
 esac
 
+if [ "$OS" = "darwin" ] && [ "$ARCH" = "x64" ]; then
+  echo ">> macOS Intel is no longer provided as a pre-built binary target."
+  echo "   Please build Cyberpunk from source on this machine:"
+  echo ""
+  echo "   git clone https://github.com/${REPO:-kevin15011/cyberpunk-plugin}.git"
+  echo "   cd cyberpunk-plugin"
+  echo "   bun install && bun run build"
+  exit 1
+fi
+
 # For Linux x64 and arm64, download pre-built binary from GitHub Releases
 if [ "$OS" = "linux" ] && [ -f /etc/os-release ] && grep -qi "alpine\|musl" /etc/os-release 2>/dev/null; then
   echo ">> WARNING: Alpine Linux detected — downloading static binary..."
