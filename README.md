@@ -29,16 +29,27 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
 curl -fsSL https://raw.githubusercontent.com/kevin15011/cyberpunk-plugin/main/install.sh | bash
 ```
 
-This downloads the binary from the latest GitHub Release, installs it to `~/.local/bin/cyberpunk`, and launches the installer TUI.
+This downloads the binary from the latest GitHub Release, installs it to `~/.local/bin/cyberpunk`, prints shell-aware PATH guidance when needed, shows a short verification summary (`cyberpunk help`), and then launches the installer TUI.
 
 Pre-built binaries are published for Linux (`x64`, `arm64`) and macOS (`x64`, `arm64`) using the shared `cyberpunk-{os}-{arch}` asset naming convention.
 
-If `~/.local/bin` is not already in your `PATH`, the script prints the export line you need to add.
+If `~/.local/bin` is not already in your `PATH`, the script prints shell-aware PATH guidance that points to the likely profile file (`~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`) plus the reload command to apply it.
 
 ### macOS notes
 
-- If macOS blocks the first launch because the binary is unsigned, use Finder → right-click `cyberpunk` → **Open** once, then confirm the prompt.
+- The installer attempts to remove the quarantine attribute automatically after download. If that step cannot run, use: `xattr -d com.apple.quarantine ~/.local/bin/cyberpunk`
+- If macOS still blocks the first launch because the binary is unsigned, use Finder → right-click `cyberpunk` → **Open** once, then confirm the prompt.
 - Install ffmpeg before using sound generation features: `brew install ffmpeg`
+
+## Verifying downloads
+
+Every release publishes a `checksums.txt` asset alongside the platform binaries. After downloading the binary you want, verify it with:
+
+```bash
+sha256sum -c checksums.txt
+```
+
+Make sure the binary filename in your working directory matches the corresponding line in `checksums.txt`.
 
 **Alternative**: Clone and build from source (for unsupported platforms or local development):
 ```bash
@@ -113,7 +124,7 @@ Run `cyberpunk doctor` to check the status of TPM, gitmux, and other optional tm
 
 - macOS binaries are currently unsigned.
 - Signing and notarization are deferred and not part of this MVP.
-- Automated macOS CI validation is also deferred; release validation is currently manual.
+- Automated macOS runtime smoke tests are still deferred; release validation currently adds a native Linux binary smoke test plus published SHA256 checksums.
 
 ## Optional: Permission sound
 

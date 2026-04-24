@@ -72,6 +72,18 @@ jobs:
           mv ./cyberpunk ./cyberpunk-linux-x64
           chmod +x ./cyberpunk-linux-x64
 
+      - name: Smoke test binary
+        run: ./cyberpunk-linux-x64 help
+
+      - name: Generate checksum fragment
+        run: sha256sum ./cyberpunk-linux-x64 >> checksums.txt
+
+      - name: Upload checksum fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-linux-x64
+          path: ./checksums.txt
+
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
@@ -91,7 +103,7 @@ jobs:
       - resolve-tag
       - build
     if: needs.resolve-tag.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
     steps:
@@ -110,6 +122,24 @@ jobs:
         run: |
           bun build --compile ./src/index.ts --outfile ./cyberpunk-linux-arm64
           chmod +x ./cyberpunk-linux-arm64
+
+      - name: Smoke test binary
+        run: ./cyberpunk-linux-arm64 help
+
+      - name: Generate checksum fragment
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ./cyberpunk-linux-arm64 >> checksums.txt
+          else
+            shasum -a 256 ./cyberpunk-linux-arm64 >> checksums.txt
+          fi
+
+      - name: Upload checksum fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-linux-arm64
+          path: ./checksums.txt
 
       - name: Create Release
         uses: ncipollo/release-action@v1
@@ -133,7 +163,7 @@ jobs:
       - resolve-tag
       - build
     if: needs.resolve-tag.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: macos-13
     permissions:
       contents: write
     steps:
@@ -152,6 +182,24 @@ jobs:
         run: |
           bun build --compile --target=bun-darwin-x64 ./src/index.ts --outfile ./cyberpunk-darwin-x64
           chmod +x ./cyberpunk-darwin-x64
+
+      - name: Smoke test binary
+        run: ./cyberpunk-darwin-x64 help
+
+      - name: Generate checksum fragment
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ./cyberpunk-darwin-x64 >> checksums.txt
+          else
+            shasum -a 256 ./cyberpunk-darwin-x64 >> checksums.txt
+          fi
+
+      - name: Upload checksum fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-darwin-x64
+          path: ./checksums.txt
 
       - name: Create Release
         uses: ncipollo/release-action@v1
@@ -175,7 +223,7 @@ jobs:
       - resolve-tag
       - build
     if: needs.resolve-tag.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     permissions:
       contents: write
     steps:
@@ -195,6 +243,24 @@ jobs:
           bun build --compile --target=bun-darwin-arm64 ./src/index.ts --outfile ./cyberpunk-darwin-arm64
           chmod +x ./cyberpunk-darwin-arm64
 
+      - name: Smoke test binary
+        run: ./cyberpunk-darwin-arm64 help
+
+      - name: Generate checksum fragment
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ./cyberpunk-darwin-arm64 >> checksums.txt
+          else
+            shasum -a 256 ./cyberpunk-darwin-arm64 >> checksums.txt
+          fi
+
+      - name: Upload checksum fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-darwin-arm64
+          path: ./checksums.txt
+
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
@@ -205,6 +271,47 @@ jobs:
           generateReleaseNotes: true
           artifacts: ./cyberpunk-darwin-arm64
           artifactContentType: application/octet-stream
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  checksums:
+    needs:
+      - resolve-tag
+      - build
+      - build-linux-arm64
+      - build-darwin-x64
+      - build-darwin-arm64
+    if: needs.resolve-tag.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download checksum fragments
+        uses: actions/download-artifact@v5
+        with:
+          pattern: checksums-*
+          path: ./checksums
+
+      - name: Combine checksum fragments
+        shell: bash
+        run: |
+          shopt -s globstar
+          cat ./checksums/**/*.txt > ./checksums.txt
+
+      - name: Upload checksum manifest
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.resolve-tag.outputs.tag }}
+          commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          generateReleaseNotes: true
+          artifacts: ./checksums.txt
+          artifactContentType: text/plain
           allowUpdates: true
           omitBodyDuringUpdate: true
           omitNameDuringUpdate: true
