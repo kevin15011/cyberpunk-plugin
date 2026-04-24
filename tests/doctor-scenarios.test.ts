@@ -76,8 +76,17 @@ let INSTRUCTIONS_DIR: string
 let CM_ROUTING_PATH: string
 let RTK_ROUTING_PATH: string
 let TMUX_CONF_PATH: string
+let PLUGIN_SOURCE_TEXT = ""
 
 const SOUND_FILES = ["idle.wav", "error.wav", "compact.wav", "permission.wav"]
+
+function createValidWavBuffer(label = "test") {
+  return Buffer.from(`RIFF${label}WAVE`, "utf8")
+}
+
+function writeValidWav(filePath: string, label?: string) {
+  writeFileSync(filePath, createValidWavBuffer(label))
+}
 
 // Managed template content that matches what patchSddPhaseCommon() injects
 const MANAGED_SDD_CONTENT = `## E. Session Stats — Always Report at the End
@@ -130,7 +139,7 @@ function createHealthyOpenCode() {
 
 function createHealthyPlugin() {
   mkdirSync(PLUGINS_DIR, { recursive: true })
-  writeFileSync(PLUGIN_PATH, "// plugin")
+  writeFileSync(PLUGIN_PATH, PLUGIN_SOURCE_TEXT || "// plugin")
 }
 
 function createHealthySddPhase() {
@@ -147,7 +156,7 @@ function createHealthyTheme() {
 function createHealthySounds() {
   mkdirSync(SOUNDS_DIR, { recursive: true })
   for (const f of SOUND_FILES) {
-    writeFileSync(join(SOUNDS_DIR, f), "fake-wav-data")
+    writeValidWav(join(SOUNDS_DIR, f), f)
   }
 }
 
@@ -221,6 +230,8 @@ beforeAll(async () => {
   // Import doctor.ts ONCE so all sub-modules get HOME=tempDir
   const mod = await import("../src/commands/doctor.ts?" + Date.now())
   runDoctorFn = (options) => withHome(tempDir, () => mod.runDoctor(options))
+  const pluginMod = await import("../src/components/plugin.ts?" + Date.now())
+  PLUGIN_SOURCE_TEXT = pluginMod.PLUGIN_SOURCE
 })
 
 afterAll(() => {
@@ -578,6 +589,192 @@ describe("Doctor sounds regeneration", () => {
     expect(filesCheck).toBeDefined()
     expect(filesCheck!.status).toBe("fail")
     expect(typeof filesCheck!.fixable).toBe("boolean")
+  })
+})
+
+describe("Doctor expansion scenarios", () => {
+  test("plugin source drift passes when managed plugin matches bundled source", async () => {
+    createMinimalConfig()
+    mkdirSync(PLUGINS_DIR, { recursive: true })
+    const { PLUGIN_SOURCE } = await import("../src/components/plugin.ts?" + Date.now())
+    writeFileSync(PLUGIN_PATH, PLUGIN_SOURCE, "utf8")
+
+    const result = await runDoctorFn({ fix: false, verbose: false, components: ["plugin"] })
+    const driftCheck = result.checks.find(c => c.id === "plugin:source-drift")
+
+    expect(driftCheck).toBeDefined()
+    expect(driftCheck!.status).toBe("pass")
+    expect(driftCheck!.fixable).toBe(false)
+  })
+
+  test("plugin source drift fails and is fixable for managed plugin path", async () => {
+    createMinimalConfig()
+    mkdirSync(PLUGINS_DIR, { recursive: true })
+    writeFileSync(PLUGIN_PATH, "// modified plugin", "utf8")
+
+    const result = await runDoctorFn({ fix: false, verbose: false, components: ["plugin"] })
+    const driftCheck = result.checks.find(c => c.id === "plugin:source-drift")
+
+    expect(driftCheck).toBeDefined()
+    expect(driftCheck!.status).toBe("fail")
+    expect(driftCheck!.fixable).toBe(true)
+  })
+
+  test("plugin source drift is report-only for non-managed plugin path", async () => {
+    mkdirSync(CONFIG_DIR, { recursive: true })
+    const foreignPluginPath = join(tempDir, "foreign-plugin.ts")
+    writeFileSync(CONFIG_PATH, JSON.stringify({
+      version: 1,
+      components: {
+        plugin: { installed: true, path: foreignPluginPath },
+      },
+    }))
+    mkdirSync(OPENCODE_DIR, { recursive: true })
+    writeFileSync(OPENCODE_JSON, JSON.stringify({}))
+    writeFileSync(foreignPluginPath, "// foreign plugin drift", "utf8")
+
+    const result = await runDoctorFn({ fix: false, verbose: false, components: ["plugin"] })
+    const driftCheck = result.checks.find(c => c.id === "plugin:source-drift")
+
+    expect(driftCheck).toBeDefined()
+    expect(driftCheck!.status).toBe("fail")
+    expect(driftCheck!.fixable).toBe(false)
+  })
+
+  test("sound validity passes for valid wav headers", async () => {
+    createMinimalConfig()
+    createHealthySounds()
+
+    const result = await runDoctorFn({ fix: false, verbose: false, components: ["sounds"] })
+    const invalidCheck = result.checks.find(c => c.id === "sounds:invalid")
+
+    expect(invalidCheck).toBeDefined()
+    expect(invalidCheck!.status).toBe("pass")
+  })
+
+  test("sound validity fails for invalid wav headers and is fixable when ffmpeg is available", async () => {
+    createMinimalConfig()
+    mkdirSync(SOUNDS_DIR, { recursive: true })
+    writeValidWav(join(SOUNDS_DIR, "idle.wav"), "idle")
+    writeFileSync(join(SOUNDS_DIR, "error.wav"), "not-a-wave", "utf8")
+    writeValidWav(join(SOUNDS_DIR, "compact.wav"), "compact")
+    writeValidWav(join(SOUNDS_DIR, "permission.wav"), "permission")
+
+    const fakeBinDir = join(tempDir, "doctor-expansion-bin")
+    mkdirSync(fakeBinDir, { recursive: true })
+    writeFileSync(join(fakeBinDir, "ffmpeg"), "#!/bin/sh\nexit 0\n", { mode: 0o755 })
+
+    const result = runDoctorIsolated(tempDir, `${fakeBinDir}:/bin`, { fix: false, verbose: false, components: ["sounds"] })
+    const invalidCheck = result.checks.find(c => c.id === "sounds:invalid")
+
+    expect(invalidCheck).toBeDefined()
+    expect(invalidCheck!.status).toBe("fail")
+    expect(invalidCheck!.fixable).toBe(true)
+    expect(invalidCheck!.message).toContain("error.wav")
+  })
+
+  test("--fix regenerates only invalid managed sound files", async () => {
+    createMinimalConfig()
+    mkdirSync(SOUNDS_DIR, { recursive: true })
+    const validIdle = createValidWavBuffer("idle")
+    const validCompact = createValidWavBuffer("compact")
+    const validPermission = createValidWavBuffer("permission")
+    writeFileSync(join(SOUNDS_DIR, "idle.wav"), validIdle)
+    writeFileSync(join(SOUNDS_DIR, "error.wav"), "broken", "utf8")
+    writeFileSync(join(SOUNDS_DIR, "compact.wav"), validCompact)
+    writeFileSync(join(SOUNDS_DIR, "permission.wav"), validPermission)
+
+    const fakeBinDir = join(tempDir, "doctor-expansion-fix-bin")
+    mkdirSync(fakeBinDir, { recursive: true })
+    writeFileSync(join(fakeBinDir, "ffmpeg"), `#!/bin/sh
+for last
+do
+  :
+done
+printf 'RIFFfixedWAVE' > "$last"
+`, { mode: 0o755 })
+
+    const result = runDoctorIsolated(tempDir, `${fakeBinDir}:/bin`, { fix: true, verbose: false, components: ["sounds"] })
+    const invalidFix = result.fixes.find(f => f.checkId === "sounds:invalid")
+
+    expect(invalidFix).toBeDefined()
+    expect(invalidFix!.status).toBe("fixed")
+    expect(readFileSync(join(SOUNDS_DIR, "idle.wav"))).toEqual(validIdle)
+    expect(readFileSync(join(SOUNDS_DIR, "compact.wav"))).toEqual(validCompact)
+    expect(readFileSync(join(SOUNDS_DIR, "permission.wav"))).toEqual(validPermission)
+    expect(readFileSync(join(SOUNDS_DIR, "error.wav"), "utf8")).toContain("RIFF")
+  })
+
+  test("grouped text output renders section headers and next actions summary", async () => {
+    const { formatDoctorJson, formatDoctorText } = await import("../src/cli/output.ts?" + Date.now())
+    const result = {
+      checks: [
+        {
+          id: "platform:opencode",
+          label: "OpenCode CLI",
+          status: "warn",
+          message: "opencode no encontrado",
+          fixable: false,
+          detail: { group: "runtime", nextStep: "Install OpenCode CLI" },
+        },
+        {
+          id: "plugin:source-drift",
+          label: "Plugin source drift",
+          status: "fail",
+          message: "Plugin difiere del bundle",
+          fixable: true,
+          detail: { nextStep: "Run cyberpunk doctor --fix --plugin" },
+        },
+      ],
+      results: [
+        {
+          component: "platform",
+          checks: [
+            {
+              id: "platform:opencode",
+              label: "OpenCode CLI",
+              status: "warn",
+              message: "opencode no encontrado",
+              fixable: false,
+              detail: { group: "runtime", nextStep: "Install OpenCode CLI" },
+            },
+          ],
+        },
+        {
+          component: "plugin",
+          checks: [
+            {
+              id: "plugin:source-drift",
+              label: "Plugin source drift",
+              status: "fail",
+              message: "Plugin difiere del bundle",
+              fixable: true,
+              detail: { nextStep: "Run cyberpunk doctor --fix --plugin" },
+            },
+          ],
+        },
+      ],
+      fixes: [],
+      summary: {
+        healthy: 0,
+        warnings: 1,
+        failures: 1,
+        fixed: 0,
+        remainingFailures: 1,
+      },
+    }
+
+    const text = formatDoctorText(result as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>, false)
+    expect(text).toContain("RUNTIME")
+    expect(text).toContain("PLUGIN")
+    expect(text).toContain("Next actions")
+    expect(text).toContain("Install OpenCode CLI")
+    expect(text).toContain("Run cyberpunk doctor --fix --plugin")
+
+    const parsed = JSON.parse(formatDoctorJson(result as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>))
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(parsed[0]).toHaveProperty("component")
+    expect(parsed[0]).toHaveProperty("checks")
   })
 })
 

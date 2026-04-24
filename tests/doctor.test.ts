@@ -299,6 +299,41 @@ ${END_MARKER}
   })
 })
 
+describe("doctor runtime expansion", () => {
+  let fixture: TestHome
+
+  beforeEach(() => {
+    fixture = createTempHome("cyberpunk-doctor-runtime")
+    setDefaultConfig(fixture.configDir)
+  })
+
+  afterEach(() => {
+    fixture.cleanup()
+  })
+
+  test("runtime checks include platform-aware next steps when opencode and playback are missing", async () => {
+    const { getPlaybackDependency } = await importAfterHomeSet<typeof import("../src/platform/detect")>("../../src/platform/detect.ts", fixture.home)
+    const expectedPlayback = getPlaybackDependency()
+    const emptyBinDir = join(fixture.home, "empty-bin")
+    mkdirSync(emptyBinDir, { recursive: true })
+
+    const result = runDoctorIsolated(fixture.home, emptyBinDir, { fix: false, verbose: false, components: ["plugin"] })
+    const opencodeCheck = result.checks.find(c => c.id === "platform:opencode")
+    const playbackCheck = result.checks.find(c => c.id === "platform:playback")
+
+    expect(opencodeCheck).toBeDefined()
+    expect(opencodeCheck!.status).not.toBe("pass")
+    expect(opencodeCheck!.detail?.group).toBe("runtime")
+    expect(opencodeCheck!.detail?.nextStep).toContain("OpenCode")
+
+    expect(playbackCheck).toBeDefined()
+    expect(playbackCheck!.status).not.toBe("pass")
+    expect(playbackCheck!.detail?.group).toBe("runtime")
+    expect(playbackCheck!.detail?.nextStep).toContain(expectedPlayback)
+    expect(playbackCheck!.detail?.nextStep).toMatch(/Linux|WSL|macOS/)
+  })
+})
+
 describe("runDoctor tmux fix orchestration", () => {
   let fixture: TestHome
 

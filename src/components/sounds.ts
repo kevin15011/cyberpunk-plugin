@@ -1,6 +1,6 @@
 // src/components/sounds.ts — generate sound files via ffmpeg
 
-import { existsSync, mkdirSync, unlinkSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "fs"
 import { join } from "path"
 import { execSync } from "child_process"
 import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
@@ -13,7 +13,7 @@ function getSoundsDir(): string {
   return join(home, ".config", "opencode", "sounds")
 }
 
-const SOUND_FILES = ["idle.wav", "error.wav", "compact.wav", "permission.wav"]
+export const SOUND_FILES = ["idle.wav", "error.wav", "compact.wav", "permission.wav"]
 
 const SOUND_GENERATORS: Record<string, string> = {
   "idle.wav": [
@@ -40,6 +40,38 @@ const SOUND_GENERATORS: Record<string, string> = {
     "-f lavfi -i sine=frequency=500:duration=0.1",
     `-filter_complex "[0:a]adelay=0|0,volume=2.0[a];[1:a]adelay=50|50,volume=2.0[b];[2:a]adelay=100|100,volume=2.0[c];[a][b][c]amix=inputs=3:duration=longest,volume=3.5,lowpass=f=2000" -t 0.3`,
   ].join(" "),
+}
+
+function isValidWavHeader(filePath: string): boolean {
+  try {
+    const header = readFileSync(filePath)
+    return header.subarray(0, 4).toString("utf8") === "RIFF"
+  } catch {
+    return false
+  }
+}
+
+export function regenerateSoundFiles(files: string[], outputDir = getSoundsDir()): { regenerated: number; failed: number } {
+  let regenerated = 0
+  let failed = 0
+
+  mkdirSync(outputDir, { recursive: true })
+
+  for (const file of files) {
+    const args = SOUND_GENERATORS[file]
+    if (!args) {
+      failed++
+      continue
+    }
+
+    if (generateSound(file, args, outputDir)) {
+      regenerated++
+    } else {
+      failed++
+    }
+  }
+
+  return { regenerated, failed }
 }
 
 function isFfmpegAvailable(): boolean {
@@ -245,6 +277,34 @@ export function getSoundsComponent(): ComponentModule {
           label: "Archivos de sonido",
           status: "pass",
           message: `Todos los archivos .wav existen${details}`,
+          fixable: false,
+        })
+      }
+
+      const invalid = SOUND_FILES.filter(file => {
+        const filePath = join(soundsDir, file)
+        return existsSync(filePath) && !isValidWavHeader(filePath)
+      })
+
+      if (invalid.length > 0) {
+        checks.push({
+          id: "sounds:invalid",
+          label: "Integridad de sonidos",
+          status: "fail",
+          message: `Archivos WAV inválidos: ${invalid.join(", ")}`,
+          fixable: canRegenerate,
+          detail: {
+            nextStep: canRegenerate
+              ? "Ejecutá cyberpunk doctor --fix --sounds para regenerar los sonidos inválidos"
+              : "Instalá ffmpeg para regenerar los sonidos inválidos",
+          },
+        })
+      } else {
+        checks.push({
+          id: "sounds:invalid",
+          label: "Integridad de sonidos",
+          status: "pass",
+          message: "Todos los archivos WAV tienen un encabezado RIFF válido",
           fixable: false,
         })
       }

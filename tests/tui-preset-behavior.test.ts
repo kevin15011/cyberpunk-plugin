@@ -3,6 +3,8 @@
 
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 
+const actualDetect = await import("../src/platform/detect")
+
 let selectValue: string = "minimal"
 let confirmValue: boolean = true
 let isCancelValue: boolean = false
@@ -13,6 +15,7 @@ const runInstallCalls: string[][] = []
 const noteCalls: { message: string; title: string }[] = []
 
 mock.module("../src/platform/detect", () => ({
+  ...actualDetect,
   detectEnvironment: mock(() => detectedEnvironment),
   isWSL: mock(() => detectedEnvironment === "wsl"),
 }))

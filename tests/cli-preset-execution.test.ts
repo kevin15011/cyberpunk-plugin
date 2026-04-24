@@ -5,12 +5,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "
 
 import { createTempHome, setDefaultConfig } from "./helpers/test-home"
 
+const actualDetect = await import("../src/platform/detect")
+
 let detectedEnvironment: "linux" | "wsl" | "darwin" = "linux"
 
 const runInstallCalls: { ids: string[]; action: string }[] = []
 
 function registerCliMocks() {
   mock.module("../src/platform/detect", () => ({
+    ...actualDetect,
     detectEnvironment: mock(() => detectedEnvironment),
     isWSL: mock(() => detectedEnvironment === "wsl"),
   }))

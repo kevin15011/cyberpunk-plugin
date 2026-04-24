@@ -20,6 +20,14 @@ function getPluginPaths() {
   }
 }
 
+function getConfiguredPluginPath(ctx: DoctorContext): string {
+  return ctx.cyberpunkConfig?.components?.plugin?.path || getPluginPaths().targetPath
+}
+
+function isManagedPluginPath(targetPath: string): boolean {
+  return targetPath === getPluginPaths().targetPath
+}
+
 // --- Patching constants for sdd-phase-common.md Section E ---
 const START_MARKER = "<!-- cyberpunk:start:section-e -->"
 const END_MARKER   = "<!-- cyberpunk:end:section-e -->"
@@ -260,6 +268,8 @@ export {
   PLUGIN_SOURCE,
   extractBetweenMarkers,
   patchSddPhaseCommon,
+  getPluginPaths,
+  isManagedPluginPath,
   SECTION_E_TEMPLATE,
   SECTION_F_TEMPLATE,
   MANAGED_SDD_TEMPLATE,
@@ -272,6 +282,15 @@ export function applyPatch(): boolean {
   return patchSddPhaseCommon()
 }
 
+export function restoreBundledPluginSource(): boolean {
+  const { opencodePluginsDir, targetPath } = getPluginPaths()
+  mkdirSync(opencodePluginsDir, { recursive: true })
+  const tmpPath = targetPath + ".tmp"
+  writeFileSync(tmpPath, PLUGIN_SOURCE, "utf8")
+  renameSync(tmpPath, targetPath)
+  return true
+}
+
 /**
  * Plugin doctor checks: (1) plugin file exists, (2) registered in OpenCode config,
  * (3) Section E/F patching applied in sdd-phase-common.md.
@@ -280,6 +299,7 @@ export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck
   const checks: DoctorCheck[] = []
   const verbose = ctx.verbose
   const { targetPath, sddPhaseCommonPath } = getPluginPaths()
+  const configuredPluginPath = getConfiguredPluginPath(ctx)
 
   // Check 1: plugin file exists
   if (!existsSync(targetPath)) {
@@ -298,6 +318,39 @@ export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck
       status: "pass",
       message: `Plugin existe${details}`,
       fixable: false,
+    })
+  }
+
+  if (!existsSync(configuredPluginPath)) {
+    checks.push({
+      id: "plugin:source-drift",
+      label: "Source drift del plugin",
+      status: "warn",
+      message: `No se pudo validar el source drift porque falta ${configuredPluginPath}`,
+      fixable: false,
+      detail: {
+        nextStep: isManagedPluginPath(configuredPluginPath)
+          ? "Reinstalá el plugin con cyberpunk install --plugin"
+          : "Revisá manualmente la instalación del plugin",
+      },
+    })
+  } else {
+    const installedSource = readFileSync(configuredPluginPath, "utf8")
+    const managedPath = isManagedPluginPath(configuredPluginPath)
+    const sourceMatches = installedSource === PLUGIN_SOURCE
+    checks.push({
+      id: "plugin:source-drift",
+      label: "Source drift del plugin",
+      status: sourceMatches ? "pass" : "fail",
+      message: sourceMatches
+        ? "El plugin instalado coincide con el bundle actual"
+        : `El plugin instalado difiere del bundle${verbose ? ` (${configuredPluginPath})` : ""}`,
+      fixable: !sourceMatches && managedPath,
+      detail: sourceMatches ? undefined : {
+        nextStep: managedPath
+          ? "Ejecutá cyberpunk doctor --fix --plugin para reinstalar el plugin gestionado"
+          : "La ruta del plugin no es gestionada por cyberpunk; reparalo manualmente",
+      },
     })
   }
 

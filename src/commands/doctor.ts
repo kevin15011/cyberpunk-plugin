@@ -10,7 +10,7 @@ import { getTmuxComponent } from "../components/tmux"
 import { COMPONENT_IDS } from "../config/schema"
 import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
-import { checkPlatformPrerequisites } from "../components/platform"
+import { checkPlatformPrerequisites, getRuntimeDependencyChecks } from "../components/platform"
 import { checkConfigDoctor, repairConfigDefaults } from "../components/config-doctor"
 import { repairThemeActivation } from "../components/theme-doctor"
 import { join } from "path"
@@ -111,7 +111,8 @@ export async function runDoctor(
     // Explicit ordering: patching must run before registration
     const PLUGIN_FIX_PRIORITY: Record<string, number> = {
       "plugin:patching": 0,
-      "plugin:registration": 1,
+      "plugin:source-drift": 1,
+      "plugin:registration": 2,
     }
     pluginFixable.sort((a, b) => (PLUGIN_FIX_PRIORITY[a.id] ?? 99) - (PLUGIN_FIX_PRIORITY[b.id] ?? 99))
     for (const check of pluginFixable) {
@@ -212,6 +213,8 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
     fixable: false,
   })
 
+  checks.push(...getRuntimeDependencyChecks())
+
   return checks
 }
 
@@ -266,7 +269,29 @@ async function applyPluginFix(check: DoctorCheck): Promise<DoctorFixResult> {
     }
   }
 
+  if (check.id === "plugin:source-drift") {
+    return applyPluginDriftFix(check)
+  }
+
   return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+}
+
+async function applyPluginDriftFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  if (!check.fixable) {
+    return { checkId: check.id, status: "skipped", message: "La ruta del plugin no es gestionada por cyberpunk" }
+  }
+
+  try {
+    const { restoreBundledPluginSource } = await import("../components/plugin")
+    restoreBundledPluginSource()
+    return { checkId: check.id, status: "fixed", message: "Plugin gestionado reescrito desde el bundle actual" }
+  } catch (err) {
+    return {
+      checkId: check.id,
+      status: "failed",
+      message: `Error reinstalando plugin gestionado: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
 }
 
 async function applyThemeFix(check: DoctorCheck): Promise<DoctorFixResult> {
@@ -290,6 +315,10 @@ async function applyThemeFix(check: DoctorCheck): Promise<DoctorFixResult> {
 }
 
 async function applySoundsFix(check: DoctorCheck, prerequisites: ReturnType<typeof checkPlatformPrerequisites>): Promise<DoctorFixResult> {
+  if (check.id === "sounds:invalid") {
+    return applySoundValidityFix(check, prerequisites)
+  }
+
   if (check.id !== "sounds:files") {
     return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
   }
@@ -369,6 +398,45 @@ async function applySoundsFix(check: DoctorCheck, prerequisites: ReturnType<type
       checkId: check.id,
       status: "failed",
       message: `Error regenerando sonidos: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+async function applySoundValidityFix(check: DoctorCheck, prerequisites: ReturnType<typeof checkPlatformPrerequisites>): Promise<DoctorFixResult> {
+  if (!prerequisites.ffmpeg) {
+    return { checkId: check.id, status: "skipped", message: "ffmpeg no disponible — no se pueden regenerar sonidos inválidos" }
+  }
+
+  try {
+    const { existsSync, readFileSync } = await import("fs")
+    const { join } = await import("path")
+    const { SOUND_FILES, regenerateSoundFiles } = await import("../components/sounds")
+    const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+    const SOUNDS_DIR = join(HOME, ".config", "opencode", "sounds")
+    const invalid = SOUND_FILES.filter(file => {
+      const filePath = join(SOUNDS_DIR, file)
+      if (!existsSync(filePath)) {
+        return false
+      }
+
+      return readFileSync(filePath).subarray(0, 4).toString("utf8") !== "RIFF"
+    })
+
+    if (invalid.length === 0) {
+      return { checkId: check.id, status: "unchanged", message: "No hay sonidos inválidos para regenerar" }
+    }
+
+    const { regenerated, failed } = regenerateSoundFiles(invalid, SOUNDS_DIR)
+    if (failed === 0) {
+      return { checkId: check.id, status: "fixed", message: `${regenerated} archivo(s) inválidos regenerados` }
+    }
+
+    return { checkId: check.id, status: "failed", message: `${regenerated} regenerados, ${failed} fallaron` }
+  } catch (err) {
+    return {
+      checkId: check.id,
+      status: "failed",
+      message: `Error regenerando sonidos inválidos: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
 }

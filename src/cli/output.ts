@@ -104,7 +104,7 @@ export function formatDoctorJson(results: DoctorRunResult): string {
 
 export function formatDoctorText(results: DoctorRunResult, verbose: boolean): string {
   const lines: string[] = []
-  const { checks, fixes, summary } = results
+  const { fixes, summary } = results
 
   // Column widths (minimum)
   const colCheck = 30
@@ -112,42 +112,56 @@ export function formatDoctorText(results: DoctorRunResult, verbose: boolean): st
   const colFixable = 9
   const colFixed = 7
 
-  // Header
-  if (verbose) {
-    lines.push(
-      bold("CHECK".padEnd(colCheck)) + "  " +
-      bold("STATUS".padEnd(colStatus)) + "  " +
-      bold("FIXABLE".padEnd(colFixable)) + "  " +
-      bold("FIXED".padEnd(colFixed)) + "  " +
-      bold("MESSAGE")
-    )
-  } else {
-    lines.push(
-      bold("CHECK".padEnd(colCheck)) + "  " +
-      bold("STATUS".padEnd(colStatus)) + "  " +
-      bold("MESSAGE")
-    )
+  const sectionMap = new Map<string, DoctorCheck[]>()
+  for (const result of results.results) {
+    for (const check of result.checks) {
+      const sectionKey = (check.detail?.group || result.component).toUpperCase()
+      const sectionChecks = sectionMap.get(sectionKey) || []
+      sectionChecks.push(check)
+      sectionMap.set(sectionKey, sectionChecks)
+    }
   }
 
-  // Separator line
   const sep = "─".repeat(verbose ? colCheck + colStatus + colFixable + colFixed + 60 : colCheck + colStatus + 60)
-  lines.push(gray(sep))
 
-  // Data rows
-  for (const c of checks) {
-    const statusStr = c.status === "pass" ? green("pass".padEnd(colStatus))
-      : c.status === "warn" ? yellow("warn".padEnd(colStatus))
-      : c.fixed ? green("fixed".padEnd(colStatus))
-      : red("fail".padEnd(colStatus))
+  for (const [section, checks] of sectionMap.entries()) {
+    if (lines.length > 0) {
+      lines.push("")
+    }
 
-    const checkStr = c.id.padEnd(colCheck)
-
+    lines.push(bold(section))
     if (verbose) {
-      const fixableStr = String(c.fixable).padEnd(colFixable)
-      const fixedStr = (c.fixed != null ? String(c.fixed) : "-").padEnd(colFixed)
-      lines.push(`${checkStr}  ${statusStr}  ${fixableStr}  ${fixedStr}  ${c.message}`)
+      lines.push(
+        bold("CHECK".padEnd(colCheck)) + "  " +
+        bold("STATUS".padEnd(colStatus)) + "  " +
+        bold("FIXABLE".padEnd(colFixable)) + "  " +
+        bold("FIXED".padEnd(colFixed)) + "  " +
+        bold("MESSAGE")
+      )
     } else {
-      lines.push(`${checkStr}  ${statusStr}  ${c.message}`)
+      lines.push(
+        bold("CHECK".padEnd(colCheck)) + "  " +
+        bold("STATUS".padEnd(colStatus)) + "  " +
+        bold("MESSAGE")
+      )
+    }
+    lines.push(gray(sep))
+
+    for (const c of checks) {
+      const statusStr = c.status === "pass" ? green("pass".padEnd(colStatus))
+        : c.status === "warn" ? yellow("warn".padEnd(colStatus))
+        : c.fixed ? green("fixed".padEnd(colStatus))
+        : red("fail".padEnd(colStatus))
+
+      const checkStr = c.id.padEnd(colCheck)
+
+      if (verbose) {
+        const fixableStr = String(c.fixable).padEnd(colFixable)
+        const fixedStr = (c.fixed != null ? String(c.fixed) : "-").padEnd(colFixed)
+        lines.push(`${checkStr}  ${statusStr}  ${fixableStr}  ${fixedStr}  ${c.message}`)
+      } else {
+        lines.push(`${checkStr}  ${statusStr}  ${c.message}`)
+      }
     }
   }
 
@@ -162,6 +176,22 @@ export function formatDoctorText(results: DoctorRunResult, verbose: boolean): st
         : fix.status === "failed" ? red("✗")
         : yellow("○")
       lines.push(`  ${icon} ${fix.checkId}: ${fix.message}`)
+    }
+  }
+
+  const nextActions = Array.from(new Set(
+    results.checks
+      .filter(check => check.status !== "pass")
+      .map(check => check.detail?.nextStep)
+      .filter((step): step is string => Boolean(step))
+  ))
+
+  if (nextActions.length > 0) {
+    lines.push("")
+    lines.push(bold("Next actions"))
+    lines.push(gray("─".repeat(60)))
+    for (const step of nextActions) {
+      lines.push(`  - ${step}`)
     }
   }
 

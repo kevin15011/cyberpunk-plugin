@@ -2,6 +2,9 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
+const actualDetect = await import("../src/platform/detect")
+const actualPlatform = await import("../src/components/platform")
+
 type MockStatus = {
   id: string
   label: string
@@ -19,11 +22,13 @@ let mockedPrerequisites = {
 let mockedStatuses: MockStatus[] = []
 
 mock.module("../src/platform/detect", () => ({
+  ...actualDetect,
   detectEnvironment: mock(() => detectedEnvironment),
   isWSL: mock(() => detectedEnvironment === "wsl"),
 }))
 
 mock.module("../src/components/platform", () => ({
+  ...actualPlatform,
   checkPlatformPrerequisites: mock(() => ({ ...mockedPrerequisites })),
 }))
 
@@ -69,6 +74,12 @@ describe("preset preflight", () => {
       { id: "rtk", label: "RTK (Token Proxy)", status: "available" },
       { id: "tmux", label: "Tmux config", status: "available" },
     ]
+  })
+
+  test("platform partial mock preserves runtime doctor exports", async () => {
+    const platform = await import(`../src/components/platform?${Date.now()}-${Math.random()}`)
+
+    expect(typeof platform.getRuntimeDependencyChecks).toBe("function")
   })
 
   test("buildPresetPreflight keeps minimal preset ready with advisory file touches", async () => {

@@ -34,6 +34,10 @@ export interface DoctorCheck {
   message: string
   fixable: boolean
   fixed?: boolean                     // true after successful --fix
+  detail?: {
+    group?: string
+    nextStep?: string
+  }
 }
 
 export interface DoctorFixResult {
