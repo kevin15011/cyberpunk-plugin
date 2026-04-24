@@ -216,7 +216,7 @@ ${bold("COMANDOS")}
   --rtk           Componente: RTK (token proxy)
   --tmux          Componente: tmux config
   --all           Todos los componentes
-  --preset <name> Instalar desde preset (minimal, full)
+  --preset <name> Instalar desde preset (minimal, full, wsl, mac)
   --json          Salida en JSON
   --verbose       Log detallado
   --fix           Aplicar reparaciones (doctor)
@@ -229,6 +229,8 @@ ${bold("COMANDOS")}
   cyberpunk install --all           # Instalar todo
   cyberpunk install --preset minimal  # Instalar preset mínimo
   cyberpunk install --preset full   # Instalar preset completo
+  cyberpunk install --preset wsl    # Instalar preset WSL
+  cyberpunk install --preset mac    # Instalar preset macOS
   cyberpunk status --json           # Estado en JSON
   cyberpunk upgrade --check         # Verificar actualizaciones
   cyberpunk config --list           # Ver configuración

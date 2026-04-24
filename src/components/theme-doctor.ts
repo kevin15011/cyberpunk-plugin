@@ -4,20 +4,28 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "
 import { join } from "path"
 import type { DoctorCheck, DoctorContext } from "./types"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const CONFIG_DIR = join(HOME, ".config", "opencode")
-const THEMES_DIR = join(CONFIG_DIR, "themes")
-const THEME_PATH = join(THEMES_DIR, "cyberpunk.json")
-const TUI_PATH = join(CONFIG_DIR, "tui.json")
+function getThemeDoctorPaths() {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const configDir = join(home, ".config", "opencode")
+  const themesDir = join(configDir, "themes")
+
+  return {
+    configDir,
+    themesDir,
+    themePath: join(themesDir, "cyberpunk.json"),
+    tuiPath: join(configDir, "tui.json"),
+  }
+}
 
 /**
  * Check theme component: theme JSON file exists and tui.json has theme: "cyberpunk".
  */
 export async function checkThemeDoctor(_ctx: DoctorContext): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = []
+  const { themePath, tuiPath } = getThemeDoctorPaths()
 
   // Check 1: theme file exists
-  if (!existsSync(THEME_PATH)) {
+  if (!existsSync(themePath)) {
     checks.push({
       id: "theme:file",
       label: "Tema cyberpunk",
@@ -37,7 +45,7 @@ export async function checkThemeDoctor(_ctx: DoctorContext): Promise<DoctorCheck
   })
 
   // Check 2: tui.json has theme: "cyberpunk"
-  if (!existsSync(TUI_PATH)) {
+  if (!existsSync(tuiPath)) {
     checks.push({
       id: "theme:activation",
       label: "Activación de tema",
@@ -47,7 +55,7 @@ export async function checkThemeDoctor(_ctx: DoctorContext): Promise<DoctorCheck
     })
   } else {
     try {
-      const tui = JSON.parse(readFileSync(TUI_PATH, "utf8"))
+      const tui = JSON.parse(readFileSync(tuiPath, "utf8"))
       if (tui.theme === "cyberpunk") {
         checks.push({
           id: "theme:activation",
@@ -85,10 +93,11 @@ export async function checkThemeDoctor(_ctx: DoctorContext): Promise<DoctorCheck
  */
 export function repairThemeActivation(): boolean {
   let repaired = false
+  const { configDir, themesDir, themePath, tuiPath } = getThemeDoctorPaths()
 
   // Repair 1: write theme file if missing
-  if (!existsSync(THEME_PATH)) {
-    mkdirSync(THEMES_DIR, { recursive: true })
+  if (!existsSync(themePath)) {
+    mkdirSync(themesDir, { recursive: true })
     const theme = {
       "$schema": "https://opencode.ai/theme.json",
       "defs": {
@@ -126,30 +135,30 @@ export function repairThemeActivation(): boolean {
         "borderSubtle": "grayMid",
       },
     }
-    const tmpPath = THEME_PATH + ".tmp"
+    const tmpPath = themePath + ".tmp"
     writeFileSync(tmpPath, JSON.stringify(theme, null, 2), "utf8")
-    renameSync(tmpPath, THEME_PATH)
+    renameSync(tmpPath, themePath)
     repaired = true
   }
 
   // Repair 2: activate in tui.json
-  if (!existsSync(TUI_PATH)) {
-    mkdirSync(CONFIG_DIR, { recursive: true })
-    const tmpPath = TUI_PATH + ".tmp"
+  if (!existsSync(tuiPath)) {
+    mkdirSync(configDir, { recursive: true })
+    const tmpPath = tuiPath + ".tmp"
     writeFileSync(tmpPath, JSON.stringify({
       "$schema": "https://opencode.ai/tui.json",
       theme: "cyberpunk",
     }, null, 2), "utf8")
-    renameSync(tmpPath, TUI_PATH)
+    renameSync(tmpPath, tuiPath)
     repaired = true
   } else {
     try {
-      const tui = JSON.parse(readFileSync(TUI_PATH, "utf8"))
+      const tui = JSON.parse(readFileSync(tuiPath, "utf8"))
       if (tui.theme !== "cyberpunk") {
         tui.theme = "cyberpunk"
-        const tmpPath = TUI_PATH + ".tmp"
+        const tmpPath = tuiPath + ".tmp"
         writeFileSync(tmpPath, JSON.stringify(tui, null, 2), "utf8")
-        renameSync(tmpPath, TUI_PATH)
+        renameSync(tmpPath, tuiPath)
         repaired = true
       }
     } catch {

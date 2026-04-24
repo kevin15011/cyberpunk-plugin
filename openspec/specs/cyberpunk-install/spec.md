@@ -208,7 +208,7 @@ The install command MUST accept `--preset <name>` for named install presets, MUS
 
 ### Requirement: Preset Scope and Preflight Disclosure
 
-Slice 1 presets MUST include only `minimal` and `full`. The system MUST show each preset's component contents before execution and MUST disclose optional dependency failures and tmux managed-block behavior. Environment-specific presets such as `wsl` and `mac` SHALL be deferred from slice 1 and MUST be rejected as unsupported preset names.
+Supported install presets MUST include `minimal`, `full`, `wsl`, and `mac`. The system MUST show each preset's component contents before execution and MUST disclose optional dependency failures and tmux managed-block behavior. For `wsl` and `mac`, the system SHALL detect the current platform and, on mismatch, MUST warn without blocking execution or attempting environment bootstrap beyond messaging.
 
 #### Scenario: Show full preset disclosures before install
 
@@ -217,8 +217,27 @@ Slice 1 presets MUST include only `minimal` and `full`. The system MUST show eac
 - THEN the system shows the preset component list and warns that optional dependencies may still fail per component
 - AND the system states that tmux changes affect only the managed block in `~/.tmux.conf`
 
-#### Scenario: Reject deferred preset names
+#### Scenario: Warn but allow mismatched wsl preset
 
-- GIVEN the user runs `cyberpunk install --preset wsl`
-- WHEN preset lookup runs
-- THEN the system reports that `wsl` is not available in slice 1
+- GIVEN the user runs `cyberpunk install --preset wsl` on a platform that is not detected as WSL
+- WHEN preset lookup and disclosure run
+- THEN the system warns that the preset is intended for WSL and still resolves `plugin`, `theme`, `sounds`, and `tmux`
+- AND the system does not attempt any platform bootstrap beyond the warning message
+
+### Requirement: Tmux Verification Harness Preparation
+
+Automated verification for tmux install and related doctor assertions MUST prepare temporary tmux/config fixtures before execution, MUST verify only the managed cyberpunk-owned content within those isolated fixtures, and MUST NOT touch real user tmux or cyberpunk config files.
+
+#### Scenario: Tmux install verification provisions fixture first
+
+- GIVEN tmux install verification is about to assert managed config behavior
+- WHEN the harness executes the install flow
+- THEN the temporary tmux config fixture already exists with any required seed content
+- AND assertions target that fixture instead of the real user files
+
+#### Scenario: Tmux verification preserves unmanaged content in fixture
+
+- GIVEN the temporary tmux fixture contains unmanaged user content around the managed block
+- WHEN install or doctor verification runs
+- THEN only cyberpunk-managed content is asserted or changed
+- AND unmanaged fixture content remains intact

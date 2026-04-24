@@ -8,14 +8,22 @@ import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const OPENCODE_DIR = join(HOME, ".config", "opencode")
-const OPENCODE_JSON_PATH = join(OPENCODE_DIR, "opencode.json")
-const INSTRUCTIONS_DIR = join(OPENCODE_DIR, "instructions")
-const ROUTING_PATH = join(INSTRUCTIONS_DIR, "context-mode-routing.md")
 const ROUTING_MARKER = "<!-- cyberpunk-managed:context-mode-routing -->"
 
-const CONTEXT_MODE_ROUTING = `${ROUTING_MARKER}
+function getContextModePaths() {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const opencodeDir = join(home, ".config", "opencode")
+  const instructionsDir = join(opencodeDir, "instructions")
+
+  return {
+    opencodeDir,
+    opencodeJsonPath: join(opencodeDir, "opencode.json"),
+    instructionsDir,
+    routingPath: join(instructionsDir, "context-mode-routing.md"),
+  }
+}
+
+export const CONTEXT_MODE_ROUTING = `${ROUTING_MARKER}
 # Context-Mode Routing
 
 This file adds routing awareness for \`context-mode\`. It complements the global \`AGENTS.md\` memory rules; it does not replace them.
@@ -24,10 +32,10 @@ This file adds routing awareness for \`context-mode\`. It complements the global
 
 Use \`context-mode\` when a normal tool call would likely dump too much raw data into the chat context. The goal is token reduction, not changing how code edits are made.
 
-## Prefer \`context-mode\` for heavy-output work
+## Escalate to \`context-mode\` only for genuinely heavy-output work
 
-- Use \`ctx_batch_execute\` by default for multi-command inspection, git/test output, or broad searches.
-- Use \`ctx_execute\` when you need code to analyze, parse, transform, or summarize data before returning the result.
+- Use \`ctx_batch_execute\` only when the output is genuinely large, you need to inspect multiple noisy commands together, or you want indexed follow-up queries.
+- Use \`ctx_execute\` when you need sandboxed code to analyze, parse, transform, or summarize data before returning the result.
 - Use \`ctx_execute_file\` for large files, logs, generated output, or any source file you need to inspect without loading into chat.
 - Use \`ctx_fetch_and_index\` followed by \`ctx_search\` for arbitrary web pages or large remote documents.
 - Use \`ctx_search\` for follow-up questions on content that was already indexed by \`context-mode\`.
@@ -38,6 +46,7 @@ Use \`context-mode\` when a normal tool call would likely dump too much raw data
 - Use \`edit\` and \`write\` normally for code changes.
 - Use \`glob\` and \`grep\` for targeted discovery when the result set is expected to stay small.
 - Use short shell commands normally for repo state or file operations.
+- Prefer \`rtk\` when the main problem is verbose CLI output and a compact CLI proxy is enough.
 
 ## Tool boundaries in this stack
 
@@ -81,16 +90,17 @@ function installContextModeGlobally(): boolean {
 }
 
 function ensureRoutingFile(): boolean {
-  mkdirSync(INSTRUCTIONS_DIR, { recursive: true })
+  const { instructionsDir, routingPath } = getContextModePaths()
+  mkdirSync(instructionsDir, { recursive: true })
 
   const content = CONTEXT_MODE_ROUTING + "\n"
 
-  if (!existsSync(ROUTING_PATH)) {
-    writeFileSync(ROUTING_PATH, content, "utf8")
+  if (!existsSync(routingPath)) {
+    writeFileSync(routingPath, content, "utf8")
     return true
   }
 
-  const current = readFileSync(ROUTING_PATH, "utf8")
+  const current = readFileSync(routingPath, "utf8")
   if (!current.includes(ROUTING_MARKER)) {
     // File exists but wasn't created by us — don't overwrite
     return false
@@ -98,25 +108,27 @@ function ensureRoutingFile(): boolean {
 
   if (current === content) return false
 
-  writeFileSync(ROUTING_PATH, content, "utf8")
+  writeFileSync(routingPath, content, "utf8")
   return true
 }
 
 function removeRoutingFile(): void {
-  if (!existsSync(ROUTING_PATH)) return
+  const { routingPath } = getContextModePaths()
+  if (!existsSync(routingPath)) return
 
-  const current = readFileSync(ROUTING_PATH, "utf8")
+  const current = readFileSync(routingPath, "utf8")
   if (current.includes(ROUTING_MARKER)) {
-    unlinkSync(ROUTING_PATH)
+    unlinkSync(routingPath)
   }
 }
 
 function patchOpencodeJsonMcp(): boolean {
-  if (!existsSync(OPENCODE_JSON_PATH)) return false
+  const { opencodeJsonPath } = getContextModePaths()
+  if (!existsSync(opencodeJsonPath)) return false
 
   let config: Record<string, any>
   try {
-    config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+    config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
   } catch {
     return false
   }
@@ -138,16 +150,17 @@ function patchOpencodeJsonMcp(): boolean {
     enabled: true,
   }
 
-  writeFileSync(OPENCODE_JSON_PATH, JSON.stringify(config, null, 2), "utf8")
+  writeFileSync(opencodeJsonPath, JSON.stringify(config, null, 2), "utf8")
   return true
 }
 
 function unpatchOpencodeJsonMcp(): boolean {
-  if (!existsSync(OPENCODE_JSON_PATH)) return false
+  const { opencodeJsonPath } = getContextModePaths()
+  if (!existsSync(opencodeJsonPath)) return false
 
   let config: Record<string, any>
   try {
-    config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+    config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
   } catch {
     return false
   }
@@ -155,7 +168,7 @@ function unpatchOpencodeJsonMcp(): boolean {
   if (!config.mcp?.["context-mode"]) return false
 
   delete config.mcp["context-mode"]
-  writeFileSync(OPENCODE_JSON_PATH, JSON.stringify(config, null, 2), "utf8")
+  writeFileSync(opencodeJsonPath, JSON.stringify(config, null, 2), "utf8")
   return true
 }
 
@@ -165,6 +178,8 @@ export function getContextModeComponent(): ComponentModule {
     label: COMPONENT_LABELS["context-mode"],
 
     async install(): Promise<InstallResult> {
+      const { routingPath } = getContextModePaths()
+
       // Check npm
       if (!isNpmAvailable()) {
         return {
@@ -200,7 +215,7 @@ export function getContextModeComponent(): ComponentModule {
         installed: true,
         version: "bundled",
         installedAt: new Date().toISOString(),
-        path: ROUTING_PATH,
+          path: routingPath,
       }
       saveConfig(config)
 
@@ -213,7 +228,7 @@ export function getContextModeComponent(): ComponentModule {
           : mcpPatched
             ? "context-mode instalado, routing y MCP configurados"
             : undefined,
-        path: ROUTING_PATH,
+        path: routingPath,
       }
     },
 
@@ -229,19 +244,20 @@ export function getContextModeComponent(): ComponentModule {
         component: "context-mode",
         action: "uninstall",
         status: "success",
-        path: ROUTING_PATH,
+        path: getContextModePaths().routingPath,
       }
     },
 
     async status(): Promise<ComponentStatus> {
+      const { opencodeJsonPath, routingPath } = getContextModePaths()
       const cmInstalled = isContextModeInstalled()
-      const routingExists = existsSync(ROUTING_PATH)
+      const routingExists = existsSync(routingPath)
 
       // Check if MCP is configured in opencode.json
       let mcpConfigured = false
-      if (existsSync(OPENCODE_JSON_PATH)) {
+      if (existsSync(opencodeJsonPath)) {
         try {
-          const config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+          const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           mcpConfigured = config.mcp?.["context-mode"]?.type === "local"
         } catch {}
       }
@@ -281,6 +297,7 @@ export function getContextModeComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
+      const { opencodeJsonPath, routingPath } = getContextModePaths()
 
       // Check 1: npm available
       if (!ctx.prerequisites.npm && !ctx.prerequisites.bun) {
@@ -323,7 +340,7 @@ export function getContextModeComponent(): ComponentModule {
       }
 
       // Check 3: routing file exists
-      if (!existsSync(ROUTING_PATH)) {
+      if (!existsSync(routingPath)) {
         checks.push({
           id: "context-mode:routing",
           label: "Archivo routing",
@@ -332,7 +349,7 @@ export function getContextModeComponent(): ComponentModule {
           fixable: true,
         })
       } else {
-        const content = readFileSync(ROUTING_PATH, "utf8")
+        const content = readFileSync(routingPath, "utf8")
         if (content.includes(ROUTING_MARKER)) {
           checks.push({
             id: "context-mode:routing",
@@ -354,9 +371,9 @@ export function getContextModeComponent(): ComponentModule {
 
       // Check 4: MCP configured in opencode.json
       let mcpConfigured = false
-      if (existsSync(OPENCODE_JSON_PATH)) {
+      if (existsSync(opencodeJsonPath)) {
         try {
-          const config = JSON.parse(readFileSync(OPENCODE_JSON_PATH, "utf8"))
+          const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           mcpConfigured = config.mcp?.["context-mode"]?.type === "local"
         } catch {}
       }

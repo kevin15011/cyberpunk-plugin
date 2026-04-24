@@ -7,11 +7,18 @@ import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const CONFIG_DIR = join(HOME, ".config", "opencode")
-const THEMES_DIR = join(CONFIG_DIR, "themes")
-const THEME_PATH = join(THEMES_DIR, "cyberpunk.json")
-const TUI_PATH = join(CONFIG_DIR, "tui.json")
+function getThemePaths() {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const configDir = join(home, ".config", "opencode")
+  const themesDir = join(configDir, "themes")
+
+  return {
+    configDir,
+    themesDir,
+    themePath: join(themesDir, "cyberpunk.json"),
+    tuiPath: join(configDir, "tui.json"),
+  }
+}
 
 const CYBERPUNK_THEME = JSON.stringify({
   "$schema": "https://opencode.ai/theme.json",
@@ -87,15 +94,17 @@ const CYBERPUNK_THEME = JSON.stringify({
 }, null, 2)
 
 function activateTheme(): void {
-  if (existsSync(TUI_PATH)) {
-    const tui = JSON.parse(readFileSync(TUI_PATH, "utf8"))
+  const { configDir, tuiPath } = getThemePaths()
+
+  if (existsSync(tuiPath)) {
+    const tui = JSON.parse(readFileSync(tuiPath, "utf8"))
     if (tui.theme !== "cyberpunk") {
       tui.theme = "cyberpunk"
-      writeFileSync(TUI_PATH, JSON.stringify(tui, null, 2))
+      writeFileSync(tuiPath, JSON.stringify(tui, null, 2))
     }
   } else {
-    mkdirSync(CONFIG_DIR, { recursive: true })
-    writeFileSync(TUI_PATH, JSON.stringify({
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(tuiPath, JSON.stringify({
       "$schema": "https://opencode.ai/tui.json",
       theme: "cyberpunk",
     }, null, 2))
@@ -103,11 +112,13 @@ function activateTheme(): void {
 }
 
 function deactivateTheme(): void {
-  if (existsSync(TUI_PATH)) {
-    const tui = JSON.parse(readFileSync(TUI_PATH, "utf8"))
+  const { tuiPath } = getThemePaths()
+
+  if (existsSync(tuiPath)) {
+    const tui = JSON.parse(readFileSync(tuiPath, "utf8"))
     if (tui.theme === "cyberpunk") {
       tui.theme = undefined
-      writeFileSync(TUI_PATH, JSON.stringify(tui, null, 2))
+      writeFileSync(tuiPath, JSON.stringify(tui, null, 2))
     }
   }
 }
@@ -118,11 +129,12 @@ export function getThemeComponent(): ComponentModule {
     label: COMPONENT_LABELS.theme,
 
     async install(): Promise<InstallResult> {
-      mkdirSync(THEMES_DIR, { recursive: true })
+      const { themesDir, themePath } = getThemePaths()
+      mkdirSync(themesDir, { recursive: true })
 
       // Back up existing theme if it differs
-      if (existsSync(THEME_PATH)) {
-        const existing = readFileSync(THEME_PATH, "utf8")
+      if (existsSync(themePath)) {
+        const existing = readFileSync(themePath, "utf8")
         if (existing === CYBERPUNK_THEME) {
           // Activate even if file is already there
           activateTheme()
@@ -132,7 +144,7 @@ export function getThemeComponent(): ComponentModule {
             installed: true,
             version: "bundled",
             installedAt: new Date().toISOString(),
-            path: THEME_PATH,
+            path: themePath,
           }
           saveConfig(config)
 
@@ -141,14 +153,14 @@ export function getThemeComponent(): ComponentModule {
             action: "install",
             status: "skipped",
             message: "Tema ya instalado y actualizado",
-            path: THEME_PATH,
+            path: themePath,
           }
         }
         // Back up the existing file
-        writeFileSync(THEME_PATH + ".bak", existing, "utf8")
+        writeFileSync(themePath + ".bak", existing, "utf8")
       }
 
-      writeFileSync(THEME_PATH, CYBERPUNK_THEME, "utf8")
+      writeFileSync(themePath, CYBERPUNK_THEME, "utf8")
       activateTheme()
 
       const config = loadConfig()
@@ -156,7 +168,7 @@ export function getThemeComponent(): ComponentModule {
         installed: true,
         version: "bundled",
         installedAt: new Date().toISOString(),
-        path: THEME_PATH,
+        path: themePath,
       }
       saveConfig(config)
 
@@ -164,12 +176,14 @@ export function getThemeComponent(): ComponentModule {
         component: "theme",
         action: "install",
         status: "success",
-        path: THEME_PATH,
+        path: themePath,
       }
     },
 
     async uninstall(): Promise<InstallResult> {
-      if (!existsSync(THEME_PATH)) {
+      const { themePath } = getThemePaths()
+
+      if (!existsSync(themePath)) {
         return {
           component: "theme",
           action: "uninstall",
@@ -178,7 +192,7 @@ export function getThemeComponent(): ComponentModule {
         }
       }
 
-      unlinkSync(THEME_PATH)
+      unlinkSync(themePath)
       deactivateTheme()
 
       const config = loadConfig()
@@ -189,12 +203,14 @@ export function getThemeComponent(): ComponentModule {
         component: "theme",
         action: "uninstall",
         status: "success",
-        path: THEME_PATH,
+        path: themePath,
       }
     },
 
     async status(): Promise<ComponentStatus> {
-      if (!existsSync(THEME_PATH)) {
+      const { themePath } = getThemePaths()
+
+      if (!existsSync(themePath)) {
         return {
           id: "theme",
           label: COMPONENT_LABELS.theme,

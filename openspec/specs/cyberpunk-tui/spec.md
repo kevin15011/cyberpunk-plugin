@@ -130,7 +130,7 @@ The TUI and flag-driven command flows SHALL treat `tmux` as a first-class compon
 
 ### Requirement: Preset-First Install Guidance
 
-The install-oriented TUI flow MUST present preset choices before manual component multiselect. Slice 1 MUST offer `minimal` and `full`, and the user MAY continue to manual component selection instead of choosing a preset.
+The install-oriented TUI flow MUST present preset choices before manual component multiselect. Supported preset choices MUST include `minimal`, `full`, `wsl`, and `mac`, and the user MAY continue to manual component selection instead of choosing a preset.
 
 #### Scenario: Choose minimal preset in TUI
 
@@ -146,7 +146,7 @@ The install-oriented TUI flow MUST present preset choices before manual componen
 
 ### Requirement: Preset Confirmation Messaging
 
-Before executing a preset-selected install, the TUI MUST show the preset contents and MUST warn about optional dependency failures and tmux managed-block updates using the same slice-1 preset scope as the CLI. Deferred presets such as `wsl` and `mac` SHALL NOT be presented as selectable options.
+Before executing a preset-selected install, the TUI MUST show the preset contents and MUST warn about optional dependency failures and tmux managed-block updates using the same preset scope as the CLI. For `wsl` and `mac`, the TUI MUST surface any platform mismatch warning during confirmation, SHALL still allow the user to proceed, and MUST NOT imply any environment bootstrap beyond messaging.
 
 #### Scenario: Confirm full preset warnings in TUI
 
@@ -155,8 +155,9 @@ Before executing a preset-selected install, the TUI MUST show the preset content
 - THEN the TUI lists the preset components and warns that dependency checks may still fail per component
 - AND the TUI states that tmux updates only the managed block in `~/.tmux.conf`
 
-#### Scenario: Deferred presets absent from TUI
+#### Scenario: Confirm mac preset mismatch warning in TUI
 
-- GIVEN the user is choosing a preset in slice 1
-- WHEN preset options are rendered
-- THEN `wsl` and `mac` are not shown as selectable presets
+- GIVEN the user selected the `mac` preset in the TUI on a platform that is not detected as `darwin`
+- WHEN the confirmation step is shown
+- THEN the TUI lists `plugin`, `theme`, `sounds`, `context-mode`, and `rtk` and warns that the preset is intended for macOS
+- AND the TUI still offers the existing confirmation path without any bootstrap step

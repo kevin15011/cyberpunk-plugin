@@ -8,9 +8,17 @@ import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { registerCyberpunkPlugin, unregisterCyberpunkPlugin, isOpenCodePluginRegistered, CYBERPUNK_PLUGIN_ENTRY } from "../opencode-config"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const OPENCODE_PLUGINS_DIR = join(HOME, ".config", "opencode", "plugins")
-const TARGET_PATH = join(OPENCODE_PLUGINS_DIR, "cyberpunk.ts")
+function getPluginPaths() {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const opencodePluginsDir = join(home, ".config", "opencode", "plugins")
+
+  return {
+    home,
+    opencodePluginsDir,
+    targetPath: join(opencodePluginsDir, "cyberpunk.ts"),
+    sddPhaseCommonPath: join(home, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md"),
+  }
+}
 
 // --- Patching constants for sdd-phase-common.md Section E ---
 const START_MARKER = "<!-- cyberpunk:start:section-e -->"
@@ -43,7 +51,7 @@ const SECTION_F_TEMPLATE = `
 Prefer \`rtk\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
 
 - Keep using narrow file tools like \`Read\`, \`Grep\`, and \`Glob\` for targeted file/content inspection.
-- Keep using \`context-mode\` / \`ctx_*\` tools for heavy processing, sandboxed execution, or indexed follow-up questions.
+- Use \`context-mode\` / \`ctx_*\` tools only when you need heavy sandboxed processing, indexed follow-up questions, or the output would otherwise be genuinely large.
 - If \`rtk\` is unavailable or a command is unsupported, fall back to the normal tool path.
 `.trim()
 
@@ -67,12 +75,12 @@ function extractBetweenMarkers(
 }
 
 function patchSddPhaseCommon(): boolean {
-  const SDD_PHASE_COMMON_PATH = join(HOME, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md")
+  const { sddPhaseCommonPath } = getPluginPaths()
 
   // Guard: file doesn't exist — skip silently
-  if (!existsSync(SDD_PHASE_COMMON_PATH)) return false
+  if (!existsSync(sddPhaseCommonPath)) return false
 
-  const content = readFileSync(SDD_PHASE_COMMON_PATH, "utf8")
+  const content = readFileSync(sddPhaseCommonPath, "utf8")
 
   // State 1: No markers → heading detection or append
   if (!content.includes(START_MARKER)) {
@@ -81,9 +89,9 @@ function patchSddPhaseCommon(): boolean {
     const newContent = headingIndex !== -1
       ? content.slice(0, headingIndex) + markedSection
       : content.trimEnd() + "\n\n" + markedSection
-    const tmpPath = SDD_PHASE_COMMON_PATH + ".tmp"
+    const tmpPath = sddPhaseCommonPath + ".tmp"
     writeFileSync(tmpPath, newContent, "utf8")
-    renameSync(tmpPath, SDD_PHASE_COMMON_PATH)
+    renameSync(tmpPath, sddPhaseCommonPath)
     return true
   }
 
@@ -98,9 +106,9 @@ function patchSddPhaseCommon(): boolean {
     START_MARKER + "\n" + MANAGED_SDD_TEMPLATE + "\n" +
     END_MARKER +
     extracted.after
-  const tmpPath = SDD_PHASE_COMMON_PATH + ".tmp"
+  const tmpPath = sddPhaseCommonPath + ".tmp"
   writeFileSync(tmpPath, newContent, "utf8")
-  renameSync(tmpPath, SDD_PHASE_COMMON_PATH)
+  renameSync(tmpPath, sddPhaseCommonPath)
   return true
 }
 
@@ -147,7 +155,7 @@ const SECTION_F_TEMPLATE = \`
 Prefer \\\`rtk\\\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
 
 - Keep using narrow file tools like \\\`Read\\\`, \\\`Grep\\\`, and \\\`Glob\\\` for targeted file/content inspection.
-- Keep using \\\`context-mode\\\` / \\\`ctx_*\\\` tools for heavy processing, sandboxed execution, or indexed follow-up questions.
+- Use \\\`context-mode\\\` / \\\`ctx_*\\\` tools only when you need heavy sandboxed processing, indexed follow-up questions, or the output would otherwise be genuinely large.
 - If \\\`rtk\\\` is unavailable or a command is unsupported, fall back to the normal tool path.
 \`.trim()
 
@@ -271,18 +279,19 @@ export function applyPatch(): boolean {
 export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = []
   const verbose = ctx.verbose
+  const { targetPath, sddPhaseCommonPath } = getPluginPaths()
 
   // Check 1: plugin file exists
-  if (!existsSync(TARGET_PATH)) {
+  if (!existsSync(targetPath)) {
     checks.push({
       id: "plugin:file",
       label: "Archivo de plugin",
       status: "fail",
-      message: `Plugin no encontrado en ${TARGET_PATH}`,
+      message: `Plugin no encontrado en ${targetPath}`,
       fixable: false, // Requires full install, not doctor scope
     })
   } else {
-    const details = verbose ? ` (${TARGET_PATH})` : ""
+    const details = verbose ? ` (${targetPath})` : ""
     checks.push({
       id: "plugin:file",
       label: "Archivo de plugin",
@@ -313,8 +322,7 @@ export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck
   }
 
   // Check 3: Section E/F patching applied
-  const SDD_PHASE_COMMON_PATH = join(HOME, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md")
-  if (!existsSync(SDD_PHASE_COMMON_PATH)) {
+  if (!existsSync(sddPhaseCommonPath)) {
     checks.push({
       id: "plugin:patching",
       label: "Patching sdd-phase-common.md",
@@ -323,7 +331,7 @@ export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck
       fixable: false,
     })
   } else {
-    const content = readFileSync(SDD_PHASE_COMMON_PATH, "utf8")
+    const content = readFileSync(sddPhaseCommonPath, "utf8")
     if (!content.includes(START_MARKER)) {
       checks.push({
         id: "plugin:patching",
@@ -364,22 +372,23 @@ export function getPluginComponent(): ComponentModule {
     label: COMPONENT_LABELS.plugin,
 
     async install(): Promise<InstallResult> {
+      const { opencodePluginsDir, targetPath } = getPluginPaths()
       // Check if already installed and identical
       let existingPluginMatch = false
-      if (existsSync(TARGET_PATH)) {
-        const existing = readFileSync(TARGET_PATH, "utf8")
+      if (existsSync(targetPath)) {
+        const existing = readFileSync(targetPath, "utf8")
         if (existing === PLUGIN_SOURCE) {
           existingPluginMatch = true
         } else {
           // Back up existing if different
-          writeFileSync(TARGET_PATH + ".bak", existing, "utf8")
+          writeFileSync(targetPath + ".bak", existing, "utf8")
         }
       }
 
       if (!existingPluginMatch) {
         // Create plugins dir if needed
-        mkdirSync(OPENCODE_PLUGINS_DIR, { recursive: true })
-        writeFileSync(TARGET_PATH, PLUGIN_SOURCE, "utf8")
+        mkdirSync(opencodePluginsDir, { recursive: true })
+        writeFileSync(targetPath, PLUGIN_SOURCE, "utf8")
 
         // Update config
         const config = loadConfig()
@@ -387,7 +396,7 @@ export function getPluginComponent(): ComponentModule {
           installed: true,
           version: "bundled",
           installedAt: new Date().toISOString(),
-          path: TARGET_PATH,
+          path: targetPath,
         }
         saveConfig(config)
       }
@@ -410,12 +419,14 @@ export function getPluginComponent(): ComponentModule {
         message: patched
           ? "Plugin instalado, Section E (ctx_stats) inyectada"
           : existingPluginMatch ? "Plugin ya instalado y actualizado" : undefined,
-        path: TARGET_PATH,
+        path: targetPath,
       }
     },
 
     async uninstall(): Promise<InstallResult> {
-      if (!existsSync(TARGET_PATH)) {
+      const { targetPath } = getPluginPaths()
+
+      if (!existsSync(targetPath)) {
         return {
           component: "plugin",
           action: "uninstall",
@@ -424,7 +435,7 @@ export function getPluginComponent(): ComponentModule {
         }
       }
 
-      unlinkSync(TARGET_PATH)
+      unlinkSync(targetPath)
 
       // Update config
       const config = loadConfig()
@@ -443,12 +454,14 @@ export function getPluginComponent(): ComponentModule {
         component: "plugin",
         action: "uninstall",
         status: "success",
-        path: TARGET_PATH,
+        path: targetPath,
       }
     },
 
     async status(): Promise<ComponentStatus> {
-      if (!existsSync(TARGET_PATH)) {
+      const { targetPath } = getPluginPaths()
+
+      if (!existsSync(targetPath)) {
         return {
           id: "plugin",
           label: COMPONENT_LABELS.plugin,

@@ -7,9 +7,10 @@
 // so they also resolve to tempDir.
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs"
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs"
 import { join } from "path"
-import { tmpdir } from "os"
+
+import { createTempHome, setDefaultConfig } from "./helpers/test-home"
 
 // Module references (populated in beforeAll after HOME is configured)
 let getTmuxComponentFn: typeof import("../src/components/tmux").getTmuxComponent
@@ -19,6 +20,7 @@ let removeManagedBlockFn: typeof import("../src/components/tmux").removeManagedB
 
 let tempDir: string
 let originalHome: string | undefined
+let fixture: ReturnType<typeof createTempHome>
 let TMUX_CONF_PATH: string
 let CONFIG_DIR: string
 let CONFIG_PATH: string
@@ -27,7 +29,8 @@ const MANAGED_START = "# cyberpunk-managed:start"
 const MANAGED_END = "# cyberpunk-managed:end"
 
 beforeAll(async () => {
-  tempDir = mkdtempSync(join(tmpdir(), "cyberpunk-tmux-scenarios-"))
+  fixture = createTempHome("cyberpunk-tmux")
+  tempDir = fixture.home
   originalHome = process.env.HOME
   process.env.HOME = tempDir
 
@@ -45,7 +48,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   process.env.HOME = originalHome
-  if (tempDir) rmSync(tempDir, { recursive: true, force: true })
+  fixture.cleanup()
 })
 
 beforeEach(() => {
@@ -73,12 +76,17 @@ function readCyberpunkConfig(): Record<string, any> | null {  // eslint-disable-
   return JSON.parse(readFileSync(CONFIG_PATH, "utf8"))
 }
 
+function seedCyberpunkConfig() {
+  setDefaultConfig(CONFIG_DIR)
+}
+
 // ---------------------------------------------------------------------------
 // Spec Scenario 1: Install tmux into existing user config
 // ---------------------------------------------------------------------------
 
 describe("Spec S1: Install tmux into existing user config", () => {
   test("managed block added with bundled content, unmanaged content preserved", async () => {
+    seedCyberpunkConfig()
     const userContent = "# My custom tmux config\nset -g prefix C-b\nbind | split-window -h\n"
     createUserTmuxConf(userContent)
 
@@ -103,6 +111,7 @@ describe("Spec S1: Install tmux into existing user config", () => {
   })
 
   test("install creates backup of existing tmux.conf", async () => {
+    seedCyberpunkConfig()
     createUserTmuxConf("# original content\n")
     await getTmuxComponentFn().install()
     expect(existsSync(TMUX_CONF_PATH + ".bak")).toBe(true)
@@ -110,6 +119,7 @@ describe("Spec S1: Install tmux into existing user config", () => {
   })
 
   test("repeated install with identical content is idempotent (skipped)", async () => {
+    seedCyberpunkConfig()
     createUserTmuxConf("# user\n")
     const comp = getTmuxComponentFn()
 
@@ -126,6 +136,7 @@ describe("Spec S1: Install tmux into existing user config", () => {
 
 describe("Spec S2: Uninstall removes only managed content", () => {
   test("managed block removed, unmanaged content intact", async () => {
+    seedCyberpunkConfig()
     createMixedTmuxConf("# user header\n", "\n# user footer\n")
 
     const comp = getTmuxComponentFn()
@@ -147,6 +158,7 @@ describe("Spec S2: Uninstall removes only managed content", () => {
   })
 
   test("uninstall creates backup before modification", async () => {
+    seedCyberpunkConfig()
     createMixedTmuxConf()
     await getTmuxComponentFn().uninstall()
     expect(existsSync(TMUX_CONF_PATH + ".bak")).toBe(true)
@@ -376,6 +388,7 @@ describe("Spec S6: Fix missing managed tmux block safely", () => {
 
 describe("Spec S7: Config reflects tmux install", () => {
   test("components.tmux.installed becomes true after successful install", async () => {
+    seedCyberpunkConfig()
     createUserTmuxConf()
 
     const comp = getTmuxComponentFn()
@@ -396,6 +409,7 @@ describe("Spec S7: Config reflects tmux install", () => {
 
 describe("Spec S8: Config reflects tmux uninstall", () => {
   test("components.tmux.installed becomes false after uninstall", async () => {
+    seedCyberpunkConfig()
     createMixedTmuxConf()
 
     const comp = getTmuxComponentFn()

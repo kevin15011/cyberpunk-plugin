@@ -381,10 +381,10 @@ This file adds routing awareness for \`context-mode\`. It complements the global
 
 Use \`context-mode\` when a normal tool call would likely dump too much raw data into the chat context. The goal is token reduction, not changing how code edits are made.
 
-## Prefer \`context-mode\` for heavy-output work
+## Escalate to \`context-mode\` only for genuinely heavy-output work
 
-- Use \`ctx_batch_execute\` by default for multi-command inspection, git/test output, or broad searches.
-- Use \`ctx_execute\` when you need code to analyze, parse, transform, or summarize data before returning the result.
+- Use \`ctx_batch_execute\` only when the output is genuinely large, you need to inspect multiple noisy commands together, or you want indexed follow-up queries.
+- Use \`ctx_execute\` when you need sandboxed code to analyze, parse, transform, or summarize data before returning the result.
 - Use \`ctx_execute_file\` for large files, logs, generated output, or any source file you need to inspect without loading into chat.
 - Use \`ctx_fetch_and_index\` followed by \`ctx_search\` for arbitrary web pages or large remote documents.
 - Use \`ctx_search\` for follow-up questions on content that was already indexed by \`context-mode\`.
@@ -395,6 +395,7 @@ Use \`context-mode\` when a normal tool call would likely dump too much raw data
 - Use \`edit\` and \`write\` normally for code changes.
 - Use \`glob\` and \`grep\` for targeted discovery when the result set is expected to stay small.
 - Use short shell commands normally for repo state or file operations.
+- Prefer \`rtk\` when the main problem is verbose CLI output and a compact CLI proxy is enough.
 
 ## Tool boundaries in this stack
 

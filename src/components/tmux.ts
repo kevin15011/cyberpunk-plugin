@@ -8,8 +8,10 @@ import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const TMUX_CONF_PATH = join(HOME, ".tmux.conf")
+function getTmuxConfPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  return join(home, ".tmux.conf")
+}
 
 const MANAGED_START = "# cyberpunk-managed:start"
 const MANAGED_END = "# cyberpunk-managed:end"
@@ -175,7 +177,8 @@ function isTmuxOnPath(): boolean {
 }
 
 function isTpmInstalled(): boolean {
-  const tpmPath = join(HOME, ".tmux", "plugins", "tpm", "tpm")
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const tpmPath = join(home, ".tmux", "plugins", "tpm", "tpm")
   return existsSync(tpmPath)
 }
 
@@ -196,10 +199,11 @@ export function getTmuxComponent(): ComponentModule {
     label: COMPONENT_LABELS.tmux,
 
     async install(): Promise<InstallResult> {
+      const tmuxConfPath = getTmuxConfPath()
       // Read existing ~/.tmux.conf or start fresh
       let existingContent = ""
-      if (existsSync(TMUX_CONF_PATH)) {
-        existingContent = readFileSync(TMUX_CONF_PATH, "utf8")
+      if (existsSync(tmuxConfPath)) {
+        existingContent = readFileSync(tmuxConfPath, "utf8")
 
         // Check if already installed with same content
         const currentBlock = readManagedBlock(existingContent)
@@ -212,7 +216,7 @@ export function getTmuxComponent(): ComponentModule {
               installed: true,
               version: "bundled",
               installedAt: new Date().toISOString(),
-              path: TMUX_CONF_PATH,
+              path: tmuxConfPath,
             }
             saveConfig(config)
 
@@ -221,22 +225,22 @@ export function getTmuxComponent(): ComponentModule {
               action: "install",
               status: "skipped",
               message: "Config tmux ya instalada y actualizada",
-              path: TMUX_CONF_PATH,
+              path: tmuxConfPath,
             }
           }
         }
 
         // Backup before modification
-        writeFileSync(TMUX_CONF_PATH + ".bak", existingContent, "utf8")
+        writeFileSync(tmuxConfPath + ".bak", existingContent, "utf8")
       }
 
       // Insert or replace the managed block
       const newContent = insertManagedBlock(existingContent, BUNDLED_TMUX_CONF)
 
       // Atomic write
-      const tmpPath = TMUX_CONF_PATH + ".tmp"
+      const tmpPath = tmuxConfPath + ".tmp"
       writeFileSync(tmpPath, newContent, "utf8")
-      renameSync(tmpPath, TMUX_CONF_PATH)
+      renameSync(tmpPath, tmuxConfPath)
 
       // Update config state
       const config = loadConfig()
@@ -244,7 +248,7 @@ export function getTmuxComponent(): ComponentModule {
         installed: true,
         version: "bundled",
         installedAt: new Date().toISOString(),
-        path: TMUX_CONF_PATH,
+        path: tmuxConfPath,
       }
       saveConfig(config)
 
@@ -252,12 +256,14 @@ export function getTmuxComponent(): ComponentModule {
         component: "tmux",
         action: "install",
         status: "success",
-        path: TMUX_CONF_PATH,
+        path: tmuxConfPath,
       }
     },
 
     async uninstall(): Promise<InstallResult> {
-      if (!existsSync(TMUX_CONF_PATH)) {
+      const tmuxConfPath = getTmuxConfPath()
+
+      if (!existsSync(tmuxConfPath)) {
         return {
           component: "tmux",
           action: "uninstall",
@@ -266,7 +272,7 @@ export function getTmuxComponent(): ComponentModule {
         }
       }
 
-      const existingContent = readFileSync(TMUX_CONF_PATH, "utf8")
+      const existingContent = readFileSync(tmuxConfPath, "utf8")
 
       // Check if managed block exists
       if (!readManagedBlock(existingContent)) {
@@ -279,15 +285,15 @@ export function getTmuxComponent(): ComponentModule {
       }
 
       // Backup before modification
-      writeFileSync(TMUX_CONF_PATH + ".bak", existingContent, "utf8")
+      writeFileSync(tmuxConfPath + ".bak", existingContent, "utf8")
 
       // Remove only the managed block
       const newContent = removeManagedBlock(existingContent)
 
       // Atomic write
-      const tmpPath = TMUX_CONF_PATH + ".tmp"
+      const tmpPath = tmuxConfPath + ".tmp"
       writeFileSync(tmpPath, newContent, "utf8")
-      renameSync(tmpPath, TMUX_CONF_PATH)
+      renameSync(tmpPath, tmuxConfPath)
 
       // Update config state
       const config = loadConfig()
@@ -298,18 +304,19 @@ export function getTmuxComponent(): ComponentModule {
         component: "tmux",
         action: "uninstall",
         status: "success",
-        path: TMUX_CONF_PATH,
+        path: tmuxConfPath,
       }
     },
 
     async status(): Promise<ComponentStatus> {
+      const tmuxConfPath = getTmuxConfPath()
       const hasBinary = isTmuxOnPath()
-      const configExists = existsSync(TMUX_CONF_PATH)
+      const configExists = existsSync(tmuxConfPath)
 
       // Check for managed block
       let hasManagedBlock = false
       if (configExists) {
-        const content = readFileSync(TMUX_CONF_PATH, "utf8")
+        const content = readFileSync(tmuxConfPath, "utf8")
         hasManagedBlock = readManagedBlock(content) !== null
       }
 
@@ -339,6 +346,7 @@ export function getTmuxComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
+      const tmuxConfPath = getTmuxConfPath()
 
       // Check 1: tmux binary on PATH
       const hasBinary = isTmuxOnPath()
@@ -352,13 +360,13 @@ export function getTmuxComponent(): ComponentModule {
 
       // Check 2: managed config block presence
       let hasManagedBlock = false
-      if (existsSync(TMUX_CONF_PATH)) {
-        const content = readFileSync(TMUX_CONF_PATH, "utf8")
+      if (existsSync(tmuxConfPath)) {
+        const content = readFileSync(tmuxConfPath, "utf8")
         hasManagedBlock = readManagedBlock(content) !== null
       }
 
       if (hasManagedBlock) {
-        const details = ctx.verbose ? ` (${TMUX_CONF_PATH})` : ""
+        const details = ctx.verbose ? ` (${tmuxConfPath})` : ""
         checks.push({
           id: "tmux:config",
           label: "Config tmux cyberpunk",

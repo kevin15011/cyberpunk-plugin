@@ -7,13 +7,30 @@
 // shared tempDir and reset fixture state between tests.
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, unlinkSync } from "fs"
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, unlinkSync } from "fs"
 import { join } from "path"
-import { tmpdir } from "os"
+
+import { createTempHome } from "./helpers/test-home"
+
+async function withHome<T>(home: string, run: () => Promise<T> | T): Promise<T> {
+  const originalHome = process.env.HOME
+
+  process.env.HOME = home
+  try {
+    return await run()
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME
+    } else {
+      process.env.HOME = originalHome
+    }
+  }
+}
 
 // --- Paths inside the shared tempDir ---
 let tempDir: string
 let originalHome: string | undefined
+let fixture: ReturnType<typeof createTempHome>
 let CONFIG_DIR: string
 let CONFIG_PATH: string
 let OPENCODE_DIR: string
@@ -58,7 +75,7 @@ If \`ctx_stats\` is unavailable (e.g., not installed), skip silently.
 Prefer \`rtk\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
 
 - Keep using narrow file tools like \`Read\`, \`Grep\`, and \`Glob\` for targeted file/content inspection.
-- Keep using \`context-mode\` / \`ctx_*\` tools for heavy processing, sandboxed execution, or indexed follow-up questions.
+- Use \`context-mode\` / \`ctx_*\` tools only when you need heavy sandboxed processing, indexed follow-up questions, or the output would otherwise be genuinely large.
 - If \`rtk\` is unavailable or a command is unsupported, fall back to the normal tool path.`
 
 const START_MARKER = "<!-- cyberpunk:start:section-e -->"
@@ -149,7 +166,8 @@ let runDoctorFn: typeof import("../src/commands/doctor").runDoctor
 // --- Setup / Teardown ---
 
 beforeAll(async () => {
-  tempDir = mkdtempSync(join(tmpdir(), "cyberpunk-doctor-scenarios-"))
+  fixture = createTempHome("cyberpunk-doctor-scenarios")
+  tempDir = fixture.home
   originalHome = process.env.HOME
   process.env.HOME = tempDir
 
@@ -173,12 +191,12 @@ beforeAll(async () => {
 
   // Import doctor.ts ONCE so all sub-modules get HOME=tempDir
   const mod = await import("../src/commands/doctor.ts?" + Date.now())
-  runDoctorFn = mod.runDoctor
+  runDoctorFn = (options) => withHome(tempDir, () => mod.runDoctor(options))
 })
 
 afterAll(() => {
   process.env.HOME = originalHome
-  rmSync(tempDir, { recursive: true, force: true })
+  fixture.cleanup()
 })
 
 // Reset fixture state between tests

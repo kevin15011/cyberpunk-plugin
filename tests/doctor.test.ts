@@ -2,9 +2,27 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { parseArgs } from "../src/cli/parse-args"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs"
+import { mkdirSync, writeFileSync } from "fs"
 import { join } from "path"
-import { tmpdir } from "os"
+
+import { createTempHome, importAfterHomeSet } from "./helpers/test-home"
+
+type TestHome = ReturnType<typeof createTempHome>
+
+async function withHome<T>(home: string, run: () => Promise<T> | T): Promise<T> {
+  const originalHome = process.env.HOME
+
+  process.env.HOME = home
+  try {
+    return await run()
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME
+    } else {
+      process.env.HOME = originalHome
+    }
+  }
+}
 
 describe("parseArgs — doctor flags", () => {
   test("doctor command via positional", () => {
@@ -67,37 +85,22 @@ describe("parseArgs — doctor flags", () => {
 })
 
 describe("runDoctor summary derivation", () => {
-  let tempDir: string
-  let originalHome: string | undefined
+  let fixture: TestHome
 
-  beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), "cyberpunk-doctor-test-"))
-    originalHome = process.env.HOME
-    process.env.HOME = tempDir
-  })
-
-  afterEach(() => {
-    process.env.HOME = originalHome
-    rmSync(tempDir, { recursive: true, force: true })
-  })
-
-  test("returns summary with correct counts on healthy system", async () => {
-    // Set up a valid config
-    const configDir = join(tempDir, ".config", "cyberpunk")
+  function seedHealthyDoctorFixture(target: TestHome) {
+    const configDir = target.configDir
     mkdirSync(configDir, { recursive: true })
     writeFileSync(join(configDir, "config.json"), JSON.stringify({
       version: 1,
       components: { plugin: { installed: false }, theme: { installed: false }, sounds: { installed: false }, "context-mode": { installed: false }, rtk: { installed: false } },
     }))
 
-    // Set up opencode config with plugin registered
-    const opencodeDir = join(tempDir, ".config", "opencode")
+    const opencodeDir = join(target.home, ".config", "opencode")
     mkdirSync(opencodeDir, { recursive: true })
     writeFileSync(join(opencodeDir, "opencode.json"), JSON.stringify({
       plugin: ["./plugins/cyberpunk"],
     }))
 
-    // Set up sdd-phase-common.md with markers
     const skillsDir = join(opencodeDir, "skills", "_shared")
     mkdirSync(skillsDir, { recursive: true })
     const START_MARKER = "<!-- cyberpunk:start:section-e -->"
@@ -111,23 +114,33 @@ Test content.
 ${END_MARKER}
 `)
 
-    // Set up theme
     const themesDir = join(opencodeDir, "themes")
     mkdirSync(themesDir, { recursive: true })
     writeFileSync(join(themesDir, "cyberpunk.json"), JSON.stringify({ theme: {} }))
     writeFileSync(join(opencodeDir, "tui.json"), JSON.stringify({ theme: "cyberpunk" }))
 
-    // Set up plugin file
     const pluginsDir = join(opencodeDir, "plugins")
     mkdirSync(pluginsDir, { recursive: true })
     writeFileSync(join(pluginsDir, "cyberpunk.ts"), "// plugin")
+  }
 
-    const { runDoctor } = await import("../src/commands/doctor.ts?" + Date.now())
-    const result = await runDoctor({
+  beforeEach(() => {
+    fixture = createTempHome("cyberpunk-doctor")
+  })
+
+  afterEach(() => {
+    fixture.cleanup()
+  })
+
+  test("returns summary with correct counts on healthy system", async () => {
+    seedHealthyDoctorFixture(fixture)
+
+    const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
+    const result = await withHome(fixture.home, () => runDoctor({
       fix: false,
       verbose: false,
       components: ["plugin", "theme"],
-    })
+    }))
 
     // Should have checks and summary
     expect(result.checks.length).toBeGreaterThan(0)
@@ -138,13 +151,45 @@ ${END_MARKER}
     expect(typeof result.summary.remainingFailures).toBe("number")
   })
 
+  test("doctor results stay the same after another import cached a different HOME", async () => {
+    const staleFixture = createTempHome("cyberpunk-doctor-stale")
+
+    try {
+      seedHealthyDoctorFixture(fixture)
+
+      const staleDoctor = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", staleFixture.home)
+      const standaloneDoctor = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
+
+      const pollutedResult = await withHome(fixture.home, () => staleDoctor.runDoctor({
+        fix: false,
+        verbose: false,
+        components: ["plugin", "theme"],
+      }))
+
+      const standaloneResult = await withHome(fixture.home, () => standaloneDoctor.runDoctor({
+        fix: false,
+        verbose: false,
+        components: ["plugin", "theme"],
+      }))
+
+      expect(pollutedResult.summary).toEqual(standaloneResult.summary)
+      expect(
+        pollutedResult.checks.map(check => ({ id: check.id, status: check.status, message: check.message }))
+      ).toEqual(
+        standaloneResult.checks.map(check => ({ id: check.id, status: check.status, message: check.message }))
+      )
+    } finally {
+      staleFixture.cleanup()
+    }
+  })
+
   test("detects missing config as failure", async () => {
     // No config file created
-    const { runDoctor } = await import("../src/commands/doctor.ts?" + Date.now())
-    const result = await runDoctor({
+    const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
+    const result = await withHome(fixture.home, () => runDoctor({
       fix: false,
       verbose: false,
-    })
+    }))
 
     const configCheck = result.checks.find(c => c.id === "config:integrity")
     expect(configCheck).toBeDefined()
@@ -153,26 +198,26 @@ ${END_MARKER}
 
   test("--fix with missing config repairs it", async () => {
     // No config file initially
-    const { runDoctor } = await import("../src/commands/doctor.ts?" + Date.now())
-    const result = await runDoctor({
+    const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
+    const result = await withHome(fixture.home, () => runDoctor({
       fix: true,
       verbose: false,
-    })
+    }))
 
     const configFix = result.fixes.find(f => f.checkId === "config:integrity")
     expect(configFix).toBeDefined()
     expect(configFix!.status).toBe("fixed")
 
     // Verify config file was created
-    const { readConfigRaw } = await import("../src/config/load.ts?" + Date.now())
-    const raw = readConfigRaw()
+    const { readConfigRaw } = await importAfterHomeSet<typeof import("../src/config/load")>("../../src/config/load.ts", fixture.home)
+    const raw = await withHome(fixture.home, () => readConfigRaw())
     expect(raw.error).toBeNull()
     expect(raw.parsed).not.toBeNull()
   })
 
   test("exit code derivation: 0 when no remaining failures", async () => {
-    const { runDoctor } = await import("../src/commands/doctor.ts?" + Date.now())
-    const result = await runDoctor({ fix: false, verbose: false })
+    const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
+    const result = await withHome(fixture.home, () => runDoctor({ fix: false, verbose: false }))
 
     // Exit code should be 0 only when remainingFailures === 0
     const exitCode = result.summary.remainingFailures > 0 ? 1 : 0

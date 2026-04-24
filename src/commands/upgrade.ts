@@ -9,6 +9,13 @@ import type { InstallMode } from "../config/schema"
 
 const REPO = "kevin15011/cyberpunk-plugin"
 
+type UpgradeTestOverrides = {
+  getRepoDir?: () => string
+  gitCommand?: (args: string, cwd?: string) => string
+}
+
+let upgradeTestOverrides: UpgradeTestOverrides = {}
+
 function getBinaryPath(): string {
   return join(
     (process.env.HOME || process.env.USERPROFILE || "~"),
@@ -35,6 +42,10 @@ export interface UpgradeResult {
 // ── Helpers ───────────────────────────────────────────────────────
 
 function getRepoDir(): string {
+  if (upgradeTestOverrides.getRepoDir) {
+    return upgradeTestOverrides.getRepoDir()
+  }
+
   if (existsSync(join(process.cwd(), ".git"))) {
     return process.cwd()
   }
@@ -42,6 +53,10 @@ function getRepoDir(): string {
 }
 
 function gitCommand(args: string, cwd?: string): string {
+  if (upgradeTestOverrides.gitCommand) {
+    return upgradeTestOverrides.gitCommand(args, cwd)
+  }
+
   try {
     return execSync(`git ${args}`, {
       cwd: cwd || process.cwd(),
@@ -51,6 +66,14 @@ function gitCommand(args: string, cwd?: string): string {
   } catch (err: any) {
     throw new Error(`git command failed: git ${args}: ${err.message || err}`)
   }
+}
+
+export function __setUpgradeTestOverrides(overrides: UpgradeTestOverrides): void {
+  upgradeTestOverrides = overrides
+}
+
+export function __resetUpgradeTestOverrides(): void {
+  upgradeTestOverrides = {}
 }
 
 /**

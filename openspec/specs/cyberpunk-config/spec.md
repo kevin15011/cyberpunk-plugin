@@ -159,13 +159,13 @@ The `CyberpunkConfig` interface SHALL include an optional `installMode` field wi
 
 ### Requirement: Version Bump
 
-The `package.json` version SHALL be incremented from `1.1.0` to `1.2.0` to trigger a new GitHub Release on merge to main via the existing `release.yml` workflow.
+The `package.json` version SHALL be incremented from `1.2.0` to `1.3.0` to trigger a new GitHub Release on merge to main via the existing `release.yml` workflow.
 
 #### Scenario: Version bumped for release
 
-- GIVEN the current `package.json` version is `1.1.0`
+- GIVEN the current `package.json` version is `1.2.0`
 - WHEN this change is merged to main
-- THEN the version is `1.2.0` and the release workflow publishes a new GitHub Release
+- THEN the version is `1.3.0` and the release workflow publishes a new GitHub Release
 
 ### Requirement: Tmux Component State Persistence
 
@@ -182,3 +182,21 @@ The system SHALL persist `components.tmux` in the cyberpunk config model. Succes
 - GIVEN `components.tmux.installed` is `true`
 - WHEN `cyberpunk uninstall --tmux` succeeds
 - THEN `components.tmux.installed` becomes `false` and tmux-specific path/version metadata is cleared
+
+### Requirement: Config Verification Uses Temporary Home
+
+Automated verification of cyberpunk config behavior MUST execute against temporary HOME-backed fixtures only and MUST NOT create, modify, or depend on the real `~/.config/cyberpunk` path.
+
+#### Scenario: Config tests create isolated state
+
+- GIVEN automated verification starts with no existing temp config
+- WHEN config initialization or writes are exercised
+- THEN all created files are placed under the temporary HOME fixture
+- AND the real user config directory remains unchanged
+
+#### Scenario: Config results do not depend on caller environment
+
+- GIVEN the caller machine has unrelated cyberpunk config content
+- WHEN automated verification reads or writes config values
+- THEN the results are derived only from the test fixture state
+- AND verification passes or fails the same way on a clean machine

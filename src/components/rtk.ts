@@ -14,12 +14,19 @@ import {
   unregisterOpenCodePlugin,
 } from "../opencode-config"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const OPENCODE_DIR = join(HOME, ".config", "opencode")
-const INSTRUCTIONS_DIR = join(OPENCODE_DIR, "instructions")
-const LOCAL_RTK_PATH = join(HOME, ".local", "bin", "rtk")
-const RTK_ROUTING_PATH = join(INSTRUCTIONS_DIR, "rtk-routing.md")
 const RTK_ROUTING_MARKER = "<!-- cyberpunk-managed:rtk-routing -->"
+
+function getRtkPaths() {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const opencodeDir = join(home, ".config", "opencode")
+  const instructionsDir = join(opencodeDir, "instructions")
+
+  return {
+    instructionsDir,
+    localRtkPath: join(home, ".local", "bin", "rtk"),
+    routingPath: join(instructionsDir, "rtk-routing.md"),
+  }
+}
 
 const RTK_ROUTING = `${RTK_ROUTING_MARKER}
 # RTK — Token-Optimized Command Proxy
@@ -70,7 +77,7 @@ function isCurlAvailable(): boolean {
 
 function installRtk(): boolean {
   try {
-    mkdirSync(join(HOME, ".local", "bin"), { recursive: true })
+    mkdirSync(join(process.env.HOME || process.env.USERPROFILE || "~", ".local", "bin"), { recursive: true })
     execSync(
       "sh -c \"curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh\"",
       { stdio: "pipe" }
@@ -82,12 +89,13 @@ function installRtk(): boolean {
 }
 
 function getRtkCommand(): string | null {
+  const { localRtkPath } = getRtkPaths()
   try {
     const path = execSync("which rtk", { stdio: "pipe", encoding: "utf8" }).trim()
     if (path) return path
   } catch {}
 
-  return existsSync(LOCAL_RTK_PATH) ? LOCAL_RTK_PATH : null
+  return existsSync(localRtkPath) ? localRtkPath : null
 }
 
 function runRtkInit(): boolean {
@@ -103,16 +111,17 @@ function runRtkInit(): boolean {
 }
 
 function ensureRoutingFile(): boolean {
-  mkdirSync(INSTRUCTIONS_DIR, { recursive: true })
+  const { instructionsDir, routingPath } = getRtkPaths()
+  mkdirSync(instructionsDir, { recursive: true })
 
   const content = RTK_ROUTING + "\n"
 
-  if (!existsSync(RTK_ROUTING_PATH)) {
-    writeFileSync(RTK_ROUTING_PATH, content, "utf8")
+  if (!existsSync(routingPath)) {
+    writeFileSync(routingPath, content, "utf8")
     return true
   }
 
-  const current = readFileSync(RTK_ROUTING_PATH, "utf8")
+  const current = readFileSync(routingPath, "utf8")
   if (!current.includes(RTK_ROUTING_MARKER)) {
     // File exists but wasn't created by us — don't overwrite
     return false
@@ -120,16 +129,17 @@ function ensureRoutingFile(): boolean {
 
   if (current === content) return false
 
-  writeFileSync(RTK_ROUTING_PATH, content, "utf8")
+  writeFileSync(routingPath, content, "utf8")
   return true
 }
 
 function removeRoutingFile(): void {
-  if (!existsSync(RTK_ROUTING_PATH)) return
+  const { routingPath } = getRtkPaths()
+  if (!existsSync(routingPath)) return
 
-  const current = readFileSync(RTK_ROUTING_PATH, "utf8")
+  const current = readFileSync(routingPath, "utf8")
   if (current.includes(RTK_ROUTING_MARKER)) {
-    unlinkSync(RTK_ROUTING_PATH)
+    unlinkSync(routingPath)
   }
 }
 
@@ -151,6 +161,7 @@ export function getRtkComponent(): ComponentModule {
     label: COMPONENT_LABELS.rtk,
 
     async install(): Promise<InstallResult> {
+      const { routingPath } = getRtkPaths()
       // Check if rtk is already available
       let alreadyInstalled = isRtkAvailable()
       if (!alreadyInstalled) {
@@ -188,7 +199,7 @@ export function getRtkComponent(): ComponentModule {
         installed: true,
         version: "bundled",
         installedAt: new Date().toISOString(),
-        path: RTK_ROUTING_PATH,
+          path: routingPath,
       }
       saveConfig(config)
 
@@ -201,7 +212,7 @@ export function getRtkComponent(): ComponentModule {
           : initOk
             ? "rtk instalado, routing y OpenCode plugin configurados"
             : "rtk instalado pero init falló — ejecutá 'rtk init -g --opencode' manualmente",
-        path: RTK_ROUTING_PATH,
+        path: routingPath,
       }
     },
 
@@ -223,13 +234,14 @@ export function getRtkComponent(): ComponentModule {
         component: "rtk",
         action: "uninstall",
         status: "success",
-        path: RTK_ROUTING_PATH,
+        path: getRtkPaths().routingPath,
       }
     },
 
     async status(): Promise<ComponentStatus> {
+      const { routingPath } = getRtkPaths()
       const rtkInstalled = isRtkAvailable()
-      const routingExists = existsSync(RTK_ROUTING_PATH)
+      const routingExists = existsSync(routingPath)
 
       // Check if RTK plugin is registered in OpenCode config
       const pluginConfigured = isOpenCodePluginRegistered(RTK_PLUGIN_ENTRY)
@@ -269,6 +281,7 @@ export function getRtkComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
+      const { routingPath } = getRtkPaths()
 
       // Check 1: rtk binary on PATH
       const rtkInstalled = isRtkAvailable()
@@ -292,7 +305,7 @@ export function getRtkComponent(): ComponentModule {
       }
 
       // Check 2: routing file exists
-      if (!existsSync(RTK_ROUTING_PATH)) {
+      if (!existsSync(routingPath)) {
         checks.push({
           id: "rtk:routing",
           label: "Archivo routing RTK",
@@ -301,7 +314,7 @@ export function getRtkComponent(): ComponentModule {
           fixable: true,
         })
       } else {
-        const content = readFileSync(RTK_ROUTING_PATH, "utf8")
+        const content = readFileSync(routingPath, "utf8")
         if (content.includes(RTK_ROUTING_MARKER)) {
           checks.push({
             id: "rtk:routing",

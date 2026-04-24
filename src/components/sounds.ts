@@ -8,8 +8,10 @@ import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 
-const HOME = process.env.HOME || process.env.USERPROFILE || "~"
-const SOUNDS_DIR = join(HOME, ".config", "opencode", "sounds")
+function getSoundsDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  return join(home, ".config", "opencode", "sounds")
+}
 
 const SOUND_FILES = ["idle.wav", "error.wav", "compact.wav", "permission.wav"]
 
@@ -66,6 +68,8 @@ export function getSoundsComponent(): ComponentModule {
     label: COMPONENT_LABELS.sounds,
 
     async install(): Promise<InstallResult> {
+      const soundsDir = getSoundsDir()
+
       if (!isFfmpegAvailable()) {
         return {
           component: "sounds",
@@ -75,20 +79,20 @@ export function getSoundsComponent(): ComponentModule {
         }
       }
 
-      mkdirSync(SOUNDS_DIR, { recursive: true })
+      mkdirSync(soundsDir, { recursive: true })
 
       let allExisted = true
       const generatedFiles: string[] = []
 
       for (const [file, args] of Object.entries(SOUND_GENERATORS)) {
-        const outputPath = join(SOUNDS_DIR, file)
+        const outputPath = join(soundsDir, file)
         if (existsSync(outputPath)) {
           generatedFiles.push(outputPath)
           continue
         }
 
         allExisted = false
-        const ok = generateSound(file, args, SOUNDS_DIR)
+        const ok = generateSound(file, args, soundsDir)
         if (ok) {
           generatedFiles.push(outputPath)
         }
@@ -99,7 +103,7 @@ export function getSoundsComponent(): ComponentModule {
         installed: true,
         version: "bundled",
         installedAt: new Date().toISOString(),
-        path: SOUNDS_DIR,
+        path: soundsDir,
       }
       saveConfig(config)
 
@@ -109,7 +113,7 @@ export function getSoundsComponent(): ComponentModule {
           action: "install",
           status: "skipped",
           message: "Todos los sonidos ya existen",
-          path: SOUNDS_DIR,
+          path: soundsDir,
         }
       }
 
@@ -117,14 +121,16 @@ export function getSoundsComponent(): ComponentModule {
         component: "sounds",
         action: "install",
         status: "success",
-        path: SOUNDS_DIR,
+        path: soundsDir,
       }
     },
 
     async uninstall(): Promise<InstallResult> {
+      const soundsDir = getSoundsDir()
+
       let removed = 0
       for (const file of SOUND_FILES) {
-        const filePath = join(SOUNDS_DIR, file)
+        const filePath = join(soundsDir, file)
         if (existsSync(filePath)) {
           unlinkSync(filePath)
           removed++
@@ -148,15 +154,17 @@ export function getSoundsComponent(): ComponentModule {
         component: "sounds",
         action: "uninstall",
         status: "success",
-        path: SOUNDS_DIR,
+          path: soundsDir,
       }
     },
 
     async status(): Promise<ComponentStatus> {
+      const soundsDir = getSoundsDir()
+
       // Check if ffmpeg is available
       if (!isFfmpegAvailable()) {
         // Check if sounds exist anyway (might have been generated before)
-        const anyExist = SOUND_FILES.some(f => existsSync(join(SOUNDS_DIR, f)))
+        const anyExist = SOUND_FILES.some(f => existsSync(join(soundsDir, f)))
         if (anyExist) {
           return {
             id: "sounds",
@@ -172,7 +180,7 @@ export function getSoundsComponent(): ComponentModule {
         }
       }
 
-      const allExist = SOUND_FILES.every(f => existsSync(join(SOUNDS_DIR, f)))
+      const allExist = SOUND_FILES.every(f => existsSync(join(soundsDir, f)))
       if (allExist) {
         return {
           id: "sounds",
@@ -190,6 +198,7 @@ export function getSoundsComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
+      const soundsDir = getSoundsDir()
 
       // Check 1: ffmpeg available
       if (!ctx.prerequisites.ffmpeg) {
@@ -211,7 +220,7 @@ export function getSoundsComponent(): ComponentModule {
       }
 
       // Check 2: all 4 .wav files exist
-      const missing = SOUND_FILES.filter(f => !existsSync(join(SOUNDS_DIR, f)))
+      const missing = SOUND_FILES.filter(f => !existsSync(join(soundsDir, f)))
       const canRegenerate = ctx.prerequisites.ffmpeg
       if (missing.length === SOUND_FILES.length) {
         checks.push({
@@ -230,7 +239,7 @@ export function getSoundsComponent(): ComponentModule {
           fixable: canRegenerate,
         })
       } else {
-        const details = ctx.verbose ? ` (${SOUNDS_DIR})` : ""
+        const details = ctx.verbose ? ` (${soundsDir})` : ""
         checks.push({
           id: "sounds:files",
           label: "Archivos de sonido",
