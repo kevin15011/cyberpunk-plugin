@@ -1,4 +1,4 @@
-// src/tui/screens/result-detail.ts — Single component result detail, back returns to results
+// src/tui/screens/result-detail.ts — Single result detail view, handles all TaskKinds
 
 import type { KeyEvent, ScreenModule, ScreenResult, TUIState } from "../types"
 import { route } from "../router"
@@ -11,19 +11,43 @@ export const resultDetailScreen: ScreenModule = {
     const results = state.lastResults ?? []
     const idx = state.route.params?.resultIndex ?? 0
     const r = results[idx]
+    const resultKind = state.resultView?.kind
 
     lines.push(`  ${bold(cyan("DETALLE DE RESULTADO"))}`)
     lines.push(separator())
     lines.push("")
 
-    if (!r) {
+    if (resultKind === "doctor-fix" && state.doctor?.report) {
+      // Doctor fix detail: show fix results grouped by check
+      const report = state.doctor.report
+      lines.push(bold("  Doctor Fix Results"))
+      lines.push("")
+      for (const fix of report.fixes) {
+        const icon = fix.status === "fixed" ? green("✓")
+          : fix.status === "failed" ? red("✗")
+          : fix.status === "skipped" ? yellow("○")
+          : gray("—")
+        lines.push(`  ${icon} ${fix.checkId}: ${fix.message}`)
+      }
+      const s = report.summary
+      lines.push("")
+      lines.push(`  ${green(`${s.healthy} ok`)}  ${yellow(`${s.warnings} warn`)}  ${red(`${s.failures} fail`)}  ${green(`${s.fixed} fixed`)}`)
+      if (s.remainingFailures > 0) {
+        lines.push(yellow(`  ${s.remainingFailures} problemas restantes`))
+      }
+    } else if (!r) {
       lines.push(gray("  Sin resultado para este índice"))
     } else {
-      const label = COMPONENT_LABELS[r.component] || r.component
-      const action = r.action === "install" ? "Instalación" : "Desinstalación"
+      const label = COMPONENT_LABELS[r.component as keyof typeof COMPONENT_LABELS] || r.component
+
+      // Determine action label based on result kind
+      const actionLabel = resultKind === "upgrade" ? "Actualización"
+        : resultKind === "doctor-fix" ? "Reparación"
+        : r.action === "install" ? "Instalación"
+        : "Desinstalación"
 
       lines.push(`  ${bold("Componente:")}${label}`)
-      lines.push(`  ${bold("Acción:")}${action}`)
+      lines.push(`  ${bold("Acción:")}${actionLabel}`)
 
       const statusText = r.status === "success" ? green("✓ Exitoso")
         : r.status === "error" ? red("✗ Error")

@@ -72,3 +72,17 @@ export function checkPlatformPrerequisites(): PlatformPrerequisites {
     git: isOnPath("git"),
   }
 }
+
+/**
+ * Check if xattr command is available (macOS quarantine handling).
+ */
+export function isXattrAvailable(): boolean {
+  return isOnPath("xattr")
+}
+
+/**
+ * Check if codesign command is available (macOS binary verification).
+ */
+export function canCheckCodesign(): boolean {
+  return isOnPath("codesign")
+}

@@ -950,3 +950,92 @@ describe("Doctor tmux scenarios", () => {
     expect(prefixes.has("tmux")).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// macOS readiness doctor scenarios
+// ---------------------------------------------------------------------------
+
+describe("Doctor macOS readiness checks", () => {
+  test("5.4: darwin-only readiness checks appear when platform is darwin", async () => {
+    createMinimalConfig()
+
+    // Use subprocess isolation so the module sees the mocked platform at import time
+    const evalCode = `
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      import { runDoctor } from ${JSON.stringify(join(process.cwd(), "src/commands/doctor.ts"))};
+      const result = await runDoctor({ fix: false, verbose: false });
+      process.stdout.write(JSON.stringify(result));
+    `
+
+    const proc = Bun.spawnSync([process.execPath, "--eval", evalCode], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: tempDir, PATH: "/nonexistent" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    if (proc.exitCode !== 0) {
+      throw new Error(Buffer.from(proc.stderr).toString("utf8") || `Subprocess failed with exit ${proc.exitCode}`)
+    }
+
+    const result = JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>
+
+    // Mac-specific checks should appear
+    const macChecks = result.checks.filter((c: any) => c.id.startsWith("mac:"))
+    expect(macChecks.length).toBeGreaterThanOrEqual(4)
+
+    // Verify specific check IDs
+    const checkIds = macChecks.map((c: any) => c.id)
+    expect(checkIds).toContain("mac:quarantine")
+    expect(checkIds).toContain("mac:unsigned-binary")
+    expect(checkIds).toContain("mac:signing")
+    expect(checkIds).toContain("mac:notarization")
+
+    // Deferred items MUST have fixable: false
+    const deferredChecks = macChecks.filter((c: any) =>
+      c.id === "mac:signing" || c.id === "mac:notarization" || c.id === "mac:unsigned-binary"
+    )
+    for (const check of deferredChecks) {
+      expect(check.fixable).toBe(false)
+    }
+  })
+
+  test("5.5: non-darwin platform — zero mac-specific checks emitted", async () => {
+    createMinimalConfig()
+
+    // Linux is the actual platform — just verify no mac: checks appear
+    const result = await runDoctorFn({ fix: false, verbose: false })
+
+    const macChecks = result.checks.filter(c => c.id.startsWith("mac:"))
+    expect(macChecks.length).toBe(0)
+  })
+
+  test("darwin checks advisory-only in fix mode — deferred items not repaired", async () => {
+    createMinimalConfig()
+
+    // Use subprocess isolation for darwin
+    const evalCode = `
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      import { runDoctor } from ${JSON.stringify(join(process.cwd(), "src/commands/doctor.ts"))};
+      const result = await runDoctor({ fix: true, verbose: false });
+      process.stdout.write(JSON.stringify(result));
+    `
+
+    const proc = Bun.spawnSync([process.execPath, "--eval", evalCode], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: tempDir, PATH: "/nonexistent" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    if (proc.exitCode !== 0) {
+      throw new Error(Buffer.from(proc.stderr).toString("utf8") || `Subprocess failed with exit ${proc.exitCode}`)
+    }
+
+    const result = JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>
+
+    // No fix should be attempted for mac: checks
+    const macFixes = result.fixes.filter((f: any) => f.checkId.startsWith("mac:"))
+    expect(macFixes.length).toBe(0)
+  })
+})

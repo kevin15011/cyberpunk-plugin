@@ -20,4 +20,26 @@ describe("README release install polish docs", () => {
     expect(readme).toContain("sha256sum -c checksums.txt")
     expect(readme).toContain("checksums.txt")
   })
+
+  test("5.6: macOS docs reflect audited support status with explicit deferrals", () => {
+    // Audited support statement
+    expect(readme).toContain("verified upgrade integrity")
+    expect(readme).toContain("Verified upgrade path")
+    expect(readme).toContain("Signing and notarization deferred")
+
+    // Explicit deferral language
+    expect(readme).toContain("deferred to a future release")
+
+    // Doctor diagnostics reference
+    expect(readme).toContain("cyberpunk doctor")
+  })
+
+  test("5.6: upgrade hardening docs describe checksum, smoke test, and quarantine steps", () => {
+    expect(readme).toContain("Upgrade integrity verification")
+    expect(readme).toContain("Checksum verification")
+    expect(readme).toContain("Smoke test")
+    expect(readme).toContain("Quarantine handling")
+    expect(readme).toContain("Atomic replacement")
+    expect(readme).toContain("existing binary is left unchanged")
+  })
 })

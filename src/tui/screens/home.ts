@@ -8,6 +8,8 @@ const MENU_ITEMS = [
   { id: "install" as const, label: "Instalar componentes", hint: "Seleccionar qué instalar" },
   { id: "uninstall" as const, label: "Desinstalar componentes", hint: "Seleccionar qué remover" },
   { id: "status" as const, label: "Ver estado", hint: "Mostrar estado actual" },
+  { id: "doctor" as const, label: "Doctor", hint: "Diagnosticar problemas" },
+  { id: "upgrade" as const, label: "Upgrade", hint: "Verificar actualizaciones" },
   { id: "quit" as const, label: "Salir", hint: "" },
 ] as const
 

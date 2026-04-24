@@ -1,33 +1,62 @@
-// src/tui/screens/results.ts — Results screen: render InstallResult[] summary rows, open result-detail
+// src/tui/screens/results.ts — Results screen: render result summary rows based on TaskKind
 
-import type { KeyEvent, ScreenModule, ScreenResult, TUIState } from "../types"
+import type { KeyEvent, ScreenModule, ScreenResult, TaskKind, TUIState } from "../types"
 import { route } from "../router"
 import { cyan, green, red, yellow, bold, gray, separator } from "../theme"
 import { COMPONENT_LABELS } from "../../config/schema"
+
+/** Map TaskKind to results header label */
+function resultsHeader(kind: TaskKind | undefined): string {
+  switch (kind) {
+    case "doctor-fix": return "RESULTADOS DOCTOR"
+    case "upgrade": return "RESULTADOS UPGRADE"
+    default: return "RESULTADOS"
+  }
+}
 
 export const resultsScreen: ScreenModule = {
   render(state: TUIState): string[] {
     const lines: string[] = []
     const results = state.lastResults ?? []
+    const resultKind = state.resultView?.kind
 
-    lines.push(`  ${bold(cyan("RESULTADOS"))}`)
+    lines.push(`  ${bold(cyan(resultsHeader(resultKind)))}`)
     lines.push(separator())
     lines.push("")
 
     if (results.length === 0) {
-      lines.push(gray("  Sin resultados"))
+      // For doctor-fix, show fix results from the report
+      if (resultKind === "doctor-fix" && state.doctor?.report) {
+        const report = state.doctor.report
+        for (const fix of report.fixes) {
+          const icon = fix.status === "fixed" ? green("✓")
+            : fix.status === "failed" ? red("✗")
+            : yellow("○")
+          lines.push(`  ${icon} ${fix.checkId}: ${fix.message}`)
+        }
+        const s = report.summary
+        lines.push("")
+        lines.push(`  ${green(`${s.healthy} ok`)}  ${yellow(`${s.warnings} warn`)}  ${red(`${s.failures} fail`)}  ${green(`${s.fixed} fixed`)}`)
+      } else {
+        lines.push(gray("  Sin resultados"))
+      }
     } else {
       for (let i = 0; i < results.length; i++) {
         const r = results[i]
-        const label = COMPONENT_LABELS[r.component] || r.component
+        const label = COMPONENT_LABELS[r.component as keyof typeof COMPONENT_LABELS] || r.component
         const cursor = state.cursor === i ? cyan("❯") : " "
-        const action = r.action === "install" ? "Instalado" : "Desinstalado"
+
+        // Determine action label based on result kind
+        const actionLabel = resultKind === "upgrade" ? "Actualizado"
+          : resultKind === "doctor-fix" ? "Reparado"
+          : r.action === "install" ? "Instalado"
+          : "Desinstalado"
 
         const statusIcon = r.status === "success" ? green("✓")
           : r.status === "error" ? red("✗")
           : yellow("○")
 
-        const statusText = r.status === "success" ? green(`${action} correctamente`)
+        const statusText = r.status === "success" ? green(`${actionLabel} correctamente`)
           : r.status === "error" ? red(`error: ${r.message ?? "unknown"}`)
           : yellow("sin cambios")
 
@@ -54,7 +83,7 @@ export const resultsScreen: ScreenModule = {
         }
       case "down":
         return {
-          state: { ...state, cursor: Math.min(results.length - 1, state.cursor + 1) },
+          state: { ...state, cursor: Math.min(Math.max(results.length - 1, 0), state.cursor + 1) },
           intent: { type: "none" },
         }
       case "enter": {

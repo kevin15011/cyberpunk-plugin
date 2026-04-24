@@ -6,6 +6,10 @@ import { runInstall, runUninstall } from "../commands/install"
 import { collectStatus } from "../commands/status"
 import { resolvePreset } from "../presets"
 import type { ComponentStatus } from "../components/types"
+import { runDoctor } from "../commands/doctor"
+import { checkUpgrade, runUpgrade } from "../commands/upgrade"
+import type { DoctorRunResult } from "../components/types"
+import type { UpgradeStatus, UpgradeResult } from "../commands/upgrade"
 
 /** Collect fresh status for all components */
 export async function collectFreshStatus(): Promise<ComponentStatus[]> {
@@ -35,6 +39,26 @@ export async function startPresetInstall(
 ): Promise<InstallResult[]> {
   const resolved = resolvePreset(presetName)
   return runInstall(resolved.components, "install", hooks)
+}
+
+/** Load doctor summary in read-only mode (no fixes) */
+export async function loadDoctorSummary(): Promise<DoctorRunResult> {
+  return runDoctor({ fix: false, verbose: false })
+}
+
+/** Start a doctor fix task (applies repairs) */
+export async function startDoctorFixTask(): Promise<DoctorRunResult> {
+  return runDoctor({ fix: true, verbose: false })
+}
+
+/** Load upgrade check status */
+export async function loadUpgradeStatus(): Promise<UpgradeStatus> {
+  return checkUpgrade()
+}
+
+/** Start an upgrade task */
+export async function startUpgradeTask(): Promise<UpgradeResult> {
+  return runUpgrade()
 }
 
 /** Create TaskHooks that update a TUIState's task field */

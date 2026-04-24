@@ -148,9 +148,21 @@ Run `cyberpunk doctor` to check the status of TPM, plugin readiness, gitmux, and
 
 ## Current macOS limitations
 
-- macOS binaries are currently unsigned.
-- Signing and notarization are deferred and not part of this MVP.
-- Automated macOS runtime smoke tests are still deferred; release validation currently adds a native Linux binary smoke test plus published SHA256 checksums.
+macOS is supported with verified upgrade integrity. The following limitations apply:
+
+- **Verified upgrade path**: Binary upgrades verify SHA256 checksums against published `checksums.txt`, run a smoke test before replacement, and attempt automatic quarantine removal. If any verification step fails, the existing binary is left unchanged.
+- **Unsigned binaries**: macOS binaries are currently unsigned. Gatekeeper may block first launch. Use Finder → right-click → Open to bypass, or run `xattr -d com.apple.quarantine ~/.local/bin/cyberpunk`.
+- **Signing and notarization deferred**: Code signing and Apple notarization are explicitly deferred to a future release and are not part of the current audited support scope.
+- **Doctor diagnostics**: Run `cyberpunk doctor` on macOS to see readiness checks for quarantine handling, unsigned-binary expectations, and deferred items.
+
+## Upgrade integrity verification
+
+Binary upgrades (`installMode: "binary"`) include multi-step verification before replacing the existing binary:
+
+1. **Checksum verification**: The downloaded binary is verified against the SHA256 hash published in `checksums.txt` for the matching platform asset. If the hash doesn't match, the upgrade is rejected and the existing binary is left unchanged.
+2. **Smoke test**: The downloaded binary is run with `--help` to verify it can execute on the current platform. If it fails, the upgrade is rejected.
+3. **Quarantine handling** (macOS only): On macOS, the upgrade attempts to remove the `com.apple.quarantine` extended attribute before replacing the existing binary. If this fails, manual guidance is provided and the upgrade is rejected.
+4. **Atomic replacement**: The existing binary is only replaced after all verification steps pass. On any failure, the temporary download is cleaned up.
 
 ## Optional: Permission sound
 

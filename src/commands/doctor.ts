@@ -10,10 +10,12 @@ import { getTmuxComponent } from "../components/tmux"
 import { COMPONENT_IDS } from "../config/schema"
 import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
-import { checkPlatformPrerequisites, getRuntimeDependencyChecks } from "../components/platform"
+import { checkPlatformPrerequisites, getRuntimeDependencyChecks, isXattrAvailable, canCheckCodesign } from "../components/platform"
+import { detectEnvironment } from "../platform/detect"
 import { checkConfigDoctor, repairConfigDefaults } from "../components/config-doctor"
 import { repairThemeActivation } from "../components/theme-doctor"
 import { join } from "path"
+import { existsSync } from "fs"
 import { insertManagedBlock, BUNDLED_TMUX_CONF, cloneTpm, runTpmScript } from "../components/tmux"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
@@ -214,6 +216,68 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
   })
 
   checks.push(...getRuntimeDependencyChecks())
+
+  // macOS readiness checks — gated on darwin
+  if (detectEnvironment() === "darwin") {
+    const xattrOk = isXattrAvailable()
+    const codesignOk = canCheckCodesign()
+    const home = process.env.HOME || process.env.USERPROFILE || "~"
+    const binDir = join(home, ".local", "bin")
+
+    checks.push({
+      id: "mac:release-asset",
+      label: "macOS binary install path",
+      status: existsSync(binDir) ? "pass" : "warn",
+      message: existsSync(binDir)
+        ? "Binary install directory (~/.local/bin) exists"
+        : "Binary install directory (~/.local/bin) not found — create it and add to PATH",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "mac:quarantine",
+      label: "macOS quarantine handling",
+      status: xattrOk ? "pass" : "warn",
+      message: xattrOk
+        ? "xattr available for quarantine attribute handling"
+        : "xattr not found — cannot automatically remove quarantine attributes from downloaded binaries",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "mac:codesign",
+      label: "macOS codesign verification",
+      status: codesignOk ? "pass" : "warn",
+      message: codesignOk
+        ? "codesign available for binary signature inspection"
+        : "codesign not found — cannot inspect binary signatures",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "mac:unsigned-binary",
+      label: "macOS binary signing status",
+      status: "warn",
+      message: "macOS binaries are currently unsigned. Gatekeeper may block first launch. Use Finder → right-click → Open to bypass.",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "mac:signing",
+      label: "macOS code signing",
+      status: "warn",
+      message: "Code signing is not yet implemented — deferred to a future release.",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "mac:notarization",
+      label: "macOS notarization",
+      status: "warn",
+      message: "Apple notarization is not yet implemented — deferred to a future release.",
+      fixable: false,
+    })
+  }
 
   return checks
 }

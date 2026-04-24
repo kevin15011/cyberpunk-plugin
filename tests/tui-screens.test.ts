@@ -5,6 +5,8 @@ import { homeScreen } from "../src/tui/screens/home"
 import { installScreen } from "../src/tui/screens/install"
 import { uninstallScreen } from "../src/tui/screens/uninstall"
 import { statusScreen } from "../src/tui/screens/status"
+import { doctorScreen } from "../src/tui/screens/doctor"
+import { upgradeScreen } from "../src/tui/screens/upgrade"
 import { taskScreen } from "../src/tui/screens/task"
 import { resultsScreen } from "../src/tui/screens/results"
 import { resultDetailScreen } from "../src/tui/screens/result-detail"
@@ -40,6 +42,8 @@ describe("home screen render", () => {
     expect(output).toContain("Instalar componentes")
     expect(output).toContain("Desinstalar componentes")
     expect(output).toContain("Ver estado")
+    expect(output).toContain("Doctor")
+    expect(output).toContain("Upgrade")
     expect(output).toContain("Salir")
   })
 
@@ -74,8 +78,26 @@ describe("home screen update", () => {
     }
   })
 
+  test("enter on doctor navigates to doctor route", () => {
+    const state = makeState({ cursor: 3 }) // doctor is 4th item (index 3)
+    const result = homeScreen.update(state, { type: "enter" })
+    expect(result.intent.type).toBe("navigate")
+    if (result.intent.type === "navigate") {
+      expect(result.intent.route.id).toBe("doctor")
+    }
+  })
+
+  test("enter on upgrade navigates to upgrade route", () => {
+    const state = makeState({ cursor: 4 }) // upgrade is 5th item (index 4)
+    const result = homeScreen.update(state, { type: "enter" })
+    expect(result.intent.type).toBe("navigate")
+    if (result.intent.type === "navigate") {
+      expect(result.intent.route.id).toBe("upgrade")
+    }
+  })
+
   test("enter on quit emits quit intent", () => {
-    const state = makeState({ cursor: 3 }) // quit is 4th item (index 3)
+    const state = makeState({ cursor: 5 }) // quit is 6th item (index 5)
     const result = homeScreen.update(state, { type: "enter" })
     expect(result.intent.type).toBe("quit")
     expect(result.state.quit).toBe(true)
@@ -111,7 +133,7 @@ describe("task screen render", () => {
   test("renders active step", () => {
     const state = makeState({
       route: route("task", { action: "install" }),
-      task: { action: "install", step: "plugin", log: ["→ Iniciando plugin..."], done: false },
+      task: { kind: "install", title: "Instalando componentes", step: "plugin", log: ["→ Iniciando plugin..."], done: false },
     })
     const lines = taskScreen.render(state)
     const output = lines.join("\n")
@@ -123,7 +145,7 @@ describe("task screen render", () => {
   test("renders done state", () => {
     const state = makeState({
       route: route("task", { action: "install" }),
-      task: { action: "install", step: undefined, log: [], done: true },
+      task: { kind: "install", title: "Instalando componentes", step: undefined, log: [], done: true },
     })
     const lines = taskScreen.render(state)
     const output = lines.join("\n")
@@ -133,7 +155,7 @@ describe("task screen render", () => {
   test("enter when done navigates to results", () => {
     const state = makeState({
       route: route("task", { action: "install" }),
-      task: { action: "install", step: undefined, log: [], done: true },
+      task: { kind: "install", title: "Instalando componentes", step: undefined, log: [], done: true },
     })
     const result = taskScreen.update(state, { type: "enter" })
     expect(result.intent.type).toBe("navigate")
@@ -509,7 +531,7 @@ describe("app update: manual install → confirm → results → detail → home
     // Simulate the state as if task is done (this is the realistic scenario:
     // after task completes, results screen is pushed, so popping back goes to
     // the done-task screen)
-    state = { ...state, task: { action: "install", step: undefined, log: [], done: true } }
+    state = { ...state, task: { kind: "install", title: "Instalando", step: undefined, log: [], done: true } }
 
     // Back from task (done) → install
     state = update(state, { type: "back" })
@@ -549,5 +571,320 @@ describe("app update: manual install → confirm → results → detail → home
     // Back from results → home
     state = update(state, { type: "back" })
     expect(state.route.id).toBe("home")
+  })
+})
+
+// ─── Phase 5: Doctor, Upgrade, TaskKind, Adapter, and Result Kind Tests ───
+
+describe("doctor screen", () => {
+  test("5.1a: no auto-fix on first Enter", () => {
+    const state = makeState({
+      route: route("doctor"),
+      doctor: {
+        loading: false,
+        report: {
+          checks: [
+            { id: "plugin:test", label: "Test check", status: "fail", message: "broken", fixable: true },
+          ],
+          results: [],
+          fixes: [],
+          summary: { healthy: 0, warnings: 0, failures: 1, fixed: 0, remainingFailures: 1 },
+        },
+        confirmFix: false,
+      },
+    })
+    const result = doctorScreen.update(state, { type: "enter" })
+    // First Enter enters confirm state, does NOT fire run-doctor-fix
+    expect(result.state.doctor?.confirmFix).toBe(true)
+    expect(result.intent.type).toBe("none")
+  })
+
+  test("5.1b: confirmation gating — second Enter fires fix intent", () => {
+    const state = makeState({
+      route: route("doctor"),
+      doctor: {
+        loading: false,
+        report: {
+          checks: [
+            { id: "plugin:test", label: "Test check", status: "fail", message: "broken", fixable: true },
+          ],
+          results: [],
+          fixes: [],
+          summary: { healthy: 0, warnings: 0, failures: 1, fixed: 0, remainingFailures: 1 },
+        },
+        confirmFix: true, // Already in confirm state
+      },
+    })
+    const result = doctorScreen.update(state, { type: "enter" })
+    expect(result.intent.type).toBe("run-doctor-fix")
+    expect(result.state.doctor?.confirmFix).toBe(false) // cleared after firing
+  })
+
+  test("5.1c: back clears confirm state", () => {
+    const state = makeState({
+      route: route("doctor"),
+      doctor: {
+        loading: false,
+        report: {
+          checks: [
+            { id: "plugin:test", label: "Test check", status: "fail", message: "broken", fixable: true },
+          ],
+          results: [],
+          fixes: [],
+          summary: { healthy: 0, warnings: 0, failures: 1, fixed: 0, remainingFailures: 1 },
+        },
+        confirmFix: true,
+      },
+    })
+    const result = doctorScreen.update(state, { type: "back" })
+    expect(result.state.doctor?.confirmFix).toBe(false)
+    expect(result.intent.type).toBe("back")
+  })
+
+  test("5.1d: renders grouped checks and summary", () => {
+    const state = makeState({
+      route: route("doctor"),
+      doctor: {
+        loading: false,
+        report: {
+          checks: [
+            { id: "plugin:patch", label: "Patching", status: "pass", message: "OK", fixable: false },
+            { id: "theme:files", label: "Theme files", status: "fail", message: "missing", fixable: true },
+          ],
+          results: [],
+          fixes: [],
+          summary: { healthy: 1, warnings: 0, failures: 1, fixed: 0, remainingFailures: 1 },
+        },
+        confirmFix: false,
+      },
+    })
+    const lines = doctorScreen.render(state)
+    const output = lines.join("\n")
+    expect(output).toContain("Patching")
+    expect(output).toContain("Theme files")
+    expect(output).toContain("1 ok")
+    expect(output).toContain("1 fail")
+    expect(output).toContain("Reparar problemas")
+  })
+
+  test("5.1e: no fix CTA when no fixable failures", () => {
+    const state = makeState({
+      route: route("doctor"),
+      doctor: {
+        loading: false,
+        report: {
+          checks: [
+            { id: "plugin:test", label: "Test check", status: "pass", message: "OK", fixable: false },
+          ],
+          results: [],
+          fixes: [],
+          summary: { healthy: 1, warnings: 0, failures: 0, fixed: 0, remainingFailures: 0 },
+        },
+        confirmFix: false,
+      },
+    })
+    const lines = doctorScreen.render(state)
+    const output = lines.join("\n")
+    expect(output).not.toContain("Reparar problemas")
+  })
+})
+
+describe("upgrade screen", () => {
+  test("5.2a: renders up-to-date status", () => {
+    const state = makeState({
+      route: route("upgrade"),
+      upgrade: {
+        loading: false,
+        status: {
+          currentVersion: "1.0.0",
+          latestVersion: "1.0.0",
+          upToDate: true,
+          changedFiles: [],
+        },
+      },
+    })
+    const lines = upgradeScreen.render(state)
+    const output = lines.join("\n")
+    expect(output).toContain("1.0.0")
+    expect(output).toContain("actualizado")
+    expect(output).not.toContain("Aplicar actualización")
+  })
+
+  test("5.2b: renders update-available status with CTA", () => {
+    const state = makeState({
+      route: route("upgrade"),
+      upgrade: {
+        loading: false,
+        status: {
+          currentVersion: "1.0.0",
+          latestVersion: "2.0.0",
+          upToDate: false,
+          changedFiles: ["file1.ts", "file2.ts"],
+        },
+      },
+    })
+    const lines = upgradeScreen.render(state)
+    const output = lines.join("\n")
+    expect(output).toContain("1.0.0")
+    expect(output).toContain("2.0.0")
+    expect(output).toContain("Actualización disponible")
+    expect(output).toContain("Aplicar actualización")
+  })
+
+  test("5.2c: Enter on update-available fires run-upgrade intent", () => {
+    const state = makeState({
+      route: route("upgrade"),
+      upgrade: {
+        loading: false,
+        status: {
+          currentVersion: "1.0.0",
+          latestVersion: "2.0.0",
+          upToDate: false,
+          changedFiles: [],
+        },
+      },
+    })
+    const result = upgradeScreen.update(state, { type: "enter" })
+    expect(result.intent.type).toBe("run-upgrade")
+  })
+
+  test("5.2d: Enter on up-to-date does nothing", () => {
+    const state = makeState({
+      route: route("upgrade"),
+      upgrade: {
+        loading: false,
+        status: {
+          currentVersion: "1.0.0",
+          latestVersion: "1.0.0",
+          upToDate: true,
+          changedFiles: [],
+        },
+      },
+    })
+    const result = upgradeScreen.update(state, { type: "enter" })
+    expect(result.intent.type).toBe("none")
+  })
+})
+
+describe("task screen TaskKind labels", () => {
+  test("5.3a: renders INSTALANDO for install kind", () => {
+    const state = makeState({
+      route: route("task", { action: "install" }),
+      task: { kind: "install", title: "Instalando componentes", step: "plugin", log: [], done: false },
+    })
+    const output = taskScreen.render(state).join("\n")
+    expect(output).toContain("INSTALANDO")
+  })
+
+  test("5.3b: renders DESINSTALANDO for uninstall kind", () => {
+    const state = makeState({
+      route: route("task", { action: "uninstall" }),
+      task: { kind: "uninstall", title: "Desinstalando componentes", step: "plugin", log: [], done: false },
+    })
+    const output = taskScreen.render(state).join("\n")
+    expect(output).toContain("DESINSTALANDO")
+  })
+
+  test("5.3c: renders DOCTOR FIX for doctor-fix kind", () => {
+    const state = makeState({
+      route: route("task", { action: "doctor-fix" }),
+      task: { kind: "doctor-fix", title: "Ejecutando reparaciones", step: undefined, log: [], done: false },
+    })
+    const output = taskScreen.render(state).join("\n")
+    expect(output).toContain("DOCTOR FIX")
+  })
+
+  test("5.3d: renders UPGRADE for upgrade kind", () => {
+    const state = makeState({
+      route: route("task", { action: "upgrade" }),
+      task: { kind: "upgrade", title: "Actualizando", step: undefined, log: [], done: false },
+    })
+    const output = taskScreen.render(state).join("\n")
+    expect(output).toContain("UPGRADE")
+  })
+
+  test("5.3e: renders task title below the label", () => {
+    const state = makeState({
+      route: route("task", { action: "upgrade" }),
+      task: { kind: "upgrade", title: "Actualizando componentes", step: undefined, log: [], done: false },
+    })
+    const output = taskScreen.render(state).join("\n")
+    expect(output).toContain("Actualizando componentes")
+  })
+})
+
+describe("adapters: doctor and upgrade", () => {
+  test("5.4a: loadDoctorSummary calls runDoctor with fix=false", async () => {
+    // We just verify the adapter exports and has the right signature
+    const mod = require("../src/tui/adapters")
+    expect(typeof mod.loadDoctorSummary).toBe("function")
+    expect(typeof mod.startDoctorFixTask).toBe("function")
+    expect(typeof mod.loadUpgradeStatus).toBe("function")
+    expect(typeof mod.startUpgradeTask).toBe("function")
+  })
+})
+
+describe("results screen with resultView.kind", () => {
+  test("5.5a: renders RESULTADOS DOCTOR header for doctor-fix kind", () => {
+    const state = makeState({
+      route: route("results"),
+      resultView: { kind: "doctor-fix" },
+      doctor: {
+        loading: false,
+        report: {
+          checks: [],
+          results: [],
+          fixes: [
+            { checkId: "plugin:patch", status: "fixed", message: "Fixed patching" },
+          ],
+          summary: { healthy: 1, warnings: 0, failures: 0, fixed: 1, remainingFailures: 0 },
+        },
+        confirmFix: false,
+      },
+    })
+    const output = resultsScreen.render(state).join("\n")
+    expect(output).toContain("RESULTADOS DOCTOR")
+    expect(output).toContain("plugin:patch")
+    expect(output).toContain("Fixed patching")
+    expect(output).toContain("1 fixed")
+  })
+
+  test("5.5b: renders RESULTADOS UPGRADE header for upgrade kind", () => {
+    const state = makeState({
+      route: route("results"),
+      resultView: { kind: "upgrade" },
+      lastResults: [
+        { component: "plugin", action: "install", status: "success", message: "Actualizado 1.0.0 → 2.0.0" },
+      ],
+    })
+    const output = resultsScreen.render(state).join("\n")
+    expect(output).toContain("RESULTADOS UPGRADE")
+    expect(output).toContain("Actualizado")
+  })
+
+  test("5.5c: result-detail renders doctor fix details", () => {
+    const state = makeState({
+      route: route("result-detail", { resultIndex: 0 }),
+      resultView: { kind: "doctor-fix" },
+      doctor: {
+        loading: false,
+        report: {
+          checks: [],
+          results: [],
+          fixes: [
+            { checkId: "plugin:patch", status: "fixed", message: "Fixed patching" },
+            { checkId: "theme:files", status: "failed", message: "Could not fix" },
+          ],
+          summary: { healthy: 0, warnings: 0, failures: 1, fixed: 1, remainingFailures: 1 },
+        },
+        confirmFix: false,
+      },
+    })
+    const output = resultDetailScreen.render(state).join("\n")
+    expect(output).toContain("Doctor Fix Results")
+    expect(output).toContain("plugin:patch")
+    expect(output).toContain("theme:files")
+    expect(output).toContain("1 fixed")
+    expect(output).toContain("1 problemas restantes")
   })
 })

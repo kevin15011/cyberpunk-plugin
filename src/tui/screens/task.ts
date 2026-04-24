@@ -1,18 +1,32 @@
-// src/tui/screens/task.ts — Task progress screen: progress log, active component step, spinner
+// src/tui/screens/task.ts — Task progress screen: progress log, active step, spinner
 
-import type { KeyEvent, ScreenModule, ScreenResult, TUIState } from "../types"
+import type { KeyEvent, ScreenModule, ScreenResult, TaskKind, TUIState } from "../types"
 import { cyan, green, red, yellow, bold, gray, separator, pink } from "../theme"
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 const SPINNER_COLORS = [cyan, pink, cyan, pink, cyan, pink, cyan, pink, cyan, pink]
 
+/** Map TaskKind to display label */
+function taskKindLabel(kind: TaskKind | undefined): string {
+  switch (kind) {
+    case "install": return "INSTALANDO"
+    case "uninstall": return "DESINSTALANDO"
+    case "doctor-fix": return "DOCTOR FIX"
+    case "upgrade": return "UPGRADE"
+    default: return "PROCESANDO"
+  }
+}
+
 export const taskScreen: ScreenModule = {
   render(state: TUIState): string[] {
     const lines: string[] = []
     const task = state.task
-    const action = task?.action === "install" ? "INSTALANDO" : "DESINSTALANDO"
+    const label = taskKindLabel(task?.kind)
 
-    lines.push(`  ${bold(cyan(action))}`)
+    lines.push(`  ${bold(cyan(label))}`)
+    if (task?.title) {
+      lines.push(gray(`  ${task.title}`))
+    }
     lines.push(separator())
     lines.push("")
 

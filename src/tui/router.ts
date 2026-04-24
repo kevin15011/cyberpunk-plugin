@@ -17,6 +17,10 @@ export function pushRoute(state: TUIState, next: AppRoute): TUIState {
     message: undefined,
     // Reset install phase when navigating away from install screen
     ...(next.id !== "install" ? { _installPhase: undefined } : {}),
+    // Reset doctor state when navigating away from doctor screen
+    ...(next.id !== "doctor" ? { doctor: undefined } : {}),
+    // Reset upgrade state when navigating away from upgrade screen
+    ...(next.id !== "upgrade" ? { upgrade: undefined } : {}),
   }
 }
 

@@ -228,6 +228,8 @@ describe("installMode default behavior via loadConfig", () => {
 // ── Upgrade dispatch via runUpgrade ───────────────────────────────
 
 describe("runUpgrade dispatch by installMode", () => {
+  const MOCK_HASH = "a".repeat(64) // 64 hex chars = SHA256
+
   test("binary config dispatches to binary upgrade path", async () => {
     const { home, binaryPath, configPath, cleanup } = createBinaryTestEnv("dispatch-binary")
     const originalFetch = globalThis.fetch
@@ -250,6 +252,11 @@ describe("runUpgrade dispatch by installMode", () => {
 
     try {
       const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => MOCK_HASH,
+        smokeTestBinary: () => true,
+      })
       const result = await withHome(home, () => mod.runUpgrade())
 
       expect(result).toMatchObject({
@@ -296,6 +303,11 @@ describe("runUpgrade dispatch by installMode", () => {
 
     try {
       const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => MOCK_HASH,
+        smokeTestBinary: () => true,
+      })
       const result = await withHome(home, () => mod.runUpgrade())
 
       expect(result).toMatchObject({
@@ -339,6 +351,12 @@ describe("runUpgrade dispatch by installMode", () => {
     try {
       await withMockedPlatform("darwin", "x64", async () => {
         const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+        mod.__setUpgradeTestOverrides({
+          fetchChecksums: async () => MOCK_HASH,
+          computeFileSha256: () => MOCK_HASH,
+          smokeTestBinary: () => true,
+          prepareDarwinBinary: () => ({ attempted: true }),
+        })
         const result = await withHome(home, () => mod.runUpgrade())
 
         expect(result).toMatchObject({
@@ -386,6 +404,12 @@ describe("runUpgrade dispatch by installMode", () => {
     try {
       await withMockedPlatform("darwin", "arm64", async () => {
         const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+        mod.__setUpgradeTestOverrides({
+          fetchChecksums: async () => MOCK_HASH,
+          computeFileSha256: () => MOCK_HASH,
+          smokeTestBinary: () => true,
+          prepareDarwinBinary: () => ({ attempted: true }),
+        })
         const result = await withHome(home, () => mod.runUpgrade())
 
         expect(result).toMatchObject({
@@ -575,6 +599,8 @@ describe("checkUpgrade dispatch", () => {
 })
 
 describe("binary upgrade stale-binary protection", () => {
+  const MOCK_HASH = "a".repeat(64)
+
   test("runUpgrade replaces the binary even when release semver matches local version", async () => {
     const { home, configPath, binaryPath, cleanup } = createBinaryTestEnv("same-version-download")
     const originalFetch = globalThis.fetch
@@ -603,6 +629,11 @@ describe("binary upgrade stale-binary protection", () => {
 
     try {
       const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => MOCK_HASH,
+        smokeTestBinary: () => true,
+      })
       const result = await withHome(home, () => mod.runUpgrade())
 
       expect(result).toMatchObject({
@@ -658,6 +689,210 @@ describe("binary upgrade stale-binary protection", () => {
       expect(readFileSync(binaryPath, "utf8")).toBe("stale-binary")
       expect(readFileSync(configPath, "utf8")).toBe(beforeConfig)
       expect(fetchCalls).toHaveLength(1)
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+})
+
+// ── Upgrade verification tests (mac readiness) ────────────────────
+
+describe("upgrade verification: checksum mismatch", () => {
+  const MOCK_HASH = "a".repeat(64)
+
+  test("5.1: checksum mismatch — existing binary untouched, error returned", async () => {
+    const { home, binaryPath, configPath, cleanup } = createBinaryTestEnv("checksum-mismatch")
+    const originalFetch = globalThis.fetch
+
+    // Write existing binary content
+    writeFileSync(binaryPath, "original-binary", "utf8")
+    const beforeConfig = readFileSync(configPath, "utf8")
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("new-binary-content"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => "b".repeat(64), // different hash → mismatch
+        smokeTestBinary: () => true,
+      })
+      const result = await withHome(home, () => mod.runUpgrade())
+
+      expect(result.status).toBe("error")
+      expect(result.error).toContain("checksum mismatch")
+      expect(result.error).toContain(MOCK_HASH)
+
+      // Existing binary untouched
+      expect(readFileSync(binaryPath, "utf8")).toBe("original-binary")
+      // Config untouched
+      expect(readFileSync(configPath, "utf8")).toBe(beforeConfig)
+      // .tmp cleaned up
+      expect(existsSync(binaryPath + ".tmp")).toBe(false)
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+})
+
+describe("upgrade verification: smoke test rejection", () => {
+  const MOCK_HASH = "a".repeat(64)
+
+  test("5.2: smoke test failure — no replace, .tmp cleanup", async () => {
+    const { home, binaryPath, cleanup } = createBinaryTestEnv("smoke-test-reject")
+    const originalFetch = globalThis.fetch
+
+    writeFileSync(binaryPath, "original-binary", "utf8")
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("bad-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => MOCK_HASH, // checksum OK
+        smokeTestBinary: () => false, // smoke fails
+      })
+      const result = await withHome(home, () => mod.runUpgrade())
+
+      expect(result.status).toBe("error")
+      expect(result.error).toContain("failed verification")
+
+      // Existing binary untouched
+      expect(readFileSync(binaryPath, "utf8")).toBe("original-binary")
+      // .tmp cleaned up
+      expect(existsSync(binaryPath + ".tmp")).toBe(false)
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+})
+
+describe("upgrade verification: darwin quarantine branch", () => {
+  const MOCK_HASH = "a".repeat(64)
+
+  test("5.3: darwin quarantine failure — no replace, fallback guidance", async () => {
+    const { home, binaryPath, cleanup } = createBinaryTestEnv("darwin-quarantine-fail")
+    const originalFetch = globalThis.fetch
+
+    writeFileSync(binaryPath, "original-binary", "utf8")
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("darwin-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      await withMockedPlatform("darwin", "arm64", async () => {
+        const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+        mod.__setUpgradeTestOverrides({
+          fetchChecksums: async () => MOCK_HASH,
+          computeFileSha256: () => MOCK_HASH, // checksum OK
+          smokeTestBinary: () => true, // smoke OK
+          prepareDarwinBinary: () => ({
+            attempted: true,
+            guidance: "Could not remove quarantine attribute. Run manually:\n  xattr -d com.apple.quarantine ...",
+          }),
+        })
+        const result = await withHome(home, () => mod.runUpgrade())
+
+        expect(result.status).toBe("error")
+        expect(result.error).toContain("quarantine")
+        expect(result.error).toContain("xattr")
+
+        // Existing binary untouched
+        expect(readFileSync(binaryPath, "utf8")).toBe("original-binary")
+        // .tmp cleaned up
+        expect(existsSync(binaryPath + ".tmp")).toBe(false)
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+
+  test("darwin quarantine success — binary replaced", async () => {
+    const { home, binaryPath, cleanup } = createBinaryTestEnv("darwin-quarantine-ok")
+    const originalFetch = globalThis.fetch
+
+    writeFileSync(binaryPath, "original-binary", "utf8")
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      }
+
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("darwin-success-binary"), { status: 200 })
+      }
+
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      await withMockedPlatform("darwin", "arm64", async () => {
+        const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+        mod.__setUpgradeTestOverrides({
+          fetchChecksums: async () => MOCK_HASH,
+          computeFileSha256: () => MOCK_HASH,
+          smokeTestBinary: () => true,
+          prepareDarwinBinary: () => ({ attempted: true }), // success, no guidance
+        })
+        const result = await withHome(home, () => mod.runUpgrade())
+
+        expect(result.status).toBe("upgraded")
+        expect(readFileSync(binaryPath, "utf8")).toBe("darwin-success-binary")
+      })
     } finally {
       globalThis.fetch = originalFetch
       cleanup()
