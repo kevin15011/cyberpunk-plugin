@@ -6,7 +6,7 @@ import type { AgentDetectResult } from "../src/detection/types"
 
 describe("buildEnvironmentStatus", () => {
   async function getBuildEnvironmentStatus() {
-    const mod = await import("../src/commands/status")
+    const mod = await import("../src/commands/status-routing")
     return mod.buildEnvironmentStatus
   }
 

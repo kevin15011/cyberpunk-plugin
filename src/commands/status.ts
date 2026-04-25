@@ -9,8 +9,7 @@ import { getRtkComponent } from "../components/rtk"
 import { getTmuxComponent } from "../components/tmux"
 import type { ComponentModule } from "../components/types"
 import type { ComponentId } from "../config/schema"
-import type { AgentTarget, PlatformInfo } from "../domain/environment"
-import type { AgentDetectResult } from "../detection/types"
+export { buildEnvironmentStatus } from "./status-routing"
 
 const ALL_COMPONENTS: (() => ComponentModule)[] = [
   getPluginComponent,
@@ -20,24 +19,6 @@ const ALL_COMPONENTS: (() => ComponentModule)[] = [
   getRtkComponent,
   getTmuxComponent,
 ]
-
-/**
- * Build a serializable environment status record from platform info and agent
- * detection results. Used by status command to show platform + detected agents
- * alongside component status.
- */
-export function buildEnvironmentStatus(
-  platform: PlatformInfo,
-  agents: Partial<Record<AgentTarget, AgentDetectResult>>
-): {
-  platform: PlatformInfo
-  agents: Partial<Record<AgentTarget, AgentDetectResult>>
-} {
-  return {
-    platform: { ...platform },
-    agents: { ...agents },
-  }
-}
 
 export async function collectStatus(
   filterIds?: ComponentId[]

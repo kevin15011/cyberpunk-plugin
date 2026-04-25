@@ -66,55 +66,27 @@ describe("extractBetweenMarkers", () => {
 // and creating a fake sdd-phase-common.md file.
 
 describe("patchSddPhaseCommon", () => {
-  const TEMP_HOME = join(tmpdir(), `cyberpunk-patch-test-${Date.now()}`)
-  const SHARED_DIR = join(TEMP_HOME, ".config", "opencode", "skills", "_shared")
-  const TARGET_FILE = join(SHARED_DIR, "sdd-phase-common.md")
   const ORIGINAL_HOME = process.env.HOME
-
-  // We dynamically import after setting HOME
-  // But since the module-level HOME is already computed, we need to test
-  // by directly manipulating the file that patchSddPhaseCommon reads.
-  // Instead, we'll test the logic by using the exported function directly
-  // which reads from the real HOME path. For isolated testing, we'll
-  // temporarily create the file at the real path if safe, or use a
-  // different approach.
-
-  // Better approach: test the patching logic by calling patchSddPhaseCommon
-  // with the actual HOME. Since the function is idempotent, running it
-  // on the actual file is safe. But for true unit tests, let's test
-  // with a controlled environment.
-
-  // We'll use the real sdd-phase-common.md for integration-style tests,
-  // or we directly test the logic patterns.
-
-  const REAL_SDD_PATH = join(
-    process.env.HOME || "~",
-    ".config", "opencode", "skills", "_shared", "sdd-phase-common.md"
-  )
-
-  // Store original content for restoration
-  let originalContent: string | null = null
+  let tempHome = ""
+  let sharedDir = ""
+  let targetFile = ""
 
   beforeEach(() => {
-    // Save original file if it exists
-    if (existsSync(REAL_SDD_PATH)) {
-      originalContent = readFileSync(REAL_SDD_PATH, "utf8")
-    } else {
-      originalContent = null
-      mkdirSync(SHARED_DIR, { recursive: true })
-    }
+    tempHome = join(tmpdir(), `cyberpunk-patch-test-${Date.now()}-${Math.random()}`)
+    sharedDir = join(tempHome, ".config", "opencode", "skills", "_shared")
+    targetFile = join(sharedDir, "sdd-phase-common.md")
+    process.env.HOME = tempHome
+    mkdirSync(sharedDir, { recursive: true })
   })
 
   afterEach(() => {
-    // Restore original content
-    if (originalContent !== null) {
-      writeFileSync(REAL_SDD_PATH, originalContent, "utf8")
-    } else if (existsSync(REAL_SDD_PATH)) {
-      rmSync(REAL_SDD_PATH)
+    if (ORIGINAL_HOME === undefined) {
+      delete process.env.HOME
+    } else {
+      process.env.HOME = ORIGINAL_HOME
     }
-    // Clean up temp dir
-    if (existsSync(TEMP_HOME)) {
-      rmSync(TEMP_HOME, { recursive: true, force: true })
+    if (tempHome && existsSync(tempHome)) {
+      rmSync(tempHome, { recursive: true, force: true })
     }
   })
 
@@ -130,8 +102,8 @@ Some content here.
 ## B. Something Else
 
 More content.`
-    mkdirSync(join(REAL_SDD_PATH, ".."), { recursive: true })
-    writeFileSync(REAL_SDD_PATH, contentWithoutMarkers, "utf8")
+    mkdirSync(sharedDir, { recursive: true })
+    writeFileSync(targetFile, contentWithoutMarkers, "utf8")
 
     // Dynamic re-import to get fresh function with current HOME
     const { patchSddPhaseCommon } = await loadPluginModule()
@@ -139,7 +111,7 @@ More content.`
 
     expect(result).toBe(true)
 
-    const patched = readFileSync(REAL_SDD_PATH, "utf8")
+    const patched = readFileSync(targetFile, "utf8")
     expect(patched).toContain(START_MARKER)
     expect(patched).toContain(END_MARKER)
     expect(patched).toContain("## E. Session Stats")
@@ -158,15 +130,15 @@ Some content.
 ## E. Old Stats Section
 
 Old content that should be replaced.`
-    mkdirSync(join(REAL_SDD_PATH, ".."), { recursive: true })
-    writeFileSync(REAL_SDD_PATH, contentWithE, "utf8")
+    mkdirSync(sharedDir, { recursive: true })
+    writeFileSync(targetFile, contentWithE, "utf8")
 
     const { patchSddPhaseCommon } = await loadPluginModule()
     const result = patchSddPhaseCommon()
 
     expect(result).toBe(true)
 
-    const patched = readFileSync(REAL_SDD_PATH, "utf8")
+    const patched = readFileSync(targetFile, "utf8")
     expect(patched).toContain(START_MARKER)
     expect(patched).toContain(END_MARKER)
     expect(patched).toContain(SECTION_E_TEMPLATE)
@@ -181,8 +153,8 @@ Old content that should be replaced.`
     // First, install the markers
     const markedSection = `\n${START_MARKER}\n${MANAGED_SDD_TEMPLATE}\n${END_MARKER}\n`
     const contentWithMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.${markedSection}`
-    mkdirSync(join(REAL_SDD_PATH, ".."), { recursive: true })
-    writeFileSync(REAL_SDD_PATH, contentWithMarkers, "utf8")
+    mkdirSync(sharedDir, { recursive: true })
+    writeFileSync(targetFile, contentWithMarkers, "utf8")
 
     const { patchSddPhaseCommon } = await loadPluginModule()
     const result = patchSddPhaseCommon()
@@ -190,7 +162,7 @@ Old content that should be replaced.`
     expect(result).toBe(false)
 
     // File should be unchanged
-    const after = readFileSync(REAL_SDD_PATH, "utf8")
+    const after = readFileSync(targetFile, "utf8")
     expect(after).toBe(contentWithMarkers)
   })
 
@@ -198,15 +170,15 @@ Old content that should be replaced.`
     const { END_MARKER, SECTION_E_TEMPLATE, START_MARKER } = await loadPluginModule()
     const markedSection = `\n${START_MARKER}\n## E. Different Content\n\nThis is wrong.\n${END_MARKER}\n`
     const contentWithBadMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.${markedSection}`
-    mkdirSync(join(REAL_SDD_PATH, ".."), { recursive: true })
-    writeFileSync(REAL_SDD_PATH, contentWithBadMarkers, "utf8")
+    mkdirSync(sharedDir, { recursive: true })
+    writeFileSync(targetFile, contentWithBadMarkers, "utf8")
 
     const { patchSddPhaseCommon } = await loadPluginModule()
     const result = patchSddPhaseCommon()
 
     expect(result).toBe(true)
 
-    const patched = readFileSync(REAL_SDD_PATH, "utf8")
+    const patched = readFileSync(targetFile, "utf8")
     expect(patched).toContain(START_MARKER)
     expect(patched).toContain(END_MARKER)
     expect(patched).toContain(SECTION_E_TEMPLATE)
@@ -216,8 +188,8 @@ Old content that should be replaced.`
 
   test("missing file: sdd-phase-common.md absent → returns false, no error", async () => {
     // Remove the file if it exists
-    if (existsSync(REAL_SDD_PATH)) {
-      rmSync(REAL_SDD_PATH)
+    if (existsSync(targetFile)) {
+      rmSync(targetFile)
     }
 
     const { patchSddPhaseCommon } = await loadPluginModule()
