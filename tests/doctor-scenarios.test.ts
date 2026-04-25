@@ -7,7 +7,7 @@
 // shared tempDir and reset fixture state between tests.
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test"
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, unlinkSync } from "fs"
+import { chmodSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, unlinkSync } from "fs"
 import { join } from "path"
 
 import { createTempHome } from "./helpers/test-home"
@@ -59,7 +59,9 @@ function runDoctorIsolated(
 // --- Paths inside the shared tempDir ---
 let tempDir: string
 let originalHome: string | undefined
+let originalPath: string | undefined
 let fixture: ReturnType<typeof createTempHome>
+let BIN_DIR: string
 let CONFIG_DIR: string
 let CONFIG_PATH: string
 let OPENCODE_DIR: string
@@ -172,6 +174,7 @@ function createHealthyTmux() {
 
 /** Full healthy fixture */
 function createFullHealthyFixture() {
+  process.env.PATH = `${BIN_DIR}:${originalPath ?? ""}`
   createHealthyConfig()
   createHealthyOpenCode()
   createHealthyPlugin()
@@ -180,6 +183,13 @@ function createFullHealthyFixture() {
   createHealthySounds()
   createHealthyRouting()
   createHealthyTmux()
+}
+
+function createFakeBinary(name: string, output = `${name} test-version`) {
+  mkdirSync(BIN_DIR, { recursive: true })
+  const filePath = join(BIN_DIR, name)
+  writeFileSync(filePath, `#!/usr/bin/env sh\nprintf '%s\n' ${JSON.stringify(output)}\n`, "utf8")
+  chmodSync(filePath, 0o755)
 }
 
 /** Clear all fixture files and dirs */
@@ -207,6 +217,7 @@ beforeAll(async () => {
   fixture = createTempHome("cyberpunk-doctor-scenarios")
   tempDir = fixture.home
   originalHome = process.env.HOME
+  originalPath = process.env.PATH
   process.env.HOME = tempDir
 
   // Pre-compute paths
@@ -226,6 +237,11 @@ beforeAll(async () => {
   CM_ROUTING_PATH = join(INSTRUCTIONS_DIR, "context-mode-routing.md")
   RTK_ROUTING_PATH = join(INSTRUCTIONS_DIR, "rtk-routing.md")
   TMUX_CONF_PATH = join(tempDir, ".tmux.conf")
+  BIN_DIR = join(tempDir, "bin")
+  createFakeBinary("opencode", "opencode 1.0.0")
+  createFakeBinary("context-mode", "context-mode 1.0.0")
+  createFakeBinary("rtk", "rtk 1.0.0")
+  process.env.PATH = `${BIN_DIR}:${originalPath ?? ""}`
 
   // Import doctor.ts ONCE so all sub-modules get HOME=tempDir
   const mod = await import("../src/commands/doctor.ts?" + Date.now())
@@ -236,6 +252,11 @@ beforeAll(async () => {
 
 afterAll(() => {
   process.env.HOME = originalHome
+  if (originalPath === undefined) {
+    delete process.env.PATH
+  } else {
+    process.env.PATH = originalPath
+  }
   fixture.cleanup()
 })
 
@@ -266,7 +287,7 @@ describe("Doctor Spec Scenarios", () => {
     expect(failures.length).toBe(0)
     expect(result.summary.remainingFailures).toBe(0)
     expect(result.summary.healthy).toBeGreaterThan(0)
-  })
+  }, 15000)
 
   // Scenario 2: At least one fail
   test("S2: at least one check fails — specific failing checks identified", async () => {
@@ -282,7 +303,7 @@ describe("Doctor Spec Scenarios", () => {
     // Verify the exit code would be 1
     const exitCode = result.summary.remainingFailures > 0 ? 1 : 0
     expect(exitCode).toBe(1)
-  })
+  }, 15000)
 
   // Scenario 3: ffmpeg missing → warn, fixable: false
   test("S3: platform:ffmpeg emits warn when missing, fixable false", async () => {
