@@ -21,7 +21,7 @@ export async function startInstallTask(
   componentIds: ComponentId[],
   hooks?: TaskHooks
 ): Promise<InstallResult[]> {
-  return runInstall(componentIds, "install", hooks)
+  return runInstall(componentIds, "install", { hooks })
 }
 
 /** Start an uninstall task with optional hooks */
@@ -29,7 +29,7 @@ export async function startUninstallTask(
   componentIds: ComponentId[],
   hooks?: TaskHooks
 ): Promise<InstallResult[]> {
-  return runInstall(componentIds, "uninstall", hooks)
+  return runInstall(componentIds, "uninstall", { hooks })
 }
 
 /** Start a preset-based install */
@@ -38,7 +38,7 @@ export async function startPresetInstall(
   hooks?: TaskHooks
 ): Promise<InstallResult[]> {
   const resolved = resolvePreset(presetName)
-  return runInstall(resolved.components, "install", hooks)
+  return runInstall(resolved.components, "install", { hooks })
 }
 
 /** Load doctor summary in read-only mode (no fixes) */

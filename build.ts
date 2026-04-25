@@ -1,4 +1,8 @@
 import { build, spawn } from "bun"
+import { parseBuildArgs, resolveOutfile } from "./src/build/config"
+
+const { targetPlatform } = parseBuildArgs(process.argv.slice(2))
+const outfile = resolveOutfile(targetPlatform)
 
 // Build and compile to standalone binary
 const result = await build({
@@ -17,7 +21,7 @@ if (!result.success) {
 
 // Use bun compile to create standalone binary
 const proc = spawn([
-  "bun", "build", "--compile", "./dist/index.js", "--outfile", "./cyberpunk"
+  "bun", "build", "--compile", "./dist/index.js", "--outfile", outfile
 ], {
   stdout: "inherit",
   stderr: "inherit",
@@ -25,7 +29,7 @@ const proc = spawn([
 
 const exitCode = await proc.exited
 if (exitCode === 0) {
-  console.log("Binary built: ./cyberpunk")
+  console.log(`Binary built: ${outfile}`)
 } else {
   console.error("Compile failed")
   process.exit(1)

@@ -7,9 +7,10 @@ import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { registerCyberpunkPlugin, unregisterCyberpunkPlugin, isOpenCodePluginRegistered, CYBERPUNK_PLUGIN_ENTRY } from "../opencode-config"
+import { getHomeDirAuto } from "../platform/paths"
 
 function getPluginPaths() {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDirAuto()
   const opencodePluginsDir = join(home, ".config", "opencode", "plugins")
 
   return {

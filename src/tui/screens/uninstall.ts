@@ -25,8 +25,8 @@ export const uninstallScreen: ScreenModule = {
     for (let i = 0; i < installed.length; i++) {
       const s = installed[i]
       const selected = state.selectedComponents.includes(s.id)
-      const check = selected ? green("◉") : gray("○")
-      const cursor = state.cursor === i ? cyan("❯") : " "
+      const check = selected ? green("[selected]") : gray("[ ]")
+      const cursor = state.cursor === i ? cyan(">") : " "
       lines.push(`  ${cursor} ${check} ${s.label}`)
     }
 

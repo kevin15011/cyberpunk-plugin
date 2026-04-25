@@ -13,11 +13,13 @@ import {
   registerOpenCodePlugin,
   unregisterOpenCodePlugin,
 } from "../opencode-config"
+import { getHomeDirAuto } from "../platform/paths"
+import { isCommandOnPath } from "../platform/shell"
 
 const RTK_ROUTING_MARKER = "<!-- cyberpunk-managed:rtk-routing -->"
 
 function getRtkPaths() {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDirAuto()
   const opencodeDir = join(home, ".config", "opencode")
   const instructionsDir = join(opencodeDir, "instructions")
 
@@ -67,17 +69,12 @@ function isRtkAvailable(): boolean {
 }
 
 function isCurlAvailable(): boolean {
-  try {
-    execSync("which curl", { stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("curl")
 }
 
 function installRtk(): boolean {
   try {
-    mkdirSync(join(process.env.HOME || process.env.USERPROFILE || "~", ".local", "bin"), { recursive: true })
+    mkdirSync(join(getHomeDirAuto(), ".local", "bin"), { recursive: true })
     execSync(
       "sh -c \"curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh\"",
       { stdio: "pipe" }
@@ -90,10 +87,17 @@ function installRtk(): boolean {
 
 function getRtkCommand(): string | null {
   const { localRtkPath } = getRtkPaths()
-  try {
-    const path = execSync("which rtk", { stdio: "pipe", encoding: "utf8" }).trim()
-    if (path) return path
-  } catch {}
+  if (isCommandOnPath("rtk")) {
+    try {
+      const { detectEnvironment } = require("../platform/detect") as typeof import("../platform/detect")
+      const env = detectEnvironment()
+      const cmd = env === "windows" ? "where rtk" : "which rtk"
+      const path = execSync(cmd, { stdio: "pipe", encoding: "utf8" }).trim()
+      if (path) return path.split("\n")[0].trim()
+    } catch {
+      // Lookup failed but isCommandOnPath said it's there — use local path
+    }
+  }
 
   return existsSync(localRtkPath) ? localRtkPath : null
 }

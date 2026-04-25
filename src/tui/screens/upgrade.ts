@@ -33,10 +33,10 @@ export const upgradeScreen: ScreenModule = {
 
     if (status.upToDate) {
       lines.push("")
-      lines.push(green("  ✓ Todo actualizado"))
+      lines.push(green("  [OK] Everything is up to date"))
     } else {
       lines.push("")
-      lines.push(yellow("  ⚠ Actualización disponible"))
+      lines.push(yellow("  [UPDATE] Update available"))
 
       if (status.changedFiles.length > 0) {
         lines.push(gray(`  Archivos modificados: ${status.changedFiles.length}`))
@@ -44,8 +44,8 @@ export const upgradeScreen: ScreenModule = {
 
       // Upgrade CTA
       lines.push("")
-      const cursor = state.cursor === 0 ? cyan("❯") : " "
-      lines.push(`  ${cursor} Aplicar actualización`)
+      const cursor = state.cursor === 0 ? cyan(">") : " "
+      lines.push(`  ${cursor} Apply update`)
     }
 
     lines.push("")

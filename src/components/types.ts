@@ -60,7 +60,7 @@ export interface DoctorContext {
 }
 
 export interface DoctorResult {
-  component: ComponentId | "platform" | "config"
+  component: ComponentId | "platform" | "config" | "agent-detection"
   checks: DoctorCheck[]
 }
 

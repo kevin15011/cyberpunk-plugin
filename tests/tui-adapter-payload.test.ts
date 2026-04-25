@@ -223,7 +223,8 @@ describe("adapter payload: startInstallTask with hooks", () => {
   beforeEach(() => {
     capturedInstallArgs = []
     mock.module("../src/commands/install", () => ({
-      runInstall: async (ids: ComponentId[], action: string, hooks?: any) => {
+      runInstall: async (ids: ComponentId[], action: string, options?: any) => {
+        const hooks = options?.hooks
         capturedInstallArgs.push({ ids: [...ids], action })
         // Simulate hook callbacks
         if (hooks) {
@@ -237,6 +238,7 @@ describe("adapter payload: startInstallTask with hooks", () => {
     }))
     mock.module("../src/commands/status", () => ({
       collectStatus: async () => [],
+      buildEnvironmentStatus: (platform: any, agents: any) => ({ platform, agents }),
     }))
     mock.module("../src/commands/doctor", () => ({
       runDoctor: async () => MOCK_DOCTOR_RESULT,

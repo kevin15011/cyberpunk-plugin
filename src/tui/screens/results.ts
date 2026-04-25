@@ -29,9 +29,9 @@ export const resultsScreen: ScreenModule = {
       if (resultKind === "doctor-fix" && state.doctor?.report) {
         const report = state.doctor.report
         for (const fix of report.fixes) {
-          const icon = fix.status === "fixed" ? green("✓")
-            : fix.status === "failed" ? red("✗")
-            : yellow("○")
+          const icon = fix.status === "fixed" ? green("[FIXED]")
+            : fix.status === "failed" ? red("[FAILED]")
+              : yellow("[SKIPPED]")
           lines.push(`  ${icon} ${fix.checkId}: ${fix.message}`)
         }
         const s = report.summary
@@ -44,7 +44,7 @@ export const resultsScreen: ScreenModule = {
       for (let i = 0; i < results.length; i++) {
         const r = results[i]
         const label = COMPONENT_LABELS[r.component as keyof typeof COMPONENT_LABELS] || r.component
-        const cursor = state.cursor === i ? cyan("❯") : " "
+        const cursor = state.cursor === i ? cyan(">") : " "
 
         // Determine action label based on result kind
         const actionLabel = resultKind === "upgrade" ? "Actualizado"
@@ -52,9 +52,9 @@ export const resultsScreen: ScreenModule = {
           : r.action === "install" ? "Instalado"
           : "Desinstalado"
 
-        const statusIcon = r.status === "success" ? green("✓")
-          : r.status === "error" ? red("✗")
-          : yellow("○")
+        const statusIcon = r.status === "success" ? green("[OK]")
+          : r.status === "error" ? red("[ERROR]")
+            : yellow("[SKIPPED]")
 
         const statusText = r.status === "success" ? green(`${actionLabel} correctamente`)
           : r.status === "error" ? red(`error: ${r.message ?? "unknown"}`)

@@ -74,7 +74,7 @@ describe("executeDoctorFixTask orchestration: state machine", () => {
     // Simulate successful fix result processing
     const log = [...state.task!.log]
     for (const fix of MOCK_FIXES) {
-      const icon = fix.status === "fixed" ? "✓" : fix.status === "failed" ? "✗" : "○"
+      const icon = fix.status === "fixed" ? "[FIXED]" : fix.status === "failed" ? "[FAILED]" : "[SKIPPED]"
       log.push(`  ${icon} ${fix.checkId}: ${fix.status} — ${fix.message}`)
     }
 
@@ -111,7 +111,7 @@ describe("executeDoctorFixTask orchestration: state machine", () => {
 
     // Simulate error
     const errorMsg = "Doctor crashed"
-    const log = [...state.task!.log, `  ✗ Error: ${errorMsg}`]
+    const log = [...state.task!.log, `  [ERROR] ${errorMsg}`]
     state = {
       ...state,
       task: { ...state.task!, done: true, step: undefined, log },
@@ -122,7 +122,7 @@ describe("executeDoctorFixTask orchestration: state machine", () => {
     expect(state.route.id).toBe("results")
     expect(state.task?.done).toBe(true)
     expect(state.task?.log).toHaveLength(2)
-    expect(state.task?.log[1]).toContain("Error: Doctor crashed")
+    expect(state.task?.log[1]).toContain("[ERROR] Doctor crashed")
   })
 
   test("pushRoute clears doctor when navigating to non-doctor route", () => {
@@ -182,7 +182,7 @@ describe("executeUpgradeTask orchestration: state machine", () => {
     state = { ...state, task: { kind, title: "Actualizando", step: undefined, log: ["→ Iniciando upgrade..."], done: false } }
 
     // Simulate successful upgrade result processing
-    const log = [...state.task!.log, "  ✓ upgraded"]
+    const log = [...state.task!.log, "  [OK] upgraded"]
 
     state = {
       ...state,
@@ -222,7 +222,7 @@ describe("executeUpgradeTask orchestration: state machine", () => {
         ...state.task!,
         done: true,
         step: undefined,
-        log: [...state.task!.log, `  ✗ Error: ${errorMsg}`],
+        log: [...state.task!.log, `  [ERROR] ${errorMsg}`],
       },
       lastResults: [{
         component: "plugin" as ComponentId,
@@ -250,7 +250,7 @@ describe("executeUpgradeTask orchestration: state machine", () => {
 
     state = {
       ...state,
-      task: { ...state.task!, done: true, step: undefined, log: [...state.task!.log, "  ○ up-to-date"] },
+      task: { ...state.task!, done: true, step: undefined, log: [...state.task!.log, "  [NO CHANGE] up-to-date"] },
       upgrade: undefined,
       resultView: { kind },
       lastResults: [{

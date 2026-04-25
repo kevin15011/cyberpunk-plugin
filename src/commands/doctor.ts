@@ -12,11 +12,15 @@ import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
 import { checkPlatformPrerequisites, getRuntimeDependencyChecks, isXattrAvailable, canCheckCodesign } from "../components/platform"
 import { detectEnvironment } from "../platform/detect"
+import { getHomeDirAuto } from "../platform/paths"
+import { isCommandOnPath } from "../platform/shell"
 import { checkConfigDoctor, repairConfigDefaults } from "../components/config-doctor"
 import { repairThemeActivation } from "../components/theme-doctor"
 import { join } from "path"
 import { existsSync } from "fs"
 import { insertManagedBlock, BUNDLED_TMUX_CONF, cloneTpm, runTpmScript } from "../components/tmux"
+import type { AgentTarget, PlatformInfo } from "../domain/environment"
+import type { AgentDetectResult } from "../detection/types"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -28,6 +32,75 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
 }
 
 /**
+ * Build doctor checks for detected agents and the current platform.
+ * Each agent in the detection record produces one check entry.
+ * An additional check reports the detected platform kind.
+ *
+ * Exported for testability — the main runDoctor function calls this internally.
+ */
+export function buildAgentChecks(
+  agents: Partial<Record<AgentTarget, AgentDetectResult>>,
+  platform: PlatformInfo
+): DoctorCheck[] {
+  const checks: DoctorCheck[] = []
+
+  // Platform detection check
+  const platformLabel = detectEnvironment()
+  checks.push({
+    id: "agent:platform",
+    label: "Platform",
+    status: "pass",
+    message: `Detected platform: ${platformLabel} (${platform.kind}/${platform.arch})`,
+    fixable: false,
+  })
+
+  // Per-agent checks
+  const agentEntries = Object.entries(agents) as [AgentTarget, AgentDetectResult][]
+  for (const [target, result] of agentEntries) {
+    if (result.installed) {
+      const versionInfo = result.version ? ` v${result.version}` : ""
+      const pathInfo = result.configPath ? ` — config: ${result.configPath}` : ""
+      checks.push({
+        id: `agent:${target}`,
+        label: `Agent: ${target}`,
+        status: "pass",
+        message: `${target}${versionInfo} is installed${pathInfo}`,
+        fixable: false,
+      })
+    } else if (result.status === "unknown") {
+      const rationale = result.rationale
+        ? ` — ${result.rationale}`
+        : " — detection inconclusive"
+      checks.push({
+        id: `agent:${target}`,
+        label: `Agent: ${target}`,
+        status: "warn",
+        message: `${target} detection inconclusive${rationale}`,
+        fixable: false,
+      })
+    } else if (result.status === "unsupported") {
+      checks.push({
+        id: `agent:${target}`,
+        label: `Agent: ${target}`,
+        status: "warn",
+        message: `${target} is not installed or not detected`,
+        fixable: false,
+      })
+    } else {
+      checks.push({
+        id: `agent:${target}`,
+        label: `Agent: ${target}`,
+        status: "warn",
+        message: `${target} is not installed or not detected`,
+        fixable: false,
+      })
+    }
+  }
+
+  return checks
+}
+
+/**
  * Run doctor: collect checks from all components, optionally apply fixes.
  */
 export async function runDoctor(
@@ -35,6 +108,8 @@ export async function runDoctor(
     fix: boolean
     verbose: boolean
     components?: ComponentId[]
+    /** Agent target for filtered diagnostics */
+    target?: AgentTarget
   }
 ): Promise<DoctorRunResult> {
   const configRaw = readConfigRaw()
@@ -57,6 +132,28 @@ export async function runDoctor(
   const platformChecks = collectPlatformChecks(prerequisites)
   allChecks.push(...platformChecks)
   allResults.push({ component: "platform", checks: platformChecks })
+
+  // --- Agent detection checks (environment-first) ---
+  try {
+    const detectedEnv = detectEnvironment()
+    const platform: PlatformInfo = {
+      kind: detectedEnv,
+      arch: process.arch as PlatformInfo["arch"],
+      configRoot: getHomeDirAuto(),
+    }
+    // Run detection registry with OpenCode, Claude, and Codex detectors
+    const { detectAgents } = await import("../detection/registry")
+    const { createOpenCodeDetector } = await import("../detection/agents/opencode")
+    const { createClaudeDetector } = await import("../detection/agents/claude")
+    const { createCodexDetector } = await import("../detection/agents/codex")
+    const detectors = [createOpenCodeDetector(), createClaudeDetector(), createCodexDetector()]
+    const agentResults = detectAgents(detectors, platform)
+    const agentChecks = buildAgentChecks(agentResults, platform)
+    allChecks.push(...agentChecks)
+    allResults.push({ component: "agent-detection", checks: agentChecks })
+  } catch {
+    // Agent detection failure is non-fatal for doctor
+  }
 
   // --- Config checks (not a component module, handled directly) ---
   const configChecks = checkConfigDoctor(configRaw)
@@ -221,7 +318,7 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
   if (detectEnvironment() === "darwin") {
     const xattrOk = isXattrAvailable()
     const codesignOk = canCheckCodesign()
-    const home = process.env.HOME || process.env.USERPROFILE || "~"
+    const home = getHomeDirAuto()
     const binDir = join(home, ".local", "bin")
 
     checks.push({
@@ -395,7 +492,7 @@ async function applySoundsFix(check: DoctorCheck, prerequisites: ReturnType<type
     const { existsSync, mkdirSync } = await import("fs")
     const { join } = await import("path")
     const { execSync } = await import("child_process")
-    const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+    const HOME = getHomeDirAuto()
     const SOUNDS_DIR = join(HOME, ".config", "opencode", "sounds")
 
     const SOUND_FILES = ["idle.wav", "error.wav", "compact.wav", "permission.wav"]
@@ -475,7 +572,7 @@ async function applySoundValidityFix(check: DoctorCheck, prerequisites: ReturnTy
     const { existsSync, readFileSync } = await import("fs")
     const { join } = await import("path")
     const { SOUND_FILES, regenerateSoundFiles } = await import("../components/sounds")
-    const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+    const HOME = getHomeDirAuto()
     const SOUNDS_DIR = join(HOME, ".config", "opencode", "sounds")
     const invalid = SOUND_FILES.filter(file => {
       const filePath = join(SOUNDS_DIR, file)
@@ -507,9 +604,7 @@ async function applySoundValidityFix(check: DoctorCheck, prerequisites: ReturnTy
 
 async function applyContextModeFix(check: DoctorCheck, prerequisites: ReturnType<typeof checkPlatformPrerequisites>): Promise<DoctorFixResult> {
   // Guard: context-mode repairs only run when the binary is on PATH
-  const { execSync } = await import("child_process")
-  let cmOnPath = false
-  try { execSync("which context-mode", { stdio: "pipe", env: { ...process.env } }); cmOnPath = true } catch { /* not on PATH */ }
+  const cmOnPath = isCommandOnPath("context-mode")
 
   if (!cmOnPath) {
     return { checkId: check.id, status: "skipped", message: "context-mode binary no disponible — reparación omitida" }
@@ -519,7 +614,7 @@ async function applyContextModeFix(check: DoctorCheck, prerequisites: ReturnType
     try {
       const { existsSync, writeFileSync, mkdirSync, renameSync } = await import("fs")
       const { join } = await import("path")
-      const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+      const HOME = getHomeDirAuto()
       const INSTRUCTIONS_DIR = join(HOME, ".config", "opencode", "instructions")
       const ROUTING_PATH = join(INSTRUCTIONS_DIR, "context-mode-routing.md")
 
@@ -615,9 +710,7 @@ Use \`context-mode\` when a normal tool call would likely dump too much raw data
 
 async function applyRtkFix(check: DoctorCheck, prerequisites: ReturnType<typeof checkPlatformPrerequisites>): Promise<DoctorFixResult> {
   // Guard: rtk repairs only run when the binary is on PATH
-  const { execSync } = await import("child_process")
-  let rtkOnPath = false
-  try { execSync("which rtk", { stdio: "pipe", env: { ...process.env } }); rtkOnPath = true } catch { /* not on PATH */ }
+  const rtkOnPath = isCommandOnPath("rtk")
 
   if (!rtkOnPath) {
     return { checkId: check.id, status: "skipped", message: "rtk binary no disponible — reparación omitida" }
@@ -627,7 +720,7 @@ async function applyRtkFix(check: DoctorCheck, prerequisites: ReturnType<typeof 
     try {
       const { existsSync, writeFileSync, mkdirSync, renameSync } = await import("fs")
       const { join } = await import("path")
-      const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+      const HOME = getHomeDirAuto()
       const INSTRUCTIONS_DIR = join(HOME, ".config", "opencode", "instructions")
       const RTK_ROUTING_PATH = join(INSTRUCTIONS_DIR, "rtk-routing.md")
 
@@ -708,7 +801,7 @@ async function applyTmuxFix(
   }
 
   try {
-    const HOME = process.env.HOME || process.env.USERPROFILE || "~"
+    const HOME = getHomeDirAuto()
     const TMUX_CONF_PATH = join(HOME, ".tmux.conf")
 
     const { readFileSync, existsSync, writeFileSync, renameSync } = await import("fs")

@@ -45,7 +45,7 @@ export const taskScreen: ScreenModule = {
     }
 
     if (task.done) {
-      lines.push(green("  ✓ Tarea completada"))
+      lines.push(green("  [OK] Task completed"))
     }
 
     lines.push("")

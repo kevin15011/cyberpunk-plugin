@@ -3,9 +3,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "fs"
 import { join } from "path"
 import type { DoctorCheck, DoctorContext } from "./types"
+import { getHomeDirAuto } from "../platform/paths"
 
 function getThemeDoctorPaths() {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDirAuto()
   const configDir = join(home, ".config", "opencode")
   const themesDir = join(configDir, "themes")
 

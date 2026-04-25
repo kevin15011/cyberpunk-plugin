@@ -2,13 +2,19 @@
 
 import * as fs from "node:fs"
 
-export type DetectedEnvironment = "linux" | "wsl" | "darwin"
+export type DetectedEnvironment = "linux" | "wsl" | "darwin" | "windows"
 
-export function getPlaybackDependency(environment?: DetectedEnvironment | null): "paplay" | "afplay" {
+export function getPlaybackDependency(environment?: DetectedEnvironment | null): "paplay" | "afplay" | "ffmpeg" {
   if (environment === "darwin") {
     return "afplay"
   }
 
+  if (environment === "windows") {
+    // Windows uses ffmpeg for sound generation and playback
+    return "ffmpeg"
+  }
+
+  // Linux, WSL use paplay (PulseAudio)
   return "paplay"
 }
 
@@ -18,6 +24,8 @@ export function getPlatformLabel(environment?: DetectedEnvironment | null): stri
       return "macOS"
     case "wsl":
       return "WSL"
+    case "windows":
+      return "Windows"
     case "linux":
     default:
       return "Linux"
@@ -38,6 +46,10 @@ export function isWSL(): boolean {
 }
 
 export function detectEnvironment(): DetectedEnvironment {
+  if (process.platform === "win32") {
+    return "windows"
+  }
+
   if (process.platform === "darwin") {
     return "darwin"
   }

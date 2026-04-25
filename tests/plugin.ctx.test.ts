@@ -3,6 +3,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs"
 import { join } from "path"
+import { tmpdir } from "os"
 
 const loadPluginModule = () => import(`../src/components/plugin.ts?ctx=${Date.now()}-${Math.random()}`)
 
@@ -85,48 +86,42 @@ describe("RTK reinforcement directive", () => {
 // ── install() patched=true message test ───────────────────────
 
 describe("install() message when patched=true", () => {
-  const REAL_SDD_PATH = join(
-    process.env.HOME || "~",
-    ".config", "opencode", "skills", "_shared", "sdd-phase-common.md"
-  )
-
-  let originalContent: string | null = null
-
-  beforeEach(() => {
-    if (existsSync(REAL_SDD_PATH)) {
-      originalContent = readFileSync(REAL_SDD_PATH, "utf8")
-    }
-  })
-
-  afterEach(() => {
-    if (originalContent !== null) {
-      writeFileSync(REAL_SDD_PATH, originalContent, "utf8")
-    }
-  })
-
   test("install() with patched=true produces correct message", async () => {
-    const { START_MARKER, END_MARKER } = await loadPluginModule()
-    // Set up a file without markers so patching will happen
-    const contentNoMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.\n\n## E. Old Section\n\nOld.`
-    mkdirSync(join(REAL_SDD_PATH, ".."), { recursive: true })
-    writeFileSync(REAL_SDD_PATH, contentNoMarkers, "utf8")
+    const testHome = join(tmpdir(), `cyberpunk-plugin-ctx-${Date.now()}-${Math.random()}`)
+    const testSddPath = join(testHome, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md")
+    const envHomeBeforePatch = process.env.HOME
+    try {
+      process.env.HOME = testHome
+      const { START_MARKER, END_MARKER } = await loadPluginModule()
+      // Set up a file without markers so patching will happen
+      const contentNoMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.\n\n## E. Old Section\n\nOld.`
+      mkdirSync(join(testSddPath, ".."), { recursive: true })
+      writeFileSync(testSddPath, contentNoMarkers, "utf8")
 
-    const { patchSddPhaseCommon } = await loadPluginModule()
-    const patched = patchSddPhaseCommon()
+      const { patchSddPhaseCommon } = await loadPluginModule()
+      const patched = patchSddPhaseCommon()
 
-    expect(patched).toBe(true)
+      expect(patched).toBe(true)
 
-    // Verify the expected message text matches what install() would produce
-    const expectedMessage = "Plugin instalado, Section E (ctx_stats) inyectada"
-    expect(expectedMessage).toBe("Plugin instalado, Section E (ctx_stats) inyectada")
+      // Verify the expected message text matches what install() would produce
+      const expectedMessage = "Plugin instalado, Section E (ctx_stats) inyectada"
+      expect(expectedMessage).toBe("Plugin instalado, Section E (ctx_stats) inyectada")
 
-    // Verify the patched file has markers + template
-    const result = readFileSync(REAL_SDD_PATH, "utf8")
-    expect(result).toContain(START_MARKER)
-    expect(result).toContain(END_MARKER)
-    expect(result).toContain("## E. Session Stats")
-    expect(result).toContain("## F. RTK Routing")
-    expect(result).toContain("Prefer `rtk`")
+      // Verify the patched file has markers + template
+      const result = readFileSync(testSddPath, "utf8")
+      expect(result).toContain(START_MARKER)
+      expect(result).toContain(END_MARKER)
+      expect(result).toContain("## E. Session Stats")
+      expect(result).toContain("## F. RTK Routing")
+      expect(result).toContain("Prefer `rtk`")
+    } finally {
+      if (envHomeBeforePatch === undefined) {
+        delete process.env.HOME
+      } else {
+        process.env.HOME = envHomeBeforePatch
+      }
+      rmSync(testHome, { recursive: true, force: true })
+    }
   })
 })
 

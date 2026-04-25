@@ -39,7 +39,7 @@ export const installScreen: ScreenModule = {
       const options = getPresetOptions()
       for (let i = 0; i < options.length; i++) {
         const opt = options[i]
-        const cursor = state.cursor === i ? cyan("❯") : " "
+        const cursor = state.cursor === i ? cyan(">") : " "
         const label = state.cursor === i ? bold(opt.label) : opt.label
         const hint = opt.hint ? gray(`  ${opt.hint}`) : ""
         lines.push(`  ${cursor} ${label}${hint}`)
@@ -52,8 +52,8 @@ export const installScreen: ScreenModule = {
       for (let i = 0; i < state.statuses.length; i++) {
         const s = state.statuses[i]
         const selected = state.selectedComponents.includes(s.id)
-        const check = selected ? green("◉") : gray("○")
-        const cursor = state.cursor === i ? cyan("❯") : " "
+        const check = selected ? green("[selected]") : gray("[ ]")
+        const cursor = state.cursor === i ? cyan(">") : " "
         const statusHint = s.status === "installed"
           ? green("instalado (reparar)")
           : s.status === "error"
@@ -76,11 +76,11 @@ export const installScreen: ScreenModule = {
       for (const id of components) {
         const status = state.statuses.find(s => s.id === id)
         const label = status?.label ?? id
-        lines.push(`  ${green("✓")} ${label}`)
+        lines.push(`  ${green("[selected]")} ${label}`)
       }
       lines.push("")
       if (components.length === 0) {
-        lines.push(yellow("  ⚠ No hay componentes seleccionados"))
+        lines.push(yellow("  Warning: No components selected"))
       }
       lines.push(gray("  Enter confirmar · Esc volver"))
     }
@@ -173,7 +173,7 @@ export const installScreen: ScreenModule = {
           // Confirm phase — start install task
           if (state.selectedComponents.length === 0 && !state.selectedPreset) {
             return {
-              state: { ...state, message: "No hay componentes seleccionados" },
+              state: { ...state, message: "No components selected" },
               intent: { type: "none" },
             }
           }

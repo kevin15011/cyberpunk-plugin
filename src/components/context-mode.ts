@@ -7,11 +7,13 @@ import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, Doct
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
+import { getHomeDirAuto } from "../platform/paths"
+import { isCommandOnPath } from "../platform/shell"
 
 const ROUTING_MARKER = "<!-- cyberpunk-managed:context-mode-routing -->"
 
 function getContextModePaths() {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDirAuto()
   const opencodeDir = join(home, ".config", "opencode")
   const instructionsDir = join(opencodeDir, "instructions")
 
@@ -63,21 +65,11 @@ Use \`context-mode\` when a normal tool call would likely dump too much raw data
 `
 
 function isNpmAvailable(): boolean {
-  try {
-    execSync("which npm", { stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("npm")
 }
 
 function isContextModeInstalled(): boolean {
-  try {
-    execSync("which context-mode", { stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("context-mode")
 }
 
 function installContextModeGlobally(): boolean {

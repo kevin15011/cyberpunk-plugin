@@ -56,7 +56,10 @@ export async function main() {
           }
         }
 
-        const results = await runInstall(componentIds, "install")
+        const results = await runInstall(componentIds, "install", {
+          target: args.target,
+          check: args.flags.check,
+        })
         console.log(formatInstallResults(results, args.flags.json))
 
         const hasErrors = results.some(r => r.status === "error")

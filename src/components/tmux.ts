@@ -7,14 +7,12 @@ import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, Doct
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
+import { getHomeDirAuto } from "../platform/paths"
+import { isCommandOnPath } from "../platform/shell"
 
 function getTmuxConfPath(): string {
-  const home = getHomeDir()
+  const home = getHomeDirAuto()
   return join(home, ".tmux.conf")
-}
-
-function getHomeDir(): string {
-  return process.env.HOME || process.env.USERPROFILE || "~"
 }
 
 const MANAGED_START = "# cyberpunk-managed:start"
@@ -172,33 +170,23 @@ export function removeManagedBlock(content: string): string {
 // --- Path helpers ---
 
 function isTmuxOnPath(): boolean {
-  try {
-    execSync("which tmux 2>/dev/null", { encoding: "utf8", stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("tmux")
 }
 
 export function isGitAvailable(): boolean {
-  try {
-    execSync("which git 2>/dev/null", { encoding: "utf8", stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("git")
 }
 
-export function getTpmDir(home = getHomeDir()): string {
+export function getTpmDir(home = getHomeDirAuto()): string {
   return join(home, ".tmux", "plugins", "tpm")
 }
 
-function isTpmInstalled(home = getHomeDir()): boolean {
+function isTpmInstalled(home = getHomeDirAuto()): boolean {
   const tpmPath = join(getTpmDir(home), "tpm")
   return existsSync(tpmPath)
 }
 
-function areTmuxPluginsReady(home = getHomeDir()): boolean {
+function areTmuxPluginsReady(home = getHomeDirAuto()): boolean {
   const pluginsDir = join(home, ".tmux", "plugins")
   const requiredPlugins = [
     "tmux-sensible",
@@ -306,12 +294,7 @@ function buildBootstrapMessage(baseMessage: string | undefined, result: TmuxBoot
 }
 
 function isGitmuxOnPath(): boolean {
-  try {
-    execSync("which gitmux 2>/dev/null", { encoding: "utf8", stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("gitmux")
 }
 
 // --- Component factory ---
@@ -343,13 +326,13 @@ export function getTmuxComponent(): ComponentModule {
             }
             saveConfig(config)
 
-            const bootstrapResult = bootstrapTpm(getHomeDir())
+            const bootstrapResult = bootstrapTpm(getHomeDirAuto())
 
             return {
               component: "tmux",
               action: "install",
               status: "skipped",
-              message: buildBootstrapMessage("Config tmux ya instalada y actualizada", bootstrapResult),
+              message: buildBootstrapMessage("Tmux config already installed and up to date", bootstrapResult),
               path: tmuxConfPath,
             }
           }
@@ -377,7 +360,7 @@ export function getTmuxComponent(): ComponentModule {
       }
       saveConfig(config)
 
-      const bootstrapResult = bootstrapTpm(getHomeDir())
+      const bootstrapResult = bootstrapTpm(getHomeDirAuto())
 
       return {
         component: "tmux",

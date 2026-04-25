@@ -1,8 +1,8 @@
 // src/components/platform.ts — platform prerequisite checks for doctor
 
-import { execSync } from "child_process"
 import type { DoctorCheck } from "./types"
 import { detectEnvironment, getPlaybackDependency, getPlatformLabel } from "../platform/detect"
+import { isCommandOnPath } from "../platform/shell"
 
 export interface PlatformPrerequisites {
   ffmpeg: boolean
@@ -12,22 +12,13 @@ export interface PlatformPrerequisites {
   git: boolean
 }
 
-function isOnPath(command: string): boolean {
-  try {
-    execSync(`which ${command} 2>/dev/null`, { encoding: "utf8", stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
-}
-
 export function getRuntimeDependencyChecks(): DoctorCheck[] {
   const environment = detectEnvironment()
   const playbackDependency = getPlaybackDependency(environment)
   const platformLabel = getPlatformLabel(environment)
 
-  const opencodeAvailable = isOnPath("opencode")
-  const playbackAvailable = isOnPath(playbackDependency)
+  const opencodeAvailable = isCommandOnPath("opencode")
+  const playbackAvailable = isCommandOnPath(playbackDependency)
 
   return [
     {
@@ -35,12 +26,12 @@ export function getRuntimeDependencyChecks(): DoctorCheck[] {
       label: "OpenCode CLI",
       status: opencodeAvailable ? "pass" : "warn",
       message: opencodeAvailable
-        ? "OpenCode CLI disponible en PATH"
-        : "OpenCode CLI no encontrado en PATH",
+        ? "OpenCode CLI available on PATH"
+        : "OpenCode CLI not found on PATH",
       fixable: false,
       detail: opencodeAvailable ? { group: "runtime" } : {
         group: "runtime",
-        nextStep: `Instalá OpenCode CLI para ${platformLabel} y verificá que 'opencode' esté en PATH`,
+        nextStep: `Install OpenCode CLI for ${platformLabel} and verify 'opencode' is on PATH`,
       },
     },
     {
@@ -48,12 +39,12 @@ export function getRuntimeDependencyChecks(): DoctorCheck[] {
       label: `Playback (${playbackDependency})`,
       status: playbackAvailable ? "pass" : "warn",
       message: playbackAvailable
-        ? `${playbackDependency} disponible en PATH`
-        : `${playbackDependency} no encontrado en PATH`,
+        ? `${playbackDependency} available on PATH`
+        : `${playbackDependency} not found on PATH`,
       fixable: false,
       detail: playbackAvailable ? { group: "runtime" } : {
         group: "runtime",
-        nextStep: `Instalá ${playbackDependency} para ${platformLabel} o habilitá una herramienta de reproducción compatible`,
+        nextStep: `Install ${playbackDependency} for ${platformLabel} or enable a compatible playback tool`,
       },
     },
   ]
@@ -65,11 +56,11 @@ export function getRuntimeDependencyChecks(): DoctorCheck[] {
  */
 export function checkPlatformPrerequisites(): PlatformPrerequisites {
   return {
-    ffmpeg: isOnPath("ffmpeg"),
-    npm: isOnPath("npm"),
-    bun: isOnPath("bun"),
-    curl: isOnPath("curl"),
-    git: isOnPath("git"),
+    ffmpeg: isCommandOnPath("ffmpeg"),
+    npm: isCommandOnPath("npm"),
+    bun: isCommandOnPath("bun"),
+    curl: isCommandOnPath("curl"),
+    git: isCommandOnPath("git"),
   }
 }
 
@@ -77,12 +68,12 @@ export function checkPlatformPrerequisites(): PlatformPrerequisites {
  * Check if xattr command is available (macOS quarantine handling).
  */
 export function isXattrAvailable(): boolean {
-  return isOnPath("xattr")
+  return isCommandOnPath("xattr")
 }
 
 /**
  * Check if codesign command is available (macOS binary verification).
  */
 export function canCheckCodesign(): boolean {
-  return isOnPath("codesign")
+  return isCommandOnPath("codesign")
 }

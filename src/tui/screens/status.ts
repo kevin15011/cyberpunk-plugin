@@ -12,9 +12,9 @@ export const statusScreen: ScreenModule = {
     lines.push("")
 
     for (const s of state.statuses) {
-      const icon = s.status === "installed" ? green("✓")
-        : s.status === "error" ? red("✗")
-        : cyan("○")
+      const icon = s.status === "installed" ? green("[INSTALLED]")
+        : s.status === "error" ? red("[ERROR]")
+          : cyan("[AVAILABLE]")
       const statusText = s.status === "installed"
         ? green("instalado")
         : s.status === "error"

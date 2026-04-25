@@ -150,7 +150,7 @@ async function executeTask(state: TUIState): Promise<TUIState> {
       writeLines(view(state))
     },
     onComponentFinish: (result: InstallResult) => {
-      const icon = result.status === "success" ? "✓" : result.status === "error" ? "✗" : "○"
+      const icon = result.status === "success" ? "[OK]" : result.status === "error" ? "[ERROR]" : "[SKIP]"
       state = {
         ...state,
         task: {
@@ -225,7 +225,7 @@ async function executeDoctorFixTask(state: TUIState): Promise<TUIState> {
 
     const log = [...state.task!.log]
     for (const fix of report.fixes) {
-      const icon = fix.status === "fixed" ? "✓" : fix.status === "failed" ? "✗" : "○"
+      const icon = fix.status === "fixed" ? "[FIXED]" : fix.status === "failed" ? "[FAILED]" : "[SKIPPED]"
       log.push(`  ${icon} ${fix.checkId}: ${fix.status} — ${fix.message}`)
     }
 
@@ -255,7 +255,7 @@ async function executeDoctorFixTask(state: TUIState): Promise<TUIState> {
         ...state.task!,
         done: true,
         step: undefined,
-        log: [...state.task!.log, `  ✗ Error: ${err instanceof Error ? err.message : String(err)}`],
+        log: [...state.task!.log, `  [ERROR] ${err instanceof Error ? err.message : String(err)}`],
       },
     }
 
@@ -292,7 +292,7 @@ async function executeUpgradeTask(state: TUIState): Promise<TUIState> {
   try {
     const result: UpgradeResult = await startUpgradeTask()
 
-    const icon = result.status === "upgraded" ? "✓" : result.status === "error" ? "✗" : "○"
+    const icon = result.status === "upgraded" ? "[OK]" : result.status === "error" ? "[ERROR]" : "[NO CHANGE]"
     const log = [...state.task!.log, `  ${icon} ${result.status}${result.error ? `: ${result.error}` : ""}`]
 
     state = {
@@ -319,7 +319,7 @@ async function executeUpgradeTask(state: TUIState): Promise<TUIState> {
         ...state.task!,
         done: true,
         step: undefined,
-        log: [...state.task!.log, `  ✗ Error: ${err instanceof Error ? err.message : String(err)}`],
+        log: [...state.task!.log, `  [ERROR] ${err instanceof Error ? err.message : String(err)}`],
       },
       lastResults: [{
         component: "plugin" as ComponentId,

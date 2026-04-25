@@ -7,6 +7,7 @@ import { createHash } from "node:crypto"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import type { InstallMode } from "../config/schema"
+import { getHomeDirAuto } from "../platform/paths"
 
 const REPO = "kevin15011/cyberpunk-plugin"
 
@@ -30,7 +31,7 @@ let upgradeTestOverrides: UpgradeTestOverrides = {}
 
 function getBinaryPath(): string {
   return join(
-    (process.env.HOME || process.env.USERPROFILE || "~"),
+    getHomeDirAuto(),
     ".local", "bin",
     "cyberpunk"
   )

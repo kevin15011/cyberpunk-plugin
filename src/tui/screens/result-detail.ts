@@ -23,9 +23,9 @@ export const resultDetailScreen: ScreenModule = {
       lines.push(bold("  Doctor Fix Results"))
       lines.push("")
       for (const fix of report.fixes) {
-        const icon = fix.status === "fixed" ? green("✓")
-          : fix.status === "failed" ? red("✗")
-          : fix.status === "skipped" ? yellow("○")
+        const icon = fix.status === "fixed" ? green("[FIXED]")
+          : fix.status === "failed" ? red("[FAILED]")
+            : fix.status === "skipped" ? yellow("[SKIPPED]")
           : gray("—")
         lines.push(`  ${icon} ${fix.checkId}: ${fix.message}`)
       }
@@ -41,7 +41,7 @@ export const resultDetailScreen: ScreenModule = {
       const label = COMPONENT_LABELS[r.component as keyof typeof COMPONENT_LABELS] || r.component
 
       // Determine action label based on result kind
-      const actionLabel = resultKind === "upgrade" ? "Actualización"
+      const actionLabel = resultKind === "upgrade" ? "Upgrade"
         : resultKind === "doctor-fix" ? "Reparación"
         : r.action === "install" ? "Instalación"
         : "Desinstalación"
@@ -49,9 +49,9 @@ export const resultDetailScreen: ScreenModule = {
       lines.push(`  ${bold("Componente:")}${label}`)
       lines.push(`  ${bold("Acción:")}${actionLabel}`)
 
-      const statusText = r.status === "success" ? green("✓ Exitoso")
-        : r.status === "error" ? red("✗ Error")
-        : yellow("○ Sin cambios")
+      const statusText = r.status === "success" ? green("[OK] Successful")
+        : r.status === "error" ? red("[ERROR] Error")
+          : yellow("[NO CHANGE] No changes")
       lines.push(`  ${bold("Estado:")}${statusText}`)
 
       if (r.message) {

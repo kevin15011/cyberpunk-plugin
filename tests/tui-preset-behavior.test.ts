@@ -16,7 +16,7 @@ mock.module("../src/platform/detect", () => ({
 }))
 
 mock.module("../src/commands/install", () => ({
-  runInstall: mock(async (ids: string[], _action?: string, _hooks?: any) => {
+  runInstall: mock(async (ids: string[], _action?: string, _options?: any) => {
     runInstallCalls.push([...ids])
     return ids.map((id: string) => ({
       component: id,
@@ -36,6 +36,7 @@ mock.module("../src/commands/status", () => ({
     { id: "rtk", label: "RTK", status: "available" },
     { id: "tmux", label: "Tmux", status: "available" },
   ]),
+  buildEnvironmentStatus: (platform: any, agents: any) => ({ platform, agents }),
 }))
 
 mock.module("../src/commands/preflight", () => ({

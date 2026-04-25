@@ -1,6 +1,14 @@
 // src/cli/parse-args.ts — parse process.argv into ParsedArgs interface
 
 import type { ComponentId, COMPONENT_IDS } from "../config/schema"
+import type { AgentTarget, UserProfile } from "../domain/environment"
+
+/** CLI interaction mode for TUI flow control. */
+export type CliMode = "guided" | "advanced"
+
+const VALID_TARGETS = new Set<string>(["opencode", "claude", "codex"])
+const VALID_PROFILES = new Set<string>(["non-technical", "developer", "admin"])
+const VALID_MODES = new Set<string>(["guided", "advanced"])
 
 export interface ParsedArgs {
   command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "doctor" | "help"
@@ -14,6 +22,12 @@ export interface ParsedArgs {
     init: boolean
     fix: boolean
   }
+  /** Selected agent target — defaults to "opencode" */
+  target: AgentTarget
+  /** User experience profile — undefined when not specified */
+  profile?: UserProfile
+  /** CLI interaction mode — undefined when not specified */
+  mode?: CliMode
   preset?: string
   parseErrors: string[]
   configKey?: string
@@ -45,10 +59,11 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       init: false,
       fix: false,
     },
+    target: "opencode",
     parseErrors: [],
   }
 
-  // Separate positional args from flags, handle --preset <value> specially
+  // Separate positional args from flags, handle value-taking flags specially
   const positionals: string[] = []
   const flags: string[] = []
 
@@ -59,7 +74,43 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
         result.preset = next
         i++ // skip the value
       } else {
-        result.parseErrors.push("--preset requiere un nombre de preset")
+        result.parseErrors.push("--preset requires a preset name")
+      }
+    } else if (argv[i] === "--target") {
+      const next = argv[i + 1]
+      if (next && !next.startsWith("--")) {
+        if (VALID_TARGETS.has(next)) {
+          result.target = next as AgentTarget
+        } else {
+          result.parseErrors.push(`--target: unknown target "${next}". Valid: opencode, claude, codex`)
+        }
+        i++ // skip the value
+      } else {
+        result.parseErrors.push("--target requires a value (opencode, claude, codex)")
+      }
+    } else if (argv[i] === "--profile") {
+      const next = argv[i + 1]
+      if (next && !next.startsWith("--")) {
+        if (VALID_PROFILES.has(next)) {
+          result.profile = next as UserProfile
+        } else {
+          result.parseErrors.push(`--profile: unknown profile "${next}". Valid: non-technical, developer, admin`)
+        }
+        i++ // skip the value
+      } else {
+        result.parseErrors.push("--profile requires a value (non-technical, developer, admin)")
+      }
+    } else if (argv[i] === "--mode") {
+      const next = argv[i + 1]
+      if (next && !next.startsWith("--")) {
+        if (VALID_MODES.has(next)) {
+          result.mode = next as CliMode
+        } else {
+          result.parseErrors.push(`--mode: unknown mode "${next}". Valid: guided, advanced`)
+        }
+        i++ // skip the value
+      } else {
+        result.parseErrors.push("--mode requires a value (guided, advanced)")
       }
     } else if (argv[i].startsWith("--")) {
       flags.push(argv[i])

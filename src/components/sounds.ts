@@ -7,9 +7,11 @@ import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, Doct
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
+import { getHomeDirAuto } from "../platform/paths"
+import { isCommandOnPath } from "../platform/shell"
 
 function getSoundsDir(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDirAuto()
   return join(home, ".config", "opencode", "sounds")
 }
 
@@ -75,12 +77,7 @@ export function regenerateSoundFiles(files: string[], outputDir = getSoundsDir()
 }
 
 function isFfmpegAvailable(): boolean {
-  try {
-    execSync("which ffmpeg", { stdio: "pipe" })
-    return true
-  } catch {
-    return false
-  }
+  return isCommandOnPath("ffmpeg")
 }
 
 function generateSound(file: string, args: string, outputDir: string): boolean {

@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "fs"
 import { join } from "path"
+import { getHomeDirAuto } from "./platform/paths"
 
 export const CYBERPUNK_PLUGIN_ENTRY = "./plugins/cyberpunk"
 export const RTK_PLUGIN_ENTRY = "./plugins/rtk"
@@ -18,7 +19,7 @@ export interface OpenCodeConfig {
 }
 
 export function getOpenCodeConfigDir(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
+  const home = getHomeDirAuto()
   return join(home, ".config", "opencode")
 }
 

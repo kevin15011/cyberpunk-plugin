@@ -38,9 +38,9 @@ export const doctorScreen: ScreenModule = {
     for (const [group, checks] of grouped) {
       lines.push(`  ${bold(group)}`)
       for (const check of checks) {
-        const icon = check.status === "pass" ? green("✓")
-          : check.status === "fail" ? red("✗")
-          : yellow("⚠")
+        const icon = check.status === "pass" ? green("[PASS]")
+          : check.status === "fail" ? red("[FAIL]")
+            : yellow("[WARN]")
         const label = check.label || check.id
         lines.push(`    ${icon} ${label}: ${check.message}`)
       }
@@ -57,9 +57,9 @@ export const doctorScreen: ScreenModule = {
 
     if (hasFixable) {
       if (doctor.confirmFix) {
-        lines.push(yellow(`  ❯ Aplicar reparaciones? Enter=confirmar / Esc=cancelar`))
+        lines.push(yellow(`  > Apply repairs? Enter=confirm / Esc=cancel`))
       } else {
-        const cursor = state.cursor === 0 ? cyan("❯") : " "
+        const cursor = state.cursor === 0 ? cyan(">") : " "
         lines.push(`  ${cursor} Reparar problemas detectados`)
       }
     }

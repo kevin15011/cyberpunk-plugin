@@ -23,9 +23,9 @@ export const homeScreen: ScreenModule = {
 
     // Show quick status summary
     for (const s of state.statuses) {
-      const icon = s.status === "installed" ? green("✓")
-        : s.status === "error" ? "✗"
-        : cyan("○")
+      const icon = s.status === "installed" ? green("[INSTALLED]")
+        : s.status === "error" ? "[ERROR]"
+          : cyan("[AVAILABLE]")
       const statusText = s.status === "installed" ? green("instalado")
         : s.status === "error" ? `error`
         : gray("disponible")
@@ -38,7 +38,7 @@ export const homeScreen: ScreenModule = {
 
     for (let i = 0; i < MENU_ITEMS.length; i++) {
       const item = MENU_ITEMS[i]
-      const cursor = state.cursor === i ? cyan("❯") : " "
+      const cursor = state.cursor === i ? cyan(">") : " "
       const label = state.cursor === i ? bold(item.label) : item.label
       const hint = item.hint ? gray(`  ${item.hint}`) : ""
       lines.push(`  ${cursor} ${label}${hint}`)

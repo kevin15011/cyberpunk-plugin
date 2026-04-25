@@ -52,7 +52,7 @@ describe("home screen render", () => {
     const lines = homeScreen.render(state)
     // Second item should be highlighted (cursor=1)
     const output = lines.join("\n")
-    expect(output).toContain("❯")
+    expect(output).toContain(">")
   })
 })
 
@@ -149,7 +149,7 @@ describe("task screen render", () => {
     })
     const lines = taskScreen.render(state)
     const output = lines.join("\n")
-    expect(output).toContain("completada")
+    expect(output).toContain("Task completed")
   })
 
   test("enter when done navigates to results", () => {
@@ -211,7 +211,7 @@ describe("result-detail screen render", () => {
     const lines = resultDetailScreen.render(state)
     const output = lines.join("\n")
     expect(output).toContain("Plugin de OpenCode")
-    expect(output).toContain("Exitoso")
+    expect(output).toContain("Successful")
     expect(output).toContain("OK")
     expect(output).toContain("/some/path")
   })
@@ -706,8 +706,8 @@ describe("upgrade screen", () => {
     const lines = upgradeScreen.render(state)
     const output = lines.join("\n")
     expect(output).toContain("1.0.0")
-    expect(output).toContain("actualizado")
-    expect(output).not.toContain("Aplicar actualización")
+    expect(output).toContain("Everything is up to date")
+    expect(output).not.toContain("Apply update")
   })
 
   test("5.2b: renders update-available status with CTA", () => {
@@ -727,8 +727,8 @@ describe("upgrade screen", () => {
     const output = lines.join("\n")
     expect(output).toContain("1.0.0")
     expect(output).toContain("2.0.0")
-    expect(output).toContain("Actualización disponible")
-    expect(output).toContain("Aplicar actualización")
+    expect(output).toContain("Update available")
+    expect(output).toContain("Apply update")
   })
 
   test("5.2c: Enter on update-available fires run-upgrade intent", () => {

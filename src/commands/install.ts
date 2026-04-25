@@ -12,6 +12,8 @@ import { COMPONENT_IDS } from "../config/schema"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import type { TaskHooks } from "../tui/types"
+import type { AgentTarget, PlatformInfo } from "../domain/environment"
+import { filterComponentsForTarget } from "./install-routing"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -22,13 +24,43 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   tmux: getTmuxComponent,
 }
 
+export interface InstallOptions {
+  /** Agent target — defaults to "opencode" */
+  target?: AgentTarget
+  /** Platform info — when provided, filters components by compatibility */
+  platform?: PlatformInfo
+  /** Dry-run: plan only, do not execute installs */
+  check?: boolean
+  /** TUI hooks */
+  hooks?: TaskHooks
+}
+
 export async function runInstall(
   componentIds: ComponentId[],
   action: "install" | "uninstall" = "install",
-  hooks?: TaskHooks
+  options?: InstallOptions
 ): Promise<InstallResult[]> {
+  const target = options?.target ?? "opencode"
+
   // Default to all components if none specified
-  const ids = componentIds.length > 0 ? componentIds : [...COMPONENT_IDS]
+  let ids = componentIds.length > 0 ? [...componentIds] : [...COMPONENT_IDS]
+
+  // When a platform is provided, filter to compatible components
+  if (options?.platform && target !== "opencode") {
+    const compatible = filterComponentsForTarget(target, options.platform)
+    const compatibleSet = new Set(compatible)
+    ids = ids.filter(id => compatibleSet.has(id))
+  }
+
+  // Dry-run: return planned results without executing
+  if (options?.check) {
+    return ids.map(id => ({
+      component: id,
+      action,
+      status: "skipped" as const,
+      message: `Dry run: ${action} planned for ${id} (target: ${target})`,
+    }))
+  }
 
   const results: InstallResult[] = []
 
@@ -39,19 +71,19 @@ export async function runInstall(
         component: id,
         action,
         status: "error",
-        message: `Componente desconocido: ${id}`,
+        message: `Unknown component: ${id}`,
       })
       continue
     }
 
     const module = factory()
-    hooks?.onComponentStart?.(id)
+    options?.hooks?.onComponentStart?.(id)
     try {
       const result = action === "install"
         ? await module.install()
         : await module.uninstall()
       results.push(result)
-      hooks?.onComponentFinish?.(result)
+      options?.hooks?.onComponentFinish?.(result)
     } catch (err) {
       const errorResult: InstallResult = {
         component: id,
@@ -60,12 +92,12 @@ export async function runInstall(
         message: err instanceof Error ? err.message : String(err),
       }
       results.push(errorResult)
-      hooks?.onComponentFinish?.(errorResult)
+      options?.hooks?.onComponentFinish?.(errorResult)
     }
   }
 
   // Stamp installMode: "repo" after successful install from a git checkout
-  if (action === "install") {
+  if (action === "install" && !options?.check) {
     const hasSuccess = results.some(r => r.status === "success")
     if (hasSuccess) {
       const config = loadConfig()
