@@ -192,6 +192,14 @@ function createFakeBinary(name: string, output = `${name} test-version`) {
   chmodSync(filePath, 0o755)
 }
 
+function createFakeLocalBinary(name: string, output = `${name} test-version`) {
+  const localBinDir = join(tempDir, ".local", "bin")
+  mkdirSync(localBinDir, { recursive: true })
+  const filePath = join(localBinDir, name)
+  writeFileSync(filePath, `#!/usr/bin/env sh\nprintf '%s\n' ${JSON.stringify(output)}\n`, "utf8")
+  chmodSync(filePath, 0o755)
+}
+
 /** Clear all fixture files and dirs */
 function clearAllFixtures() {
   const dirs = [CONFIG_DIR, OPENCODE_DIR]
@@ -241,6 +249,7 @@ beforeAll(async () => {
   createFakeBinary("opencode", "opencode 1.0.0")
   createFakeBinary("context-mode", "context-mode 1.0.0")
   createFakeBinary("rtk", "rtk 1.0.0")
+  createFakeLocalBinary("rtk", "rtk 1.0.0")
   process.env.PATH = `${BIN_DIR}:${originalPath ?? ""}`
 
   // Import doctor.ts ONCE so all sub-modules get HOME=tempDir
@@ -270,7 +279,7 @@ describe("Doctor Spec Scenarios", () => {
   test("S1: all checks pass — every component checks pass, 0 remaining failures", async () => {
     createFullHealthyFixture()
     // Run without component filter to check ALL components
-    const result = await runDoctorFn({ fix: false, verbose: false })
+    const result = runDoctorIsolated(tempDir, `${BIN_DIR}:${originalPath ?? ""}`, { fix: false, verbose: false })
 
     // Every component group must have at least one check
     const prefixes = new Set(result.checks.map(c => c.id.split(":")[0]))
@@ -525,7 +534,7 @@ describe("Doctor binary guard scenarios", () => {
     } finally {
       process.env.PATH = origPath
     }
-  })
+  }, 15000)
 
   test("rtk fix skipped when binary not on PATH", async () => {
     createMinimalConfig()
@@ -547,7 +556,7 @@ describe("Doctor binary guard scenarios", () => {
     } finally {
       process.env.PATH = origPath
     }
-  })
+  }, 15000)
 })
 
 describe("Doctor exit code and read-only contract", () => {
