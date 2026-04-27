@@ -21,6 +21,8 @@ export function pushRoute(state: TUIState, next: AppRoute): TUIState {
     ...(next.id !== "doctor" ? { doctor: undefined } : {}),
     // Reset upgrade state when navigating away from upgrade screen
     ...(next.id !== "upgrade" ? { upgrade: undefined } : {}),
+    // Reset metrics state when navigating away from metrics screen
+    ...(next.id !== "metrics-viewer" ? { metrics: undefined } : {}),
   }
 }
 

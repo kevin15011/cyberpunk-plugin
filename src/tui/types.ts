@@ -2,9 +2,10 @@
 
 import type { ComponentId, ComponentStatus, DoctorRunResult, InstallResult } from "../components/types"
 import type { UpgradeStatus } from "../commands/upgrade"
+import type { MetricsScreenState } from "../components/metrics-viewer"
 
 /** Valid screen identifiers in the navigation shell */
-export type RouteId = "home" | "install" | "uninstall" | "status" | "doctor" | "upgrade" | "task" | "results" | "result-detail"
+export type RouteId = "home" | "install" | "uninstall" | "status" | "doctor" | "upgrade" | "task" | "results" | "result-detail" | "metrics-viewer"
 
 /** Generic task kind for the shared task/results pipeline */
 export type TaskKind = "install" | "uninstall" | "doctor-fix" | "upgrade"
@@ -53,6 +54,8 @@ export interface TUIState {
   doctor?: { loading: boolean; report?: DoctorRunResult; confirmFix: boolean }
   /** Upgrade screen state: loading indicator, cached check status */
   upgrade?: { loading: boolean; status?: UpgradeStatus }
+  /** Metrics viewer screen state: auto-refresh, data, pause controls */
+  metrics?: MetricsScreenState
   /** Result view metadata: which task kind produced the results */
   resultView?: { kind: TaskKind; detailIndex?: number }
   quit: boolean
@@ -78,6 +81,7 @@ export type ScreenIntent =
   | { type: "run-doctor" }
   | { type: "run-doctor-fix" }
   | { type: "run-upgrade" }
+  | { type: "refresh-metrics" }
   | { type: "none" }
 
 /** Result of a screen's update function */

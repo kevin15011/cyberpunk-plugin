@@ -5,6 +5,7 @@ import { enableRawMode, disableRawMode, clearScreen, writeLines, hideCursor, sho
 import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startUpgradeTask } from "./adapters"
 import { route, pushRoute } from "./router"
 import { pink, bold, green, red, yellow } from "./theme"
+import { loadMetricsViewerData } from "../components/metrics-viewer"
 import type { TUIState, TaskKind } from "./types"
 import type { ComponentId, InstallResult } from "../components/types"
 import type { UpgradeResult } from "../commands/upgrade"
@@ -20,6 +21,7 @@ export async function runTUI(): Promise<void> {
 
   // Cleanup handler
   const cleanup = () => {
+    stopMetricsTimer()
     showCursor()
     disableRawMode()
     clearScreen()
@@ -29,6 +31,26 @@ export async function runTUI(): Promise<void> {
 
   process.on("SIGINT", cleanup)
   process.on("SIGTERM", cleanup)
+
+  // Metrics refresh timer (route-scoped)
+  let metricsTimer: ReturnType<typeof setInterval> | undefined
+
+  const stopMetricsTimer = () => {
+    if (metricsTimer !== undefined) {
+      clearInterval(metricsTimer)
+      metricsTimer = undefined
+    }
+  }
+
+  const startMetricsRefreshTimer = () => {
+    stopMetricsTimer()
+    metricsTimer = setInterval(async () => {
+      if (state.route.id !== "metrics-viewer" || !state.metrics || state.metrics.paused) return
+      state = await loadMetricsDataHelper(state)
+      clearScreen()
+      writeLines(view(state))
+    }, 30_000)
+  }
 
   // Main loop
   const stdin = process.stdin
@@ -73,11 +95,34 @@ export async function runTUI(): Promise<void> {
           }
         }
 
+        // Load metrics data on first navigation to metrics-viewer screen
+        if (state.route.id === "metrics-viewer" && !state.metrics) {
+          state = { ...state, metrics: { loading: true, paused: false, refreshIntervalMs: 30_000 } }
+          clearScreen()
+          writeLines(view(state))
+          state = await loadMetricsDataHelper(state)
+          startMetricsRefreshTimer()
+        }
+
+        // Start/stop metrics timer based on pause state
+        if (state.route.id === "metrics-viewer" && state.metrics?.paused) {
+          stopMetricsTimer()
+        } else if (state.route.id === "metrics-viewer" && !state.metrics?.paused && metricsTimer === undefined) {
+          startMetricsRefreshTimer()
+        }
+
+        // Stop metrics timer when leaving metrics-viewer
+        if (state.route.id !== "metrics-viewer") {
+          stopMetricsTimer()
+        }
+
         // Handle task execution intents
         if (intent.type === "run-doctor-fix") {
           state = await executeDoctorFixTask(state)
         } else if (intent.type === "run-upgrade") {
           state = await executeUpgradeTask(state)
+        } else if (intent.type === "refresh-metrics") {
+          state = await loadMetricsDataHelper(state)
         } else if (needsTaskExecution(state, key)) {
           state = await executeTask(state)
         }
@@ -97,6 +142,36 @@ export async function runTUI(): Promise<void> {
   } finally {
     showCursor()
     disableRawMode()
+  }
+}
+
+/** Load metrics data and update state (helper for both first-load and refresh) */
+export async function loadMetricsDataHelper(state: TUIState): Promise<TUIState> {
+  const ms = state.metrics
+  if (!ms) return state
+  try {
+    const data = loadMetricsViewerData()
+    const now = Date.now()
+    return {
+      ...state,
+      metrics: {
+        ...ms,
+        loading: false,
+        data,
+        lastUpdatedAt: now,
+        nextRefreshAt: ms.paused ? undefined : now + ms.refreshIntervalMs,
+        error: undefined,
+      },
+    }
+  } catch (err) {
+    return {
+      ...state,
+      metrics: {
+        ...ms,
+        loading: false,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    }
   }
 }
 

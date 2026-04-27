@@ -278,6 +278,7 @@ ${bold("COMANDOS")}
   status   (s)  Ver estado de componentes
   upgrade (up)  Actualizar a la última versión
   doctor   (d)  Diagnóstico y reparación
+  metrics  (m)  Ver métricas de uso LLM (local OTEL)
   config   (c)  Leer/escribir configuración
   help     (h)  Mostrar esta ayuda
 
@@ -296,9 +297,11 @@ ${bold("COMANDOS")}
   --preset <name> Instalar desde preset (minimal, full, wsl, mac)
   --json          Salida en JSON
   --verbose       Log detallado
-  --fix           Aplicar reparaciones (doctor)
-  --check         Solo verificar (upgrade)
-  --list          Listar config
+   --fix           Aplicar reparaciones (doctor)
+   --check         Solo verificar (upgrade)
+   --watch         Auto-refresh metrics
+   --interval <s>  Refresh interval in seconds (default: 30)
+   --list          Listar config
   --init          Crear config por defecto
 
  ${bold("EJEMPLOS")}
@@ -308,8 +311,12 @@ ${bold("COMANDOS")}
   cyberpunk install --preset full   # Instalar preset completo
   cyberpunk install --preset wsl    # Instalar preset WSL
   cyberpunk install --preset mac    # Instalar preset macOS
-  cyberpunk status --json           # Estado en JSON
-  cyberpunk upgrade --check         # Verificar actualizaciones
+   cyberpunk status --json           # Estado en JSON
+   cyberpunk metrics                 # Ver métricas de uso LLM
+   cyberpunk metrics --json          # Métricas en JSON
+   cyberpunk metrics --watch         # Auto-refresh métricas
+   cyberpunk metrics --watch --interval 10  # Refresh cada 10s
+   cyberpunk upgrade --check         # Verificar actualizaciones
   cyberpunk config --list           # Ver configuración
   cyberpunk config repoUrl "https://github.com/user/repo"
 `.trim()

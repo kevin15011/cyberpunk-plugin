@@ -11,6 +11,7 @@ import { upgradeScreen } from "./screens/upgrade"
 import { taskScreen } from "./screens/task"
 import { resultsScreen } from "./screens/results"
 import { resultDetailScreen } from "./screens/result-detail"
+import { metricsScreen } from "./screens/metrics-viewer"
 import type { ComponentStatus } from "../components/types"
 
 /** Get the screen module for a given route */
@@ -25,6 +26,7 @@ export function getScreen(routeId: string): ScreenModule {
     case "task": return taskScreen
     case "results": return resultsScreen
     case "result-detail": return resultDetailScreen
+    case "metrics-viewer": return metricsScreen
     default: return homeScreen
   }
 }
@@ -68,6 +70,7 @@ function applyIntent(state: TUIState, intent: ScreenIntent): TUIState {
       return pushRoute(state, route("doctor"))
     case "run-doctor-fix":
     case "run-upgrade":
+    case "refresh-metrics":
       // These intents are handled by the task executor in index.ts,
       // not by the app router — return state unchanged
       return state

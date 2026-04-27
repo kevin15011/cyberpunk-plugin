@@ -10,6 +10,7 @@ const MENU_ITEMS = [
   { id: "status" as const, label: "Ver estado", hint: "Mostrar estado actual" },
   { id: "doctor" as const, label: "Doctor", hint: "Diagnosticar problemas" },
   { id: "upgrade" as const, label: "Upgrade", hint: "Verificar actualizaciones" },
+  { id: "metrics-viewer" as const, label: "Metrics", hint: "LLM usage metrics" },
   { id: "quit" as const, label: "Salir", hint: "" },
 ] as const
 

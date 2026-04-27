@@ -96,8 +96,17 @@ describe("home screen update", () => {
     }
   })
 
+  test("enter on metrics navigates to metrics-viewer route", () => {
+    const state = makeState({ cursor: 5 }) // metrics is 6th item (index 5)
+    const result = homeScreen.update(state, { type: "enter" })
+    expect(result.intent.type).toBe("navigate")
+    if (result.intent.type === "navigate") {
+      expect(result.intent.route.id).toBe("metrics-viewer")
+    }
+  })
+
   test("enter on quit emits quit intent", () => {
-    const state = makeState({ cursor: 5 }) // quit is 6th item (index 5)
+    const state = makeState({ cursor: 6 }) // quit is 7th item (index 6)
     const result = homeScreen.update(state, { type: "enter" })
     expect(result.intent.type).toBe("quit")
     expect(result.state.quit).toBe(true)

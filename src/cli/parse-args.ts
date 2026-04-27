@@ -11,7 +11,7 @@ const VALID_PROFILES = new Set<string>(["non-technical", "developer", "admin"])
 const VALID_MODES = new Set<string>(["guided", "advanced"])
 
 export interface ParsedArgs {
-  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "doctor" | "help"
+  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "doctor" | "metrics" | "help"
   components: ComponentId[]
   flags: {
     json: boolean
@@ -21,6 +21,8 @@ export interface ParsedArgs {
     list: boolean
     init: boolean
     fix: boolean
+    watch: boolean
+    interval?: number
   }
   /** Selected agent target — defaults to "opencode" */
   target: AgentTarget
@@ -43,6 +45,7 @@ const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   up: "upgrade",
   c: "config",
   d: "doctor",
+  m: "metrics",
   h: "help",
 }
 
@@ -58,6 +61,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       list: false,
       init: false,
       fix: false,
+      watch: false,
     },
     target: "opencode",
     parseErrors: [],
@@ -112,6 +116,19 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       } else {
         result.parseErrors.push("--mode requires a value (guided, advanced)")
       }
+    } else if (argv[i] === "--interval") {
+      const next = argv[i + 1]
+      if (next && !next.startsWith("--")) {
+        const n = parseInt(next, 10)
+        if (isNaN(n) || n < 1) {
+          result.parseErrors.push("--interval requires a positive number of seconds")
+        } else {
+          result.flags.interval = n
+        }
+        i++ // skip the value
+      } else {
+        result.parseErrors.push("--interval requires a number of seconds")
+      }
     } else if (argv[i].startsWith("--")) {
       flags.push(argv[i])
     } else {
@@ -143,6 +160,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--fix":
         result.flags.fix = true
         break
+      case "--watch":
+        result.flags.watch = true
+        break
       case "--help":
         result.command = "help"
         break
@@ -161,6 +181,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
         break
       case "--doctor":
         if (result.command === "tui") result.command = "doctor"
+        break
+      case "--metrics":
+        if (result.command === "tui") result.command = "metrics"
         break
       // Component flags
       case "--plugin":
@@ -195,7 +218,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     const cmd = positionals[0]
     if (COMMAND_ALIASES[cmd]) {
       result.command = COMMAND_ALIASES[cmd]
-    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "doctor" || cmd === "help") {
+    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "doctor" || cmd === "metrics" || cmd === "help") {
       result.command = cmd
     }
 
