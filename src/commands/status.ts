@@ -7,6 +7,10 @@ import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
 import { getRtkComponent } from "../components/rtk"
 import { getTmuxComponent } from "../components/tmux"
+import { getTuiPluginsComponent } from "../components/tui-plugins"
+import { getCodebaseMemoryComponent } from "../components/codebase-memory"
+import { getOtelComponent } from "../components/otel"
+import { getOtelCollectorComponent } from "../components/otel-collector"
 import type { ComponentModule } from "../components/types"
 import type { ComponentId } from "../config/schema"
 export { buildEnvironmentStatus } from "./status-routing"
@@ -18,6 +22,10 @@ const ALL_COMPONENTS: (() => ComponentModule)[] = [
   getContextModeComponent,
   getRtkComponent,
   getTmuxComponent,
+  getTuiPluginsComponent,
+  getCodebaseMemoryComponent,
+  getOtelComponent,
+  getOtelCollectorComponent,
 ]
 
 export async function collectStatus(

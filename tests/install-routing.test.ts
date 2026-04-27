@@ -11,9 +11,9 @@ describe("filterComponentsForTarget", () => {
     configRoot: "/home/user/.config",
   }
 
-  test("opencode target returns all 6 components on linux", () => {
+  test("opencode target returns all 10 components on linux", () => {
     const result = filterComponentsForTarget("opencode", linuxPlatform)
-    expect(result.sort()).toEqual(["context-mode", "plugin", "rtk", "sounds", "theme", "tmux"])
+    expect(result.sort()).toEqual(["codebase-memory", "context-mode", "otel", "otel-collector", "plugin", "rtk", "sounds", "theme", "tmux", "tui-plugins"])
   })
 
   test("claude target returns empty array (no components support claude yet)", () => {
@@ -51,7 +51,7 @@ describe("install routing: backward compatibility", () => {
       configRoot: "/Users/user/.config",
     }
     const result = filterComponentsForTarget("opencode", darwinPlatform)
-    expect(result.sort()).toEqual(["context-mode", "plugin", "rtk", "sounds", "theme", "tmux"])
+    expect(result.sort()).toEqual(["codebase-memory", "context-mode", "otel", "otel-collector", "plugin", "rtk", "sounds", "theme", "tmux", "tui-plugins"])
   })
 
   test("filterComponentsForTarget returns all when opencode on wsl", () => {
@@ -61,6 +61,6 @@ describe("install routing: backward compatibility", () => {
       configRoot: "/home/user/.config",
     }
     const result = filterComponentsForTarget("opencode", wslPlatform)
-    expect(result.sort()).toEqual(["context-mode", "plugin", "rtk", "sounds", "theme", "tmux"])
+    expect(result.sort()).toEqual(["codebase-memory", "context-mode", "otel", "otel-collector", "plugin", "rtk", "sounds", "theme", "tmux", "tui-plugins"])
   })
 })

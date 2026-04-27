@@ -80,7 +80,7 @@ describe("TUI preset install flow via router", () => {
   test("resolvePreset resolves full to all components", async () => {
     const { resolvePreset } = await import("../src/presets/index")
     const resolved = resolvePreset("full")
-    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
+    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
   })
 
   test("resolvePreset resolves wsl to wsl components", async () => {

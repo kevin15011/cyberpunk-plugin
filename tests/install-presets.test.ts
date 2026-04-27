@@ -79,11 +79,11 @@ describe("resolvePreset", () => {
     expect(resolved.components).toEqual(["plugin", "theme"])
   })
 
-  test("full resolves to all six components", async () => {
+  test("full resolves to all ten components", async () => {
     const { resolvePreset } = await importPresetModules()
     const resolved = resolvePreset("full")
     expect(resolved.id).toBe("full")
-    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
+    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
   })
 
   test("wsl resolves to plugin + theme + sounds + tmux", async () => {

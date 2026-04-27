@@ -12,6 +12,10 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `compact` — Neural compression sound on context compaction
   - `permission` — Alert beep when opencode asks for permission
 - **RTK** (optional) — Token-optimized CLI proxy that filters verbose command outputs before they reach your LLM context. Installs `rtk`, runs `rtk init -g --opencode`, and adds instruction reinforcement.
+- **TUI Plugins** — Registers `opencode-sdd-engram-manage` and `opencode-subagent-statusline` in `tui.json` for enhanced TUI experience.
+- **Codebase Memory MCP** — Auto-downloads `codebase-memory-mcp` binary, adds MCP config for structural code exploration (call graphs, symbols, routes). Routing instructions enforce read-before-edit workflow.
+- **OpenTelemetry Plugin** — Registers `opencode-plugin-otel` in `opencode.json` and writes telemetry env vars (`OPENCODE_OTLP_ENDPOINT`, etc.) to shell profile with marker-managed blocks.
+- **OTEL Collector** — Installs `otelcol-contrib`, writes config binding only to `127.0.0.1:4317/4318`, exports to local JSON file. Uses `systemd --user` when available, fallback script otherwise.
 - **2 custom SDD review phases** — `sdd-review` (native model review) and `sdd-claude-review` (Claude Opus CLI review)
 - **Automatic SDD patching** — Registers review agents in `opencode.json` and patches `/sdd-continue` to `apply -> review -> verify`
 - **Automatic context-mode bootstrap** — Ensures `context-mode` MCP/plugin config, routing instructions, and SDD prompt defaults exist after OpenCode/Gentle AI updates
@@ -144,7 +148,7 @@ Run `cyberpunk doctor` to check the status of TPM, plugin readiness, gitmux, and
 - **Linux** — `ffplay` (`sudo apt install ffmpeg`)
 - **macOS** — `ffplay` (`brew install ffmpeg`)
 - `npm` — Needed for `context-mode` component
-- `curl` — Needed for `rtk` component (if rtk not already installed)
+- `curl` — Needed for `rtk`, `codebase-memory`, and `otel-collector` components
 - `git` — For TPM installation
 - [bun](https://bun.sh) — Only needed if building from source
 
@@ -187,10 +191,22 @@ cyberpunk uninstall --plugin
 cyberpunk uninstall --theme
 cyberpunk uninstall --sounds
 cyberpunk uninstall --tmux
+cyberpunk uninstall --tui-plugins
+cyberpunk uninstall --codebase-memory
+cyberpunk uninstall --otel
+cyberpunk uninstall --otel-collector
 rm -f ~/.local/bin/cyberpunk
 # Optional: remove RTK routing instructions
 rm -f ~/.config/opencode/instructions/rtk-routing.md
 ```
+
+## Security notes
+
+- **OTEL Collector** binds only to `127.0.0.1` — no remote access by default
+- **Shell profile modifications** use marker-managed blocks — only cyberpunk-owned sections are added/removed
+- **MCP configurations** are additive — existing entries in `opencode.json` are preserved
+- **Binary downloads** use HTTPS from official GitHub releases
+- **Environment variables** written by the `otel` component do not include `OPENCODE_OTLP_HEADERS`
 
 ## Keybindings (tmux)
 

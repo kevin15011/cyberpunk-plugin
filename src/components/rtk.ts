@@ -7,12 +7,6 @@ import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, Doct
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
-import {
-  RTK_PLUGIN_ENTRY,
-  isOpenCodePluginRegistered,
-  registerOpenCodePlugin,
-  unregisterOpenCodePlugin,
-} from "../opencode-config"
 import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
 
@@ -192,9 +186,6 @@ export function getRtkComponent(): ComponentModule {
       // Run `rtk init -g --opencode`
       const initOk = runRtkInit()
 
-      // Ensure RTK plugin entry is registered in OpenCode config
-      registerOpenCodePlugin(RTK_PLUGIN_ENTRY)
-
       // Write routing instructions
       ensureRoutingFile()
 
@@ -227,9 +218,6 @@ export function getRtkComponent(): ComponentModule {
       // Run rtk uninstall for OpenCode
       runRtkUninstall()
 
-      // Remove RTK plugin entry from OpenCode config
-      unregisterOpenCodePlugin(RTK_PLUGIN_ENTRY)
-
       const config = loadConfig()
       config.components.rtk = { installed: false }
       saveConfig(config)
@@ -247,10 +235,7 @@ export function getRtkComponent(): ComponentModule {
       const rtkInstalled = isRtkAvailable()
       const routingExists = existsSync(routingPath)
 
-      // Check if RTK plugin is registered in OpenCode config
-      const pluginConfigured = isOpenCodePluginRegistered(RTK_PLUGIN_ENTRY)
-
-      if (rtkInstalled && routingExists && pluginConfigured) {
+      if (rtkInstalled && routingExists) {
         return {
           id: "rtk",
           label: COMPONENT_LABELS.rtk,
@@ -264,15 +249,6 @@ export function getRtkComponent(): ComponentModule {
           label: COMPONENT_LABELS.rtk,
           status: "error",
           error: "curl no encontrado (necesario para instalar rtk)",
-        }
-      }
-
-      if (rtkInstalled && !pluginConfigured) {
-        return {
-          id: "rtk",
-          label: COMPONENT_LABELS.rtk,
-          status: "available",
-          error: "rtk en PATH pero plugin OpenCode no configurado",
         }
       }
 
@@ -336,26 +312,6 @@ export function getRtkComponent(): ComponentModule {
             fixable: false,
           })
         }
-      }
-
-      // Check 3: RTK plugin registered in OpenCode config
-      const pluginRegistered = isOpenCodePluginRegistered(RTK_PLUGIN_ENTRY)
-      if (!pluginRegistered) {
-        checks.push({
-          id: "rtk:registration",
-          label: "Plugin RTK en OpenCode",
-          status: "fail",
-          message: `"${RTK_PLUGIN_ENTRY}" no está en el array plugin de opencode.json`,
-          fixable: true,
-        })
-      } else {
-        checks.push({
-          id: "rtk:registration",
-          label: "Plugin RTK en OpenCode",
-          status: "pass",
-          message: "Plugin RTK registrado en opencode.json",
-          fixable: false,
-        })
       }
 
       return { component: "rtk", checks }

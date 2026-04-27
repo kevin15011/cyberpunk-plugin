@@ -282,13 +282,17 @@ ${bold("COMANDOS")}
   help     (h)  Mostrar esta ayuda
 
  ${bold("FLAGS")}
-  --plugin        Componente: plugin
-  --theme         Componente: tema
-  --sounds        Componente: sonidos
-  --context-mode  Componente: context-mode
-  --rtk           Componente: RTK (token proxy)
-  --tmux          Componente: tmux config
-  --all           Todos los componentes
+   --plugin            Componente: plugin
+   --theme             Componente: tema
+   --sounds            Componente: sonidos
+   --context-mode      Componente: context-mode
+   --rtk               Componente: RTK (token proxy)
+   --tmux              Componente: tmux config
+   --tui-plugins       Componente: TUI plugins (SDD Engram + Statusline)
+   --codebase-memory   Componente: Codebase Memory MCP
+   --otel              Componente: OpenTelemetry plugin
+   --otel-collector    Componente: OTEL Collector
+   --all               Todos los componentes
   --preset <name> Instalar desde preset (minimal, full, wsl, mac)
   --json          Salida en JSON
   --verbose       Log detallado

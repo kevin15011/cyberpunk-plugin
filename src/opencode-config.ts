@@ -5,7 +5,6 @@ import { join } from "path"
 import { getHomeDirAuto } from "./platform/paths"
 
 export const CYBERPUNK_PLUGIN_ENTRY = "./plugins/cyberpunk"
-export const RTK_PLUGIN_ENTRY = "./plugins/rtk"
 
 export interface OpenCodePluginUpdateResult {
   changed: boolean

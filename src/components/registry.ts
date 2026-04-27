@@ -57,6 +57,34 @@ const CAPABILITY_MAP: ComponentCapability[] = [
     requires: ["git"],
     status: "supported",
   },
+  {
+    component: "tui-plugins",
+    targets: ["opencode"],
+    platforms: ["linux", "wsl", "darwin"],
+    requires: [],
+    status: "supported",
+  },
+  {
+    component: "codebase-memory",
+    targets: ["opencode"],
+    platforms: ["linux", "wsl", "darwin"],
+    requires: ["curl"],
+    status: "supported",
+  },
+  {
+    component: "otel",
+    targets: ["opencode"],
+    platforms: ["linux", "wsl", "darwin"],
+    requires: [],
+    status: "supported",
+  },
+  {
+    component: "otel-collector",
+    targets: ["opencode"],
+    platforms: ["linux", "wsl", "darwin"],
+    requires: ["curl"],
+    status: "supported",
+  },
 ]
 
 /**

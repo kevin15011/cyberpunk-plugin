@@ -25,6 +25,10 @@ const FULL_WARNINGS: string[] = [
   "context-mode necesita npm instalado",
   "rtk necesita curl instalado",
   "tmux solo modifica el bloque gestionado en ~/.tmux.conf",
+  "codebase-memory necesita curl instalado",
+  "otel-collector necesita curl instalado",
+  "otel escribe variables de entorno en ~/.bashrc o ~/.zshrc",
+  "otel-collector bindea solo a 127.0.0.1 (local)",
 ]
 
 const WSL_WARNINGS: string[] = [
@@ -36,6 +40,8 @@ const MAC_WARNINGS: string[] = [
   "Preset orientado a macOS; solo muestra avisos y no hace bootstrap del entorno.",
   "context-mode necesita npm instalado",
   "rtk necesita curl instalado",
+  "codebase-memory necesita curl instalado",
+  "otel escribe variables de entorno en ~/.bashrc o ~/.zshrc",
 ]
 
 export const PRESET_DEFINITIONS: Map<PresetId, PresetDefinition> = new Map([

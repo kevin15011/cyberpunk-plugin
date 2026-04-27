@@ -7,6 +7,10 @@ import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
 import { getRtkComponent } from "../components/rtk"
 import { getTmuxComponent } from "../components/tmux"
+import { getTuiPluginsComponent } from "../components/tui-plugins"
+import { getCodebaseMemoryComponent } from "../components/codebase-memory"
+import { getOtelComponent } from "../components/otel"
+import { getOtelCollectorComponent } from "../components/otel-collector"
 import type { ComponentModule } from "../components/types"
 import { COMPONENT_IDS } from "../config/schema"
 import { loadConfig } from "../config/load"
@@ -22,6 +26,10 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   "context-mode": getContextModeComponent,
   rtk: getRtkComponent,
   tmux: getTmuxComponent,
+  "tui-plugins": getTuiPluginsComponent,
+  "codebase-memory": getCodebaseMemoryComponent,
+  otel: getOtelComponent,
+  "otel-collector": getOtelCollectorComponent,
 }
 
 export interface InstallOptions {

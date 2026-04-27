@@ -1,12 +1,12 @@
 {
   "name": "cyberpunk",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "description": "Cyberpunk CLI — interactive TUI for managing your cyberpunk dev environment",
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run src/index.ts",
-    "test": "bun test",
+    "test": "bun test --max-concurrency=1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {},

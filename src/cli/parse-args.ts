@@ -34,7 +34,7 @@ export interface ParsedArgs {
   configValue?: string
 }
 
-const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
+const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
 
 const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   i: "install",
@@ -175,6 +175,18 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--tmux":
         result.components.push("tmux" as ComponentId)
         break
+      case "--tui-plugins":
+        result.components.push("tui-plugins" as ComponentId)
+        break
+      case "--codebase-memory":
+        result.components.push("codebase-memory" as ComponentId)
+        break
+      case "--otel":
+        result.components.push("otel" as ComponentId)
+        break
+      case "--otel-collector":
+        result.components.push("otel-collector" as ComponentId)
+        break
     }
   }
 
@@ -198,7 +210,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
 
   // If --all flag, include all components
   if (result.flags.all) {
-    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"]
+    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"]
   }
 
   // Validate: --preset is mutually exclusive with --all and component flags

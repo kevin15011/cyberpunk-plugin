@@ -134,7 +134,7 @@ function createHealthyConfig() {
 function createHealthyOpenCode() {
   mkdirSync(OPENCODE_DIR, { recursive: true })
   writeFileSync(OPENCODE_JSON, JSON.stringify({
-    plugin: ["./plugins/cyberpunk", "./plugins/rtk"],
+    plugin: ["./plugins/cyberpunk"],
     mcp: { "context-mode": { command: ["context-mode"], type: "local", enabled: true } },
   }))
 }
@@ -172,6 +172,71 @@ function createHealthyTmux() {
   writeFileSync(TMUX_CONF_PATH, `# user config\n# cyberpunk-managed:start\nset -g prefix C-a\n# cyberpunk-managed:end\n`)
 }
 
+// Paths for new components
+let TUI_JSON_PATH: string
+let CM_ROUTING_MARKER_PATH: string
+let CB_MEMORY_ROUTING_PATH: string
+let LOCAL_BIN_DIR: string
+let OTEL_COLLECTOR_CONFIG_DIR: string
+let OTEL_COLLECTOR_CONFIG_PATH: string
+let OTEL_COLLECTOR_SERVICE_DIR: string
+let OTEL_COLLECTOR_SERVICE_PATH: string
+let BASHRC_PATH: string
+
+function createHealthyTuiPlugins() {
+  // tui.json must have both plugin entries
+  const tuiConfig = JSON.parse(readFileSync(TUI_PATH, "utf8"))
+  tuiConfig.plugins = [
+    "opencode-sdd-engram-manage",
+    "opencode-subagent-statusline",
+  ]
+  writeFileSync(TUI_PATH, JSON.stringify(tuiConfig))
+}
+
+function createHealthyCodebaseMemory() {
+  // Binary fake
+  createFakeBinary("codebase-memory-mcp", "codebase-memory-mcp 1.0.0")
+  // Routing file with marker
+  mkdirSync(INSTRUCTIONS_DIR, { recursive: true })
+  writeFileSync(CB_MEMORY_ROUTING_PATH, `<!-- cyberpunk-managed:codebase-memory-routing -->\n# Codebase Memory MCP\n`)
+  // MCP in opencode.json
+  const ocConfig = JSON.parse(readFileSync(OPENCODE_JSON, "utf8"))
+  if (!ocConfig.mcp) ocConfig.mcp = {}
+  ocConfig.mcp["codebase-memory"] = {
+    command: ["codebase-memory-mcp"],
+    type: "local",
+    enabled: true,
+  }
+  writeFileSync(OPENCODE_JSON, JSON.stringify(ocConfig))
+}
+
+function createHealthyOtel() {
+  // Plugin registered in opencode.json
+  const ocConfig = JSON.parse(readFileSync(OPENCODE_JSON, "utf8"))
+  if (Array.isArray(ocConfig.plugin)) {
+    if (!ocConfig.plugin.includes("@devtheops/opencode-plugin-otel")) {
+      ocConfig.plugin.push("@devtheops/opencode-plugin-otel")
+    }
+  } else {
+    ocConfig.plugin = ["./plugins/cyberpunk", "@devtheops/opencode-plugin-otel"]
+  }
+  writeFileSync(OPENCODE_JSON, JSON.stringify(ocConfig))
+  // Env block in .bashrc
+  const envBlock = `# >>> cyberpunk-managed:otel-env >>>\nexport OPENCODE_ENABLE_TELEMETRY="1"\nexport OPENCODE_OTLP_ENDPOINT="http://localhost:4317"\nexport OPENCODE_OTLP_PROTOCOL="grpc"\nexport OPENCODE_METRIC_PREFIX="opencode."\n# <<< cyberpunk-managed:otel-env <<<`
+  writeFileSync(BASHRC_PATH, envBlock + "\n")
+}
+
+function createHealthyOtelCollector() {
+  // Binary fake
+  createFakeBinary("otelcol-contrib", "otelcol-contrib 0.1.0")
+  // Config file with local bind
+  mkdirSync(OTEL_COLLECTOR_CONFIG_DIR, { recursive: true })
+  writeFileSync(OTEL_COLLECTOR_CONFIG_PATH, `receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 127.0.0.1:4317\n`)
+  // Service or fallback script
+  mkdirSync(OTEL_COLLECTOR_SERVICE_DIR, { recursive: true })
+  writeFileSync(OTEL_COLLECTOR_SERVICE_PATH, `[Unit]\nDescription=test\n[Service]\nExecStart=test\n[Install]\nWantedBy=default.target\n`)
+}
+
 /** Full healthy fixture */
 function createFullHealthyFixture() {
   process.env.PATH = `${BIN_DIR}:${originalPath ?? ""}`
@@ -183,6 +248,10 @@ function createFullHealthyFixture() {
   createHealthySounds()
   createHealthyRouting()
   createHealthyTmux()
+  createHealthyTuiPlugins()
+  createHealthyCodebaseMemory()
+  createHealthyOtel()
+  createHealthyOtelCollector()
 }
 
 function createFakeBinary(name: string, output = `${name} test-version`) {
@@ -202,10 +271,13 @@ function createFakeLocalBinary(name: string, output = `${name} test-version`) {
 
 /** Clear all fixture files and dirs */
 function clearAllFixtures() {
-  const dirs = [CONFIG_DIR, OPENCODE_DIR]
+  const dirs = [CONFIG_DIR, OPENCODE_DIR, OTEL_COLLECTOR_CONFIG_DIR, OTEL_COLLECTOR_SERVICE_DIR]
   for (const d of dirs) {
     if (existsSync(d)) rmSync(d, { recursive: true, force: true })
   }
+  // Clean individual files outside the above dirs
+  if (existsSync(TMUX_CONF_PATH)) rmSync(TMUX_CONF_PATH, { force: true })
+  if (existsSync(BASHRC_PATH)) rmSync(BASHRC_PATH, { force: true })
 }
 
 /** Minimal config fixture for tests that don't need full setup */
@@ -246,6 +318,13 @@ beforeAll(async () => {
   RTK_ROUTING_PATH = join(INSTRUCTIONS_DIR, "rtk-routing.md")
   TMUX_CONF_PATH = join(tempDir, ".tmux.conf")
   BIN_DIR = join(tempDir, "bin")
+  BASHRC_PATH = join(tempDir, ".bashrc")
+  CB_MEMORY_ROUTING_PATH = join(INSTRUCTIONS_DIR, "codebase-memory-routing.md")
+  LOCAL_BIN_DIR = join(tempDir, ".local", "bin")
+  OTEL_COLLECTOR_CONFIG_DIR = join(tempDir, ".config", "cyberpunk", "otel-collector")
+  OTEL_COLLECTOR_CONFIG_PATH = join(OTEL_COLLECTOR_CONFIG_DIR, "config.yaml")
+  OTEL_COLLECTOR_SERVICE_DIR = join(tempDir, ".config", "systemd", "user")
+  OTEL_COLLECTOR_SERVICE_PATH = join(OTEL_COLLECTOR_SERVICE_DIR, "cyberpunk-otel-collector.service")
   createFakeBinary("opencode", "opencode 1.0.0")
   createFakeBinary("context-mode", "context-mode 1.0.0")
   createFakeBinary("rtk", "rtk 1.0.0")
@@ -391,18 +470,14 @@ describe("Doctor Spec Scenarios", () => {
     expect(mcpCheck!.fixable).toBe(true)
   })
 
-  // Scenario 8: rtk installed but not registered
-  test("S8: rtk:registration fails when plugin not registered in opencode.json", async () => {
+  // Scenario 8: rtk:registration must NOT exist as a check (removed feature)
+  test("S8: rtk:registration is NOT generated — removed feature", async () => {
     createMinimalConfig()
-    // opencode.json exists but has no plugin entry for RTK
 
     const result = await runDoctorFn({ fix: false, verbose: false, components: ["rtk"] })
     const regCheck = result.checks.find(c => c.id === "rtk:registration")
-    expect(regCheck).toBeDefined()
-    expect(regCheck!.status).toBe("fail")
-    expect(regCheck!.fixable).toBe(true)
-    // Message must reference the missing registration
-    expect(regCheck!.message).toContain("opencode.json")
+    // rtk:registration was removed — must NOT appear in checks
+    expect(regCheck).toBeUndefined()
   })
 
   // Scenario 9: Corrupted config
@@ -487,7 +562,7 @@ describe("Doctor Spec Scenarios", () => {
     expect(prefixes.has("platform")).toBe(true)
     expect(prefixes.has("config")).toBe(true)
     // Each component that has doctor() should emit at least one check
-    for (const comp of ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"]) {
+    for (const comp of ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"]) {
       expect(prefixes.has(comp)).toBe(true)
     }
   })
@@ -545,14 +620,13 @@ describe("Doctor binary guard scenarios", () => {
       const result = await runDoctorFn({ fix: true, verbose: false, components: ["rtk"] })
 
       const routingFix = result.fixes.find(f => f.checkId === "rtk:routing")
-      const regFix = result.fixes.find(f => f.checkId === "rtk:registration")
 
       if (routingFix) {
         expect(routingFix.status).toBe("skipped")
       }
-      if (regFix) {
-        expect(regFix.status).toBe("skipped")
-      }
+      // rtk:registration fix must NOT exist (removed feature)
+      const regFix = result.fixes.find(f => f.checkId === "rtk:registration")
+      expect(regFix).toBeUndefined()
     } finally {
       process.env.PATH = origPath
     }

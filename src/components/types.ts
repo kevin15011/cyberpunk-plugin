@@ -2,7 +2,7 @@
 
 import type { CyberpunkConfig } from "../config/schema"
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux"
+export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory" | "otel" | "otel-collector"
 
 export interface InstallResult {
   component: ComponentId

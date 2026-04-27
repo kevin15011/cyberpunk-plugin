@@ -2,7 +2,7 @@
 
 import type { AgentTarget, UserProfile } from "../domain/environment"
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux"
+export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory" | "otel" | "otel-collector"
 export type InstallMode = "repo" | "binary"
 
 export interface ComponentState {
@@ -37,7 +37,7 @@ export interface CyberpunkConfig {
   agentState?: Record<string, AgentStateEntry>
 }
 
-export const COMPONENT_IDS: ComponentId[] = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"]
+export const COMPONENT_IDS: ComponentId[] = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"]
 
 export const COMPONENT_LABELS: Record<ComponentId, string> = {
   plugin: "Plugin de OpenCode",
@@ -46,6 +46,10 @@ export const COMPONENT_LABELS: Record<ComponentId, string> = {
   "context-mode": "Context-Mode",
   rtk: "RTK (Token Proxy)",
   tmux: "Tmux config",
+  "tui-plugins": "TUI Plugins (SDD Engram + Statusline)",
+  "codebase-memory": "Codebase Memory MCP",
+  otel: "OpenTelemetry Plugin",
+  "otel-collector": "OTEL Collector",
 }
 
 export const DEFAULT_REPO_URL = "https://github.com/kevin15011/cyberpunk-plugin"
@@ -57,6 +61,10 @@ const DEFAULT_COMPONENTS: Record<ComponentId, ComponentState> = {
   "context-mode": { installed: false },
   rtk: { installed: false },
   tmux: { installed: false },
+  "tui-plugins": { installed: false },
+  "codebase-memory": { installed: false },
+  otel: { installed: false },
+  "otel-collector": { installed: false },
 }
 
 export function createDefaultConfig(): CyberpunkConfig {

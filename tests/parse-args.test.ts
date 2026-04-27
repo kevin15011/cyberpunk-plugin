@@ -24,7 +24,7 @@ describe("parseArgs", () => {
   test("install command with --all", () => {
     const result = parseArgs(["install", "--all"])
     expect(result.command).toBe("install")
-    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
+    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
   })
 
   test("--install --plugin bypasses TUI (non-interactive)", () => {
@@ -36,7 +36,7 @@ describe("parseArgs", () => {
   test("--install --all bypasses TUI", () => {
     const result = parseArgs(["--install", "--all"])
     expect(result.command).toBe("install")
-    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux"])
+    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
   })
 
   test("--status --json", () => {

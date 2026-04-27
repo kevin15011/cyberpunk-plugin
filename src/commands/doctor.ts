@@ -7,6 +7,10 @@ import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
 import { getRtkComponent } from "../components/rtk"
 import { getTmuxComponent } from "../components/tmux"
+import { getTuiPluginsComponent } from "../components/tui-plugins"
+import { getCodebaseMemoryComponent } from "../components/codebase-memory"
+import { getOtelComponent } from "../components/otel"
+import { getOtelCollectorComponent } from "../components/otel-collector"
 import { COMPONENT_IDS } from "../config/schema"
 import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
@@ -29,6 +33,10 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   "context-mode": getContextModeComponent,
   rtk: getRtkComponent,
   tmux: getTmuxComponent,
+  "tui-plugins": getTuiPluginsComponent,
+  "codebase-memory": getCodebaseMemoryComponent,
+  otel: getOtelComponent,
+  "otel-collector": getOtelCollectorComponent,
 }
 
 /**
@@ -252,6 +260,26 @@ export async function runDoctor(
 
     for (const check of fixable.filter(c => c.id === "tmux:plugins")) {
       fixes.push(await applyTmuxFix(check, prerequisites, tmuxTpmRepairSucceeded))
+    }
+
+    // 8. TUI plugins registration repair
+    for (const check of fixable.filter(c => c.id.startsWith("tui-plugins:"))) {
+      fixes.push(await applyTuiPluginsFix(check))
+    }
+
+    // 9. Codebase-memory routing + MCP repair
+    for (const check of fixable.filter(c => c.id.startsWith("codebase-memory:"))) {
+      fixes.push(await applyCodebaseMemoryFix(check))
+    }
+
+    // 10. OTEL plugin + env repair
+    for (const check of fixable.filter(c => c.id.startsWith("otel:"))) {
+      fixes.push(await applyOtelFix(check))
+    }
+
+    // 11. OTEL collector config + service repair
+    for (const check of fixable.filter(c => c.id.startsWith("otel-collector:"))) {
+      fixes.push(await applyOtelCollectorFix(check))
     }
 
     // Mark fixed checks
@@ -771,23 +799,6 @@ Use \`rtk\` commands as drop-in replacements for common CLI tools to reduce toke
     }
   }
 
-  if (check.id === "rtk:registration") {
-    try {
-      const { registerOpenCodePlugin, RTK_PLUGIN_ENTRY } = await import("../opencode-config")
-      const result = registerOpenCodePlugin(RTK_PLUGIN_ENTRY)
-      if (result.registered) {
-        return { checkId: check.id, status: "fixed", message: "Plugin RTK registrado en OpenCode config" }
-      }
-      return { checkId: check.id, status: "unchanged", message: result.warning || "Plugin RTK ya registrado" }
-    } catch (err) {
-      return {
-        checkId: check.id,
-        status: "failed",
-        message: `Error registrando RTK: ${err instanceof Error ? err.message : String(err)}`,
-      }
-    }
-  }
-
   return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
 }
 
@@ -864,6 +875,78 @@ async function applyTmuxFix(
       checkId: check.id,
       status: "failed",
       message: `Error reparando config tmux: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+async function applyTuiPluginsFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  // Registration checks — call the component's ensure logic via install
+  if (check.id.startsWith("tui-plugins:registration:")) {
+    try {
+      const mod = getTuiPluginsComponent()
+      const result = await mod.install()
+      if (result.status === "success") {
+        return { checkId: check.id, status: "fixed", message: "TUI plugins registrados en tui.json" }
+      }
+      return { checkId: check.id, status: "unchanged", message: result.message || "TUI plugins sin cambios" }
+    } catch (err) {
+      return {
+        checkId: check.id,
+        status: "failed",
+        message: `Error registrando TUI plugin: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
+  }
+  return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+}
+
+async function applyCodebaseMemoryFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  try {
+    if (check.id === "codebase-memory:routing" || check.id === "codebase-memory:mcp") {
+      const mod = getCodebaseMemoryComponent()
+      const result = await mod.install()
+      return { checkId: check.id, status: result.status === "success" ? "fixed" : "unchanged", message: result.message || "codebase-memory reparado" }
+    }
+    return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+  } catch (err) {
+    return {
+      checkId: check.id,
+      status: "failed",
+      message: `Error reparando codebase-memory: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+async function applyOtelFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  try {
+    if (check.id === "otel:plugin" || check.id === "otel:env") {
+      const mod = getOtelComponent()
+      const result = await mod.install()
+      return { checkId: check.id, status: result.status === "success" ? "fixed" : "unchanged", message: result.message || "OTEL reparado" }
+    }
+    return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+  } catch (err) {
+    return {
+      checkId: check.id,
+      status: "failed",
+      message: `Error reparando OTEL: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+async function applyOtelCollectorFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  try {
+    if (check.id === "otel-collector:config" || check.id === "otel-collector:service") {
+      const mod = getOtelCollectorComponent()
+      const result = await mod.install()
+      return { checkId: check.id, status: result.status === "success" ? "fixed" : "unchanged", message: result.message || "OTEL collector reparado" }
+    }
+    return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
+  } catch (err) {
+    return {
+      checkId: check.id,
+      status: "failed",
+      message: `Error reparando OTEL collector: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
 }

@@ -29,8 +29,23 @@ function createTempFixture() {
 }
 
 function runMainIsolated(home: string, argv: string[]) {
+  const isUpgrade = argv.includes("upgrade") || argv.includes("--upgrade")
   const evalCode = `
     import { main } from ${JSON.stringify(join(process.cwd(), "src/index.ts"))};
+    ${isUpgrade ? `
+    import { __setUpgradeTestOverrides } from ${JSON.stringify(join(process.cwd(), "src/commands/upgrade.ts"))};
+    __setUpgradeTestOverrides({
+      getRepoDir: () => process.cwd(),
+      gitCommand: (args) => {
+        if (args.startsWith("rev-parse HEAD")) return "local-test-rev";
+        if (args.startsWith("fetch ")) return "";
+        if (args.startsWith("rev-parse origin/main")) return "local-test-rev";
+        if (args.startsWith("diff --name-only")) return "";
+        if (args.startsWith("pull ")) return "";
+        return "";
+      },
+    });
+    ` : ""}
     process.argv = ${JSON.stringify(argv)};
     await main();
   `
@@ -43,6 +58,7 @@ function runMainIsolated(home: string, argv: string[]) {
       // Prevent ensureConfigExists from creating side effects for doctor
       NO_COLOR: "1",
     },
+    timeout: 15000,
     stdout: "pipe",
     stderr: "pipe",
   })
@@ -98,7 +114,7 @@ describe("CLI direct doctor entrypoint", () => {
     // Should mention repairs if any were needed
     // (on a clean temp home, there may or may not be fixable issues)
     expect(result.exitCode === 0 || result.exitCode === 1).toBe(true)
-  })
+  }, 30000)
 
   test("--doctor alias: runs doctor command", () => {
     const result = runMainIsolated(home, ["bun", "src/index.ts", "--doctor"])

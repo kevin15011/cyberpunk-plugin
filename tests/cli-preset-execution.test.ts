@@ -166,6 +166,7 @@ describe("CLI preset execution path", () => {
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0].ids).toEqual([
       "plugin", "theme", "sounds", "context-mode", "rtk", "tmux",
+      "tui-plugins", "codebase-memory", "otel", "otel-collector",
     ])
   })
 

@@ -105,13 +105,9 @@ The system SHALL verify: (1) npm available, (2) context-mode installed globally,
 
 ### Requirement: RTK Component Checks
 
-The system SHALL verify: (1) rtk binary on PATH, (2) routing file exists, (3) RTK plugin registered in OpenCode config.
+The system SHALL verify: (1) rtk binary on PATH, (2) routing file exists.
 
-#### Scenario: rtk installed but not registered
-
-- GIVEN rtk binary is on PATH but `./plugins/rtk` is absent from plugin array
-- WHEN `cyberpunk doctor` is run
-- THEN `rtk:registration` shows `fail` with `fixable: true`
+NOTE: RTK plugin registration in OpenCode config (`./plugins/rtk`) was removed. The doctor MUST NOT generate `rtk:registration` checks or attempt to register the RTK plugin entry.
 
 ### Requirement: Config Integrity Check
 

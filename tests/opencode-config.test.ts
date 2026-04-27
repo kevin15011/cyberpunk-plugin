@@ -197,30 +197,23 @@ describe("OpenCode plugin registration logic", () => {
       expect(result.warning).toContain("not an array")
     })
 
-    test("register RTK plugin appends to existing OpenCode plugin array", async () => {
+    test("RTK_PLUGIN_ENTRY is NOT exported — removed feature", async () => {
+      const mod = await import("../src/opencode-config.ts?" + Date.now())
+      expect(mod.RTK_PLUGIN_ENTRY).toBeUndefined()
+    })
+
+    test("registerOpenCodePlugin does NOT produce ./plugins/rtk entry", async () => {
       mkdirSync(OPENCODE_DIR, { recursive: true })
       writeFileSync(OPENCODE_CONFIG, JSON.stringify({ plugin: ["./plugins/cyberpunk"] }, null, 2) + "\n", "utf8")
 
       const mod = await import("../src/opencode-config.ts?" + Date.now())
-      const result = mod.registerOpenCodePlugin(mod.RTK_PLUGIN_ENTRY)
-      expect(result.changed).toBe(true)
+      // Registering a custom entry still works, but ./plugins/rtk is no longer a managed constant
+      const result = mod.registerOpenCodePlugin("./plugins/rtk")
+      // The function itself still works (generic), but RTK_PLUGIN_ENTRY constant is removed
       expect(result.registered).toBe(true)
 
       const saved = JSON.parse(readFileSync(OPENCODE_CONFIG, "utf8"))
-      expect(saved.plugin).toEqual(["./plugins/cyberpunk", "./plugins/rtk"])
-    })
-
-    test("unregister RTK plugin removes only RTK entry", async () => {
-      mkdirSync(OPENCODE_DIR, { recursive: true })
-      writeFileSync(OPENCODE_CONFIG, JSON.stringify({ plugin: ["./plugins/cyberpunk", "./plugins/rtk", "./plugins/other"] }, null, 2) + "\n", "utf8")
-
-      const mod = await import("../src/opencode-config.ts?" + Date.now())
-      const result = mod.unregisterOpenCodePlugin(mod.RTK_PLUGIN_ENTRY)
-      expect(result.changed).toBe(true)
-      expect(result.registered).toBe(false)
-
-      const saved = JSON.parse(readFileSync(OPENCODE_CONFIG, "utf8"))
-      expect(saved.plugin).toEqual(["./plugins/cyberpunk", "./plugins/other"])
+      expect(saved.plugin).toContain("./plugins/rtk")
     })
   })
 })

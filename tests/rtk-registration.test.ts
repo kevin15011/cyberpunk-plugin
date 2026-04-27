@@ -1,4 +1,4 @@
-// tests/rtk-registration.test.ts — verify RTK component registers/unregisters OpenCode plugin entry
+// tests/rtk-registration.test.ts — verify RTK component does NOT register OpenCode plugin entry (corrected behavior)
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
@@ -47,7 +47,7 @@ function installFakeRtkBinary() {
   chmodSync(LOCAL_RTK_PATH, 0o755)
 }
 
-describe("RTK OpenCode plugin registration", () => {
+describe("RTK OpenCode plugin registration (corrected)", () => {
   beforeEach(() => {
     if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
     mkdirSync(TEMP_HOME, { recursive: true })
@@ -59,7 +59,7 @@ describe("RTK OpenCode plugin registration", () => {
     if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
   })
 
-  test("install registers ./plugins/rtk in opencode.json", async () => {
+  test("install does NOT register ./plugins/rtk in opencode.json", async () => {
     installFakeRtkBinary()
     writeCyberpunkConfig()
     writeOpenCodeConfig({ plugin: ["./plugins/cyberpunk"] })
@@ -69,10 +69,14 @@ describe("RTK OpenCode plugin registration", () => {
     const result = await component.install()
 
     expect(["success", "skipped"]).toContain(result.status)
-    expect(readOpenCodeConfig().plugin).toEqual(["./plugins/cyberpunk", "./plugins/rtk"])
+    // After the fix, ./plugins/rtk should NOT be registered
+    const cfg = readOpenCodeConfig()
+    expect(cfg.plugin).not.toContain("./plugins/rtk")
+    // Original plugin should be preserved
+    expect(cfg.plugin).toContain("./plugins/cyberpunk")
   })
 
-  test("uninstall unregisters ./plugins/rtk from opencode.json", async () => {
+  test("uninstall does NOT touch opencode.json plugin array", async () => {
     installFakeRtkBinary()
     writeCyberpunkConfig()
     writeOpenCodeConfig({ plugin: ["./plugins/cyberpunk", "./plugins/rtk", "./plugins/other"] })
@@ -82,6 +86,7 @@ describe("RTK OpenCode plugin registration", () => {
     const result = await component.uninstall()
 
     expect(result.status).toBe("success")
-    expect(readOpenCodeConfig().plugin).toEqual(["./plugins/cyberpunk", "./plugins/other"])
+    // After the fix, the plugin array should be untouched
+    expect(readOpenCodeConfig().plugin).toEqual(["./plugins/cyberpunk", "./plugins/rtk", "./plugins/other"])
   })
 })

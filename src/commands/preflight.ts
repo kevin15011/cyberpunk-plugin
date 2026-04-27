@@ -46,6 +46,19 @@ export const FILE_TOUCH_MAP: Record<ComponentId, string[]> = {
     "~/.config/opencode/opencode.json",
   ],
   tmux: ["Managed block in ~/.tmux.conf"],
+  "tui-plugins": ["~/.config/opencode/tui.json"],
+  "codebase-memory": [
+    "~/.config/opencode/opencode.json",
+    "~/.config/opencode/instructions/codebase-memory-routing.md",
+  ],
+  otel: [
+    "~/.config/opencode/opencode.json",
+    "~/.bashrc or ~/.zshrc",
+  ],
+  "otel-collector": [
+    "~/.config/cyberpunk/otel-collector/config.yaml",
+    "~/.local/state/cyberpunk/otel/",
+  ],
 }
 
 export const DEPENDENCY_MAP: Record<ComponentId, { id: PreflightDependencyStatus["id"]; label: string; severity: "info" | "warn" }[]> = {
@@ -58,6 +71,10 @@ export const DEPENDENCY_MAP: Record<ComponentId, { id: PreflightDependencyStatus
   ],
   rtk: [{ id: "curl", label: "curl", severity: "warn" }],
   tmux: [],
+  "tui-plugins": [],
+  "codebase-memory": [{ id: "curl", label: "curl", severity: "warn" }],
+  otel: [],
+  "otel-collector": [{ id: "curl", label: "curl", severity: "warn" }],
 }
 
 export async function buildPresetPreflight(resolved: ResolvedPreset): Promise<PresetPreflightSummary> {

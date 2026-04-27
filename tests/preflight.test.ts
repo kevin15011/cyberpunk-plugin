@@ -132,6 +132,10 @@ describe("preset preflight", () => {
       { id: "context-mode", label: "Context-Mode", status: "installed" },
       { id: "rtk", label: "RTK (Token Proxy)", status: "available" },
       { id: "tmux", label: "Tmux config", status: "available" },
+      { id: "tui-plugins", label: "TUI Plugins", status: "available" },
+      { id: "codebase-memory", label: "Codebase Memory MCP", status: "available" },
+      { id: "otel", label: "OpenTelemetry Plugin", status: "available" },
+      { id: "otel-collector", label: "OTEL Collector", status: "available" },
     ]
 
     const summary = await buildPresetPreflight(resolvePreset("full"))
@@ -164,7 +168,7 @@ describe("preset preflight", () => {
       {
         id: "curl",
         label: "curl",
-        requiredBy: ["rtk"],
+        requiredBy: ["rtk", "codebase-memory", "otel-collector"],
         available: false,
         severity: "warn",
         message: "No disponible",
@@ -222,6 +226,43 @@ describe("preset preflight", () => {
         readiness: "ready",
         dependencyIds: [],
         fileTouches: ["Managed block in ~/.tmux.conf"],
+      },
+      {
+        id: "tui-plugins",
+        installed: false,
+        readiness: "ready",
+        dependencyIds: [],
+        fileTouches: ["~/.config/opencode/tui.json"],
+      },
+      {
+        id: "codebase-memory",
+        installed: false,
+        readiness: "degraded",
+        dependencyIds: ["curl"],
+        fileTouches: [
+          "~/.config/opencode/opencode.json",
+          "~/.config/opencode/instructions/codebase-memory-routing.md",
+        ],
+      },
+      {
+        id: "otel",
+        installed: false,
+        readiness: "ready",
+        dependencyIds: [],
+        fileTouches: [
+          "~/.config/opencode/opencode.json",
+          "~/.bashrc or ~/.zshrc",
+        ],
+      },
+      {
+        id: "otel-collector",
+        installed: false,
+        readiness: "degraded",
+        dependencyIds: ["curl"],
+        fileTouches: [
+          "~/.config/cyberpunk/otel-collector/config.yaml",
+          "~/.local/state/cyberpunk/otel/",
+        ],
       },
     ])
 
