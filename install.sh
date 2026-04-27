@@ -66,27 +66,54 @@ path_already_exported() {
     return 1
   fi
 
+  # Exact full-line matches (quoted forms)
   grep -Fqx 'export PATH="$HOME/.local/bin:$PATH"' "$profile_path" && return 0
   grep -Fqx "export PATH=\"${INSTALL_DIR}:\$PATH\"" "$profile_path" && return 0
+
+  # Common variant: unquoted $HOME (e.g. export PATH=$HOME/.local/bin:$PATH)
+  grep -Eq '^[[:space:]]*export[[:space:]]+PATH=\$HOME/\.local/bin:\$PATH[[:space:]]*$' "$profile_path" && return 0
+  # Common variant: leading whitespace + quoted form
+  grep -Eq '^[[:space:]]+export[[:space:]]+PATH="?\$HOME/\.local/bin:\$PATH"?[[:space:]]*$' "$profile_path" && return 0
 
   return 1
 }
 
-print_path_guidance() {
-  case "$1" in
-    available)
-      echo ">> PATH ready: ${INSTALL_DIR_DISPLAY} is already available in this shell."
-      ;;
-    profile-present)
-      echo ">> PATH export already exists in ${DETECTED_PROFILE}"
-      echo "   Run: ${DETECTED_RELOAD_CMD}"
-      ;;
-    missing)
-      echo ">> Add ${INSTALL_DIR_DISPLAY} to your PATH via ${DETECTED_PROFILE}"
-      echo "   Add: ${PATH_EXPORT_LINE}"
-      echo "   Run: ${DETECTED_RELOAD_CMD}"
-      ;;
-  esac
+persist_path_export() {
+  local profile_path
+  local profile_dir
+  profile_path="$(resolve_profile_path "$1")"
+  profile_dir="${profile_path%/*}"
+
+  if [ "$profile_dir" != "$profile_path" ]; then
+    mkdir -p "$profile_dir" || {
+      echo ">> WARNING: Could not create profile directory ${profile_dir}."
+      echo "   Add this line to your shell profile manually:"
+      echo "   ${2}"
+      echo "   Then run: ${DETECTED_RELOAD_CMD}"
+      return 1
+    }
+  fi
+
+  # Ensure the file ends with a newline before appending
+  if [ -f "$profile_path" ] && [ "$(wc -c < "$profile_path" 2>/dev/null)" -gt 0 ]; then
+    if [ "$(tail -c 1 "$profile_path" | wc -l)" -eq 0 ]; then
+      printf '\n' >> "$profile_path" || {
+        echo ">> WARNING: Could not update ${DETECTED_PROFILE}."
+        echo "   Add this line to your shell profile manually:"
+        echo "   ${2}"
+        echo "   Then run: ${DETECTED_RELOAD_CMD}"
+        return 1
+      }
+    fi
+  fi
+
+  printf '%s\n' "$2" >> "$profile_path" || {
+    echo ">> WARNING: Automatic profile update failed for ${DETECTED_PROFILE}."
+    echo "   Add this line to your shell profile manually:"
+    echo "   ${2}"
+    echo "   Then run: ${DETECTED_RELOAD_CMD}"
+    return 1
+  }
 }
 
 print_ffmpeg_guidance() {
@@ -143,6 +170,10 @@ print_install_summary() {
       echo "   PATH: PATH export already exists in ${DETECTED_PROFILE}"
       echo "   Run: ${DETECTED_RELOAD_CMD}"
       ;;
+    profile-updated)
+      echo "   PATH: Added ${INSTALL_DIR_DISPLAY} to ${DETECTED_PROFILE}"
+      echo "   Run: ${DETECTED_RELOAD_CMD}"
+      ;;
     missing)
       echo "   PATH: Add ${INSTALL_DIR_DISPLAY} to your PATH via ${DETECTED_PROFILE}"
       echo "   Add: ${PATH_EXPORT_LINE}"
@@ -161,7 +192,12 @@ print_install_summary() {
     echo "   macOS: ${QUARANTINE_NOTE}"
   fi
 
-  echo "   Verify install: cyberpunk help"
+  if [ "$PATH_STATUS" = "available" ]; then
+    echo "   Verify install: cyberpunk help"
+  else
+    echo "   Verify install now: ${install_path} help"
+    echo "   Verify after PATH reload: cyberpunk help"
+  fi
 }
 
 echo ">> CYBERPUNK ENVIRONMENT INSTALLER"
@@ -257,10 +293,12 @@ if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_PATH" 2>/dev/null; then
       if path_already_exported "$DETECTED_PROFILE" "$PATH_EXPORT_LINE"; then
         PATH_STATUS="profile-present"
       else
-        PATH_STATUS="missing"
+        if persist_path_export "$DETECTED_PROFILE" "$PATH_EXPORT_LINE"; then
+          PATH_STATUS="profile-updated"
+        else
+          PATH_STATUS="missing"
+        fi
       fi
-      echo ""
-      print_path_guidance "$PATH_STATUS"
       ;;
   esac
 

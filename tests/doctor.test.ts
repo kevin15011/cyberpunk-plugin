@@ -222,6 +222,31 @@ ${END_MARKER}
     expect(typeof result.summary.remainingFailures).toBe("number")
   })
 
+  test("macOS doctor warns when installed cyberpunk binary is not on PATH", () => {
+    if (process.platform !== "darwin") return
+
+    const localBinDir = join(fixture.home, ".local", "bin")
+    mkdirSync(localBinDir, { recursive: true })
+    writeExecutable(join(localBinDir, "cyberpunk"), "#!/bin/sh\nexit 0\n")
+
+    const result = runDoctorIsolated(fixture.home, "/usr/bin:/bin", {
+      fix: false,
+      verbose: false,
+      components: ["plugin"],
+    })
+
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      id: "mac:release-asset",
+      status: "pass",
+      message: expect.stringContaining("~/.local/bin/cyberpunk"),
+    }))
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      id: "mac:path",
+      status: "warn",
+      message: expect.stringContaining("~/.local/bin is not on PATH"),
+    }))
+  })
+
   test("doctor results stay the same after another import cached a different HOME", async () => {
     const staleFixture = createTempHome("cyberpunk-doctor-stale")
 
@@ -312,8 +337,8 @@ describe("doctor runtime expansion", () => {
   })
 
   test("runtime checks include platform-aware next steps when opencode and playback are missing", async () => {
-    const { getPlaybackDependency } = await importAfterHomeSet<typeof import("../src/platform/detect")>("../../src/platform/detect.ts", fixture.home)
-    const expectedPlayback = getPlaybackDependency()
+    const { detectEnvironment, getPlaybackDependency } = await importAfterHomeSet<typeof import("../src/platform/detect")>("../../src/platform/detect.ts", fixture.home)
+    const expectedPlayback = getPlaybackDependency(detectEnvironment())
     const emptyBinDir = join(fixture.home, "empty-bin")
     mkdirSync(emptyBinDir, { recursive: true })
 

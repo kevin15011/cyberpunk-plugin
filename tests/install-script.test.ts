@@ -31,7 +31,7 @@ exec "${resolved}" "$@"
 `)
   }
 
-  for (const commandName of ["basename", "cat", "chmod", "grep", "mkdir", "tr"]) {
+  for (const commandName of ["basename", "cat", "chmod", "grep", "mkdir", "tail", "tr", "wc"]) {
     writePassThrough(commandName)
   }
 
@@ -149,7 +149,8 @@ fi
     expect(result.stdout).toContain("PATH export already exists in ~/.zshrc")
     expect(result.stdout).toContain("Run: source ~/.zshrc")
     expect(result.stdout).toContain("Installed binary: " + join(currentFixture.home, ".local", "bin", "cyberpunk"))
-    expect(result.stdout).toContain("Verify install: cyberpunk help")
+    expect(result.stdout).toContain("Verify install now: " + join(currentFixture.home, ".local", "bin", "cyberpunk") + " help")
+    expect(result.stdout).toContain("Verify after PATH reload: cyberpunk help")
     expect(readFileSync(join(currentFixture.home, ".zshrc"), "utf8")).toBe('export PATH="$HOME/.local/bin:$PATH"\n')
   })
 
@@ -172,11 +173,34 @@ fi
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain("ffmpeg is still required for sound generation features")
     expect(result.stdout).toContain("brew install ffmpeg")
-    expect(result.stdout).toContain("Add ~/.local/bin to your PATH via ~/.config/fish/config.fish")
+    expect(result.stdout).toContain("Added ~/.local/bin to ~/.config/fish/config.fish")
     expect(result.stdout).toContain("Run: exec fish")
     expect(result.stdout).toContain("Automatic quarantine removal could not run")
     expect(result.stdout).toContain("xattr -d com.apple.quarantine")
     expect(result.stdout).toContain("Remaining action: install ffmpeg")
+    expect(result.stdout).toContain("Verify install now: " + join(currentFixture.home, ".local", "bin", "cyberpunk") + " help")
+    expect(readFileSync(join(fishConfigDir, "config.fish"), "utf8")).toContain("fish_add_path ~/.local/bin")
+  })
+
+  test("adds PATH export to zsh profile when ~/.local/bin is missing", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-zsh-path")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Darwin
+else
+  echo arm64
+fi
+`)
+    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+
+    const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Added ~/.local/bin to ~/.zshrc")
+    expect(result.stdout).toContain("Run: source ~/.zshrc")
+    expect(result.stdout).toContain("Verify install now: " + join(currentFixture.home, ".local", "bin", "cyberpunk") + " help")
+    expect(result.stdout).toContain("Verify after PATH reload: cyberpunk help")
+    expect(readFileSync(join(currentFixture.home, ".zshrc"), "utf8")).toContain('export PATH="$HOME/.local/bin:$PATH"')
   })
 
   test("fails early on unsupported macOS Intel with source-build guidance", () => {
@@ -195,5 +219,102 @@ fi
     expect(result.stdout).toContain("macOS Intel is no longer provided as a pre-built binary target")
     expect(result.stdout).toContain("Please build Cyberpunk from source on this machine")
     expect(result.stdout).toContain("bun install && bun run build")
+  })
+
+  test("appends PATH on its own line when profile has no trailing newline", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-no-newline")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Linux
+else
+  echo x86_64
+fi
+`)
+    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+
+    // Write .zshrc WITHOUT a trailing newline
+    writeFileSync(join(currentFixture.home, ".zshrc"), "alias ll='ls -la'", "utf8")
+
+    const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
+
+    expect(result.exitCode).toBe(0)
+    const contents = readFileSync(join(currentFixture.home, ".zshrc"), "utf8")
+    // The original content must remain intact on its own line
+    expect(contents).toContain("alias ll='ls -la'\n")
+    // The PATH export must be on its own line (not concatenated onto the alias line)
+    expect(contents).toContain('\nexport PATH="$HOME/.local/bin:$PATH"')
+    // Exactly one PATH export line should be present
+    const pathLines = contents.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
+    expect(pathLines.length).toBe(1)
+  })
+
+  test("does not duplicate PATH when unquoted variant already exists in profile", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-unquoted")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Linux
+else
+  echo x86_64
+fi
+`)
+    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+
+    // Write .zshrc with an unquoted variant of the PATH export
+    writeFileSync(join(currentFixture.home, ".zshrc"), 'export PATH=$HOME/.local/bin:$PATH\n', "utf8")
+
+    const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("PATH export already exists in ~/.zshrc")
+    const contents = readFileSync(join(currentFixture.home, ".zshrc"), "utf8")
+    // Should NOT have appended a duplicate PATH line
+    const pathLines = contents.split("\n").filter(line =>
+      line.includes('export PATH=') && line.includes('.local/bin')
+    )
+    expect(pathLines.length).toBe(1)
+  })
+
+  test("maps bash shell to ~/.bashrc and appends PATH there", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-bash")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Linux
+else
+  echo x86_64
+fi
+`)
+    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+
+    const result = runInstaller(installEnv(currentFixture, "/bin/bash"))
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("~/.bashrc")
+    expect(result.stdout).toContain("Run: source ~/.bashrc")
+    const bashrc = readFileSync(join(currentFixture.home, ".bashrc"), "utf8")
+    expect(bashrc).toContain('export PATH="$HOME/.local/bin:$PATH"')
+    // Exactly one PATH export line
+    const pathLines = bashrc.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
+    expect(pathLines.length).toBe(1)
+  })
+
+  test("appends exactly one PATH line to a new profile", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-single-append")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Linux
+else
+  echo x86_64
+fi
+`)
+    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+
+    // No .zshrc file exists at all — it will be created from scratch
+    const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Added ~/.local/bin to ~/.zshrc")
+    const contents = readFileSync(join(currentFixture.home, ".zshrc"), "utf8")
+    const pathLines = contents.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
+    expect(pathLines.length).toBe(1)
   })
 })

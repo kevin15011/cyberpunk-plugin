@@ -20,8 +20,8 @@ import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
 import { checkConfigDoctor, repairConfigDefaults } from "../components/config-doctor"
 import { repairThemeActivation } from "../components/theme-doctor"
-import { join } from "path"
-import { existsSync } from "fs"
+import { delimiter, join } from "path"
+import { accessSync, constants, existsSync } from "fs"
 import { insertManagedBlock, BUNDLED_TMUX_CONF, cloneTpm, runTpmScript } from "../components/tmux"
 import type { AgentTarget, PlatformInfo } from "../domain/environment"
 import type { AgentDetectResult } from "../detection/types"
@@ -348,14 +348,35 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
     const codesignOk = canCheckCodesign()
     const home = getHomeDirAuto()
     const binDir = join(home, ".local", "bin")
+    const binaryPath = join(binDir, "cyberpunk")
+    const binaryExecutable = isExecutableFile(binaryPath)
+    const binaryOnPath = isCommandOnPath("cyberpunk")
+    const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean)
+    const binDirOnPath = pathEntries.includes(binDir)
 
     checks.push({
       id: "mac:release-asset",
-      label: "macOS binary install path",
-      status: existsSync(binDir) ? "pass" : "warn",
-      message: existsSync(binDir)
-        ? "Binary install directory (~/.local/bin) exists"
-        : "Binary install directory (~/.local/bin) not found — create it and add to PATH",
+      label: "macOS installed binary",
+      status: binaryExecutable ? "pass" : "warn",
+      message: binaryExecutable
+        ? "Installed binary exists and is executable at ~/.local/bin/cyberpunk"
+        : existsSync(binDir)
+          ? "Installed binary not found or not executable at ~/.local/bin/cyberpunk"
+          : "Binary install directory (~/.local/bin) not found — run the installer or create it and add it to PATH",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "mac:path",
+      label: "macOS cyberpunk command",
+      status: binaryOnPath ? "pass" : "warn",
+      message: binaryOnPath
+        ? "cyberpunk command available on PATH"
+        : binaryExecutable
+          ? binDirOnPath
+            ? "~/.local/bin is on PATH, but cyberpunk is still not resolvable — restart the shell or run ~/.local/bin/cyberpunk help"
+            : "cyberpunk is installed at ~/.local/bin/cyberpunk but ~/.local/bin is not on PATH — add export PATH=\"$HOME/.local/bin:$PATH\" to your shell profile and reload it"
+          : "cyberpunk command not found on PATH and no executable was found at ~/.local/bin/cyberpunk",
       fixable: false,
     })
 
@@ -405,6 +426,15 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
   }
 
   return checks
+}
+
+function isExecutableFile(filePath: string): boolean {
+  try {
+    accessSync(filePath, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function applyConfigFix(check: DoctorCheck): Promise<DoctorFixResult> {
