@@ -123,16 +123,12 @@ describe("adapter payload: startDoctorFixTask", () => {
 })
 
 describe("adapter payload: loadUpgradeStatus", () => {
-  let checkUpgradeCalled = false
 
   beforeEach(() => {
-    checkUpgradeCalled = false
-    mock.module("../src/commands/upgrade", () => ({
-      checkUpgrade: async () => {
-        checkUpgradeCalled = true
-        return MOCK_UPGRADE_STATUS
-      },
-      runUpgrade: async () => MOCK_UPGRADE_RESULT,
+    mock.module("../src/updates/manager", () => ({
+      createUpdateManager: () => ({
+        checkAll: async () => [{ tool: "cyberpunk", current: "1.0.0", latest: "2.0.0", available: true, checkedAt: "now" }],
+      }),
     }))
   })
 
@@ -140,34 +136,27 @@ describe("adapter payload: loadUpgradeStatus", () => {
     mock.restore()
   })
 
-  test("calls checkUpgrade and returns its payload", async () => {
+  test("calls update manager and returns multi-tool payload", async () => {
     const { loadUpgradeStatus } = await import("../src/tui/adapters")
     const result = await loadUpgradeStatus()
 
-    expect(checkUpgradeCalled).toBe(true)
-    expect(result).toEqual(MOCK_UPGRADE_STATUS)
-    expect(result.currentVersion).toBe("1.0.0")
-    expect(result.latestVersion).toBe("2.0.0")
-    expect(result.upToDate).toBe(false)
-    expect(result.changedFiles).toHaveLength(2)
+    expect(result[0].tool).toBe("cyberpunk")
+    expect(result[0].current).toBe("1.0.0")
+    expect(result[0].latest).toBe("2.0.0")
+    expect(result[0].available).toBe(true)
   })
 
   test("returns up-to-date status when versions match", async () => {
-    mock.module("../src/commands/upgrade", () => ({
-      checkUpgrade: async () => ({
-        currentVersion: "1.0.0",
-        latestVersion: "1.0.0",
-        upToDate: true,
-        changedFiles: [],
+    mock.module("../src/updates/manager", () => ({
+      createUpdateManager: () => ({
+        checkAll: async () => [{ tool: "cyberpunk", current: "1.0.0", latest: "1.0.0", available: false, checkedAt: "now" }],
       }),
-      runUpgrade: async () => MOCK_UPGRADE_RESULT,
     }))
 
     const { loadUpgradeStatus } = await import("../src/tui/adapters")
     const result = await loadUpgradeStatus()
 
-    expect(result.upToDate).toBe(true)
-    expect(result.changedFiles).toHaveLength(0)
+    expect(result[0].available).toBe(false)
   })
 })
 

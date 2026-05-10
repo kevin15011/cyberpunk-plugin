@@ -1,6 +1,9 @@
 // tests/detection-codex.test.ts — RED: assert Codex probe always returns `unknown` with rationale.
 
-import { describe, test, expect } from "bun:test"
+import { afterEach, beforeEach, describe, test, expect } from "bun:test"
+import { mkdtempSync, rmSync } from "fs"
+import { tmpdir } from "os"
+import { join } from "path"
 import type { PlatformInfo } from "../src/domain/environment"
 
 // --- Helpers ---
@@ -16,6 +19,21 @@ function windowsPlatform(): PlatformInfo {
 // ============================================================================
 // Task 5.3 — Codex Safe Detection
 // ============================================================================
+
+const ORIGINAL_CODEX_HOME = process.env.CODEX_HOME
+let codexHome: string | undefined
+
+beforeEach(() => {
+  codexHome = mkdtempSync(join(tmpdir(), "cyberpunk-codex-test-"))
+  process.env.CODEX_HOME = codexHome
+})
+
+afterEach(() => {
+  if (codexHome) rmSync(codexHome, { recursive: true, force: true })
+  codexHome = undefined
+  if (ORIGINAL_CODEX_HOME === undefined) delete process.env.CODEX_HOME
+  else process.env.CODEX_HOME = ORIGINAL_CODEX_HOME
+})
 
 describe("Codex detector (createCodexDetector)", () => {
   test("returns target 'codex'", async () => {

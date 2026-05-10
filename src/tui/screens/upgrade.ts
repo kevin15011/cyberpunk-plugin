@@ -27,20 +27,31 @@ export const upgradeScreen: ScreenModule = {
       return lines
     }
 
-    // Version info
-    lines.push(`  Versión actual: ${bold(status.currentVersion)}`)
-    lines.push(`  Última versión: ${bold(status.latestVersion)}`)
+    const legacyStatus = status as any
+    const statuses = Array.isArray(status)
+      ? status
+      : [{
+        tool: "cyberpunk" as const,
+        current: legacyStatus.currentVersion,
+        latest: legacyStatus.latestVersion,
+        available: !legacyStatus.upToDate,
+        checkedAt: new Date().toISOString(),
+        error: undefined,
+      }]
+    const available = statuses.filter(s => s.available)
 
-    if (status.upToDate) {
+    for (const tool of statuses) {
+      const marker = tool.available ? yellow("[UPDATE]") : tool.error ? red("[WARN]") : green("[OK]")
+      const version = tool.error ? `check failed: ${tool.error}` : `${tool.current ?? "unknown"} → ${tool.latest ?? "latest"}`
+      lines.push(`  ${marker} ${tool.tool}: ${version}`)
+    }
+
+    if (available.length === 0) {
       lines.push("")
       lines.push(green("  [OK] Everything is up to date"))
     } else {
       lines.push("")
-      lines.push(yellow("  [UPDATE] Update available"))
-
-      if (status.changedFiles.length > 0) {
-        lines.push(gray(`  Archivos modificados: ${status.changedFiles.length}`))
-      }
+      lines.push(yellow(`  [UPDATE] Update available (${available.length})`))
 
       // Upgrade CTA
       lines.push("")
@@ -61,7 +72,13 @@ export const upgradeScreen: ScreenModule = {
 
     switch (key.type) {
       case "enter": {
-        if (!upgrade?.status || upgrade.status.upToDate) {
+        const legacyStatus = upgrade?.status as any
+        const statuses = Array.isArray(upgrade?.status)
+          ? upgrade.status
+          : upgrade?.status
+            ? [{ available: !legacyStatus.upToDate }]
+            : []
+        if (statuses.length === 0 || statuses.every(s => !s.available)) {
           return { state, intent: { type: "none" } }
         }
         return { state, intent: { type: "run-upgrade" } }

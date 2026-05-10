@@ -2,17 +2,22 @@
 
 import { createApp, updateWithIntent, view } from "./app"
 import { enableRawMode, disableRawMode, clearScreen, writeLines, hideCursor, showCursor, readKey } from "./terminal"
-import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startUpgradeTask } from "./adapters"
+import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startToolUpdateTask } from "./adapters"
 import { route, pushRoute } from "./router"
 import { pink, bold, green, red, yellow } from "./theme"
 import type { TUIState, TaskKind } from "./types"
 import type { ComponentId, InstallResult } from "../components/types"
-import type { UpgradeResult } from "../commands/upgrade"
+import type { ToolUpdateResult, UpdateTool } from "../updates/types"
 
 export async function runTUI(): Promise<void> {
   // Bootstrap: gather initial status
   const statuses = await collectFreshStatus()
   let state = createApp(statuses)
+  try {
+    state = { ...state, upgrade: { loading: false, status: await loadUpgradeStatus() } }
+  } catch {
+    // Update checks are best-effort; the upgrade screen can retry later.
+  }
 
   // Setup terminal
   enableRawMode()
@@ -43,8 +48,13 @@ export async function runTUI(): Promise<void> {
         const key = readKey(data)
 
         // Handle the key through the app (returns state + raw intent)
+        const previousTool = state.selectedTool
         const { state: nextState, intent } = updateWithIntent(state, key)
         state = nextState
+
+        if (state.route.id === "install" && state.selectedTool && state.selectedTool !== previousTool) {
+          state = { ...state, statuses: await collectFreshStatus(state.selectedTool) }
+        }
 
         // Load doctor/upgrade data on first navigation to those screens
         if (state.route.id === "doctor" && !state.doctor) {
@@ -165,11 +175,11 @@ async function executeTask(state: TUIState): Promise<TUIState> {
 
   try {
     if (isInstall && state.selectedPreset) {
-      results = await startPresetInstall(state.selectedPreset, hooks)
+      results = await startPresetInstall(state.selectedPreset, hooks, state.selectedTool ?? "opencode")
     } else if (isInstall) {
-      results = await startInstallTask(state.selectedComponents as ComponentId[], hooks)
+      results = await startInstallTask(state.selectedComponents as ComponentId[], hooks, state.selectedTool ?? "opencode")
     } else {
-      results = await startUninstallTask(state.selectedComponents as ComponentId[], hooks)
+      results = await startUninstallTask(state.selectedComponents as ComponentId[], hooks, state.selectedTool ?? "opencode")
     }
   } catch (err) {
     results = [{
@@ -290,27 +300,27 @@ async function executeUpgradeTask(state: TUIState): Promise<TUIState> {
   writeLines(view(state))
 
   try {
-    const result: UpgradeResult = await startUpgradeTask()
+    const statuses = Array.isArray(state.upgrade?.status) ? state.upgrade.status : []
+    const tools = statuses.filter(status => status.available).map(status => status.tool) as UpdateTool[]
+    const updateResults: ToolUpdateResult[] = await startToolUpdateTask(tools.length > 0 ? tools : ["cyberpunk"])
 
-    const icon = result.status === "upgraded" ? "[OK]" : result.status === "error" ? "[ERROR]" : "[NO CHANGE]"
-    const log = [...state.task!.log, `  ${icon} ${result.status}${result.error ? `: ${result.error}` : ""}`]
+    const log = [...state.task!.log]
+    for (const result of updateResults) {
+      const icon = result.status === "updated" ? "[OK]" : result.status === "error" ? "[ERROR]" : "[NO CHANGE]"
+      log.push(`  ${icon} ${result.tool}: ${result.status}${result.message ? ` — ${result.message}` : ""}`)
+    }
 
     state = {
       ...state,
       task: { ...state.task!, done: true, step: undefined, log },
       upgrade: undefined, // Clear cached status after upgrade
       resultView: { kind },
-      // Store upgrade result in lastResults for the results screen
-      lastResults: [{
+      lastResults: updateResults.map(result => ({
         component: "plugin" as ComponentId,
         action: "install" as const,
         status: result.status === "error" ? "error" : "success",
-        message: result.status === "upgraded"
-          ? `Actualizado ${result.fromVersion} → ${result.toVersion}`
-          : result.status === "up-to-date"
-            ? "Ya actualizado"
-            : result.error ?? "Error desconocido",
-      }],
+        message: `${result.tool}: ${result.message ?? result.status}`,
+      })),
     }
   } catch (err) {
     state = {

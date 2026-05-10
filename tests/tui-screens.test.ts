@@ -33,12 +33,12 @@ function makeState(overrides?: Partial<TUIState>): TUIState {
 }
 
 describe("home screen render", () => {
-  test("renders status summary and menu items", () => {
+  test("renders menu items without target-specific status summary", () => {
     const lines = homeScreen.render(makeState())
     const output = lines.join("\n")
-    expect(output).toContain("OpenCode Event Sounds")
-    expect(output).toContain("Tema cyberpunk")
-    expect(output).toContain("Sonidos")
+    expect(output).not.toContain("OpenCode Event Sounds")
+    expect(output).not.toContain("Tema cyberpunk")
+    expect(output).not.toContain("Sonidos")
     expect(output).toContain("Instalar componentes")
     expect(output).toContain("Desinstalar componentes")
     expect(output).toContain("Ver estado")
@@ -53,6 +53,23 @@ describe("home screen render", () => {
     // Second item should be highlighted (cursor=1)
     const output = lines.join("\n")
     expect(output).toContain(">")
+  })
+
+  test("marks Upgrade when tool updates are pending", () => {
+    const state = makeState({
+      upgrade: {
+        loading: false,
+        status: [
+          { tool: "context-mode", current: "1.0.89", latest: "1.0.118", available: true, checkedAt: new Date().toISOString() },
+          { tool: "rtk", current: "0.39.0", latest: "0.39.0", available: false, checkedAt: new Date().toISOString() },
+        ],
+      },
+    })
+    const output = homeScreen.render(state).join("\n")
+
+    expect(output).toContain("Upgrade")
+    expect(output).toContain("✦")
+    expect(output).toContain("1 actualización pendiente")
   })
 })
 

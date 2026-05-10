@@ -121,3 +121,10 @@ export const PRESET_DEFINITIONS: Map<PresetId, PresetDefinition> = new Map([
     },
   ],
 ])
+
+export const CODEX_PRESET_DEFINITIONS: Map<PresetId, PresetDefinition> = new Map([
+  ["minimal", { id: "minimal", label: "Codex RTK", description: "RTK con el awareness oficial para Codex", components: ["rtk"], warnings: ["rtk necesita curl instalado"] }],
+  ["token-saver-general", { id: "token-saver-general", label: "Codex Token Saver", description: "RTK + Context-Mode para reducir salida ruidosa y contexto pesado", components: ["rtk", "context-mode"], warnings: ["rtk necesita curl instalado", "context-mode necesita npm instalado"] }],
+  ["developer-toolkit", { id: "developer-toolkit", label: "Codex Token Toolkit", description: "RTK + Context-Mode + Codebase-Memory para exploración eficiente", components: ["rtk", "context-mode", "codebase-memory"], warnings: DEVELOPER_TOOLKIT_WARNINGS }],
+  ["custom", { id: "custom", label: "Custom Codex", description: "Elegí manualmente herramientas compatibles con Codex", components: [], warnings: [] }],
+])

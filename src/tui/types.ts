@@ -1,7 +1,7 @@
 // src/tui/types.ts — TUI type definitions for the navigation shell
 
 import type { ComponentId, ComponentStatus, DoctorRunResult, InstallResult } from "../components/types"
-import type { UpgradeStatus } from "../commands/upgrade"
+import type { ToolUpdateStatus } from "../updates/types"
 import type { AgentTarget } from "../domain/environment"
 import type { DetectedEnvironment } from "../platform/detect"
 
@@ -53,8 +53,8 @@ export interface TUIState {
   lastResults?: InstallResult[]
   /** Doctor screen state: loading indicator, cached report, fix confirmation gate */
   doctor?: { loading: boolean; report?: DoctorRunResult; confirmFix: boolean }
-  /** Upgrade screen state: loading indicator, cached check status */
-  upgrade?: { loading: boolean; status?: UpgradeStatus }
+  /** Upgrade screen state: loading indicator, cached multi-tool check status */
+  upgrade?: { loading: boolean; status?: ToolUpdateStatus[] }
   /** Result view metadata: which task kind produced the results */
   resultView?: { kind: TaskKind; detailIndex?: number }
   quit: boolean

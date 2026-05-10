@@ -24,6 +24,10 @@ import { accessSync, constants, existsSync } from "fs"
 import { insertManagedBlock, BUNDLED_TMUX_CONF, cloneTpm, runTpmScript } from "../components/tmux"
 import type { AgentTarget, PlatformInfo } from "../domain/environment"
 import type { AgentDetectResult } from "../detection/types"
+import { readUpdateCache } from "../updates/cache"
+import { getCapabilities, getSupportedComponentIds, isComponentSupportedForTarget } from "../components/registry"
+import { createUpdateManager } from "../updates/manager"
+import type { UpdateTool } from "../updates/types"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -128,6 +132,7 @@ export async function runDoctor(
   const ctx: DoctorContext = {
     cyberpunkConfig,
     verbose: options.verbose,
+    target: options.target ?? "opencode",
     prerequisites,
   }
 
@@ -166,10 +171,21 @@ export async function runDoctor(
   allChecks.push(...configChecks)
   allResults.push({ component: "config", checks: configChecks })
 
+  const updateChecks = collectUpdateChecks()
+  allChecks.push(...updateChecks)
+  allResults.push({ component: "updates", checks: updateChecks })
+
+  const supportBoundaryChecks = collectSupportBoundaryChecks(ctx.target ?? "opencode")
+  if (supportBoundaryChecks.length > 0) {
+    allChecks.push(...supportBoundaryChecks)
+    allResults.push({ component: "support-boundary", checks: supportBoundaryChecks })
+  }
+
   // Determine which components to check
+  const target = ctx.target ?? "opencode"
   const filterIds = options.components && options.components.length > 0
-    ? options.components
-    : COMPONENT_IDS
+    ? options.components.filter(id => isComponentSupportedForTarget(id, target))
+    : COMPONENT_IDS.filter(id => isComponentSupportedForTarget(id, target))
 
   // --- Component checks via ComponentModule.doctor() ---
   for (const compId of filterIds) {
@@ -274,6 +290,11 @@ export async function runDoctor(
       fixes.push(await applyCodebaseMemoryFix(check))
     }
 
+    // 10. Explicit tool updates surfaced by doctor cache
+    for (const check of fixable.filter(c => c.id.startsWith("updates:"))) {
+      fixes.push(await applyUpdateFix(check))
+    }
+
     // Mark fixed checks
     for (const fix of fixes) {
       if (fix.status === "fixed") {
@@ -293,6 +314,69 @@ export async function runDoctor(
   }
 
   return { checks: allChecks, results: allResults, fixes, summary }
+}
+
+function collectSupportBoundaryChecks(target: AgentTarget): DoctorCheck[] {
+  if (target === "opencode") return []
+
+  const supported = getSupportedComponentIds(target)
+  const unavailable = getCapabilities()
+    .filter(cap => !cap.targets.includes(target))
+    .map(cap => cap.component)
+
+  return [{
+    id: `${target}:support-boundary`,
+    label: `${target} support boundary`,
+    status: "pass",
+    message: `${target} supports token tools: ${supported.join(", ") || "none"}; unavailable full ecosystem features: ${unavailable.join(", ") || "none"}`,
+    fixable: false,
+  }]
+}
+
+function collectUpdateChecks(): DoctorCheck[] {
+  const cache = readUpdateCache()
+  if (!cache) {
+    return [{ id: "updates:cache", label: "Update cache", status: "warn", message: "No update cache available yet", fixable: false }]
+  }
+  const ageMs = Date.now() - Date.parse(cache.checkedAt)
+  const ageMin = Number.isFinite(ageMs) ? Math.max(0, Math.round(ageMs / 60000)) : -1
+  const checks: DoctorCheck[] = [{
+    id: "updates:cache",
+    label: "Update cache",
+    status: "pass",
+    message: `Cache age: ${ageMin >= 0 ? `${ageMin}m` : "unknown"}; checked tools: ${cache.tools.map(t => t.tool).join(", ")}`,
+    fixable: false,
+  }]
+  for (const tool of cache.tools) {
+    const currentUnknown = !tool.error && tool.latest && !tool.current
+    checks.push({
+      id: `updates:${tool.tool}`,
+      label: `Update: ${tool.tool}`,
+      status: tool.error ? "warn" : tool.available || currentUnknown ? "warn" : "pass",
+      message: tool.error
+        ? tool.error
+        : currentUnknown
+          ? `Installed version unknown; latest is ${tool.latest}`
+        : tool.available
+          ? `Update available: ${tool.current ?? "unknown"} → ${tool.latest ?? "latest"}`
+          : `Up to date${tool.current ? ` (${tool.current})` : ""}`,
+      fixable: !tool.error && (tool.available || !!currentUnknown),
+    })
+  }
+  return checks
+}
+
+async function applyUpdateFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  const tool = check.id.replace(/^updates:/, "") as UpdateTool
+  if (!["cyberpunk", "context-mode", "rtk", "codebase-memory"].includes(tool)) {
+    return { checkId: check.id, status: "skipped", message: "No update handler for this check" }
+  }
+
+  const [result] = await createUpdateManager(true).apply([tool])
+  if (!result) return { checkId: check.id, status: "failed", message: "No update result returned" }
+  if (result.status === "updated") return { checkId: check.id, status: "fixed", message: result.message ?? `${tool} actualizado` }
+  if (result.status === "up-to-date") return { checkId: check.id, status: "unchanged", message: result.message ?? `${tool} ya estaba actualizado` }
+  return { checkId: check.id, status: "failed", message: result.message ?? `Error actualizando ${tool}` }
 }
 
 function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPrerequisites>): DoctorCheck[] {

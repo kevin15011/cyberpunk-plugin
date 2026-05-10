@@ -1,8 +1,8 @@
-// tests/scope-enforcement.test.ts — OpenCode-only scope enforcement
+// tests/scope-enforcement.test.ts — target scope enforcement
 //
 // Tests that:
-// 1. Component registry returns empty for non-OpenCode targets
-// 2. Claude/Codex detection results have implemented: false
+// 1. Component registry returns empty for Claude and token tools only for Codex
+// 2. Claude detection has implemented: false; Codex token-tool surface is implemented
 // 3. OpenCode detection result has implemented: true
 // 4. TUI tool-select does not expose OpenCode components for Claude/Codex
 
@@ -45,17 +45,17 @@ describe("OpenCode-only scope enforcement — registry", () => {
     expect(caps).toHaveLength(0)
   })
 
-  test("Codex target returns zero components", () => {
+  test("Codex target returns only token-saving components", () => {
     const caps = getCapabilitiesForTarget("codex")
-    expect(caps).toHaveLength(0)
+    expect(caps.map(c => c.component).sort()).toEqual(["codebase-memory", "context-mode", "rtk"])
   })
 
   test("getSupportedComponentIds returns empty for Claude", () => {
     expect(getSupportedComponentIds("claude")).toEqual([])
   })
 
-  test("getSupportedComponentIds returns empty for Codex", () => {
-    expect(getSupportedComponentIds("codex")).toEqual([])
+  test("getSupportedComponentIds returns token tools for Codex", () => {
+    expect(getSupportedComponentIds("codex").sort()).toEqual(["codebase-memory", "context-mode", "rtk"])
   })
 
   test("getSupportedComponentIds returns components for OpenCode", () => {
@@ -72,13 +72,13 @@ describe("OpenCode-only scope enforcement — registry", () => {
     }
   })
 
-  test("isComponentSupportedForTarget — OpenCode components not available for Codex", () => {
-    const opencodeComponents: ComponentId[] = [
-      "plugin", "sdd-integration", "context-mode", "rtk", "codebase-memory",
-    ]
-    for (const id of opencodeComponents) {
-      expect(isComponentSupportedForTarget(id, "codex")).toBe(false)
-    }
+  test("isComponentSupportedForTarget — only Codex token tools are available", () => {
+    expect(isComponentSupportedForTarget("plugin", "codex")).toBe(false)
+    expect(isComponentSupportedForTarget("sdd-integration", "codex")).toBe(false)
+    expect(isComponentSupportedForTarget("theme", "codex")).toBe(false)
+    expect(isComponentSupportedForTarget("context-mode", "codex")).toBe(true)
+    expect(isComponentSupportedForTarget("rtk", "codex")).toBe(true)
+    expect(isComponentSupportedForTarget("codebase-memory", "codex")).toBe(true)
   })
 
   test("isComponentSupportedForTarget — OpenCode components available for OpenCode", () => {
@@ -111,10 +111,10 @@ describe("OpenCode-only scope enforcement — detection implemented markers", ()
     expect(result.implemented).toBe(false)
   })
 
-  test("Codex detector returns implemented: false", () => {
+  test("Codex detector returns implemented: true for token-tool surface", () => {
     const detector = createCodexDetector()
     const result = detector.detect(LINUX_PLATFORM)
-    expect(result.implemented).toBe(false)
+    expect(result.implemented).toBe(true)
   })
 
   test("OpenCode detector returns implemented: true when installed", () => {

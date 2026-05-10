@@ -326,13 +326,11 @@ export function getTmuxComponent(): ComponentModule {
             }
             saveConfig(config)
 
-            const bootstrapResult = bootstrapTpm(getHomeDirAuto())
-
             return {
               component: "tmux",
               action: "install",
               status: "skipped",
-              message: buildBootstrapMessage("Tmux config already installed and up to date", bootstrapResult),
+              message: "Tmux config already installed and up to date",
               path: tmuxConfPath,
             }
           }

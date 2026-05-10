@@ -5,6 +5,7 @@ import type { InstallResult } from "../components/types"
 import type { UpgradeResult, UpgradeStatus } from "../commands/upgrade"
 import type { DoctorRunResult, DoctorResult, DoctorCheck } from "../components/types"
 import type { PresetPreflightSummary } from "../commands/preflight"
+import type { ToolUpdateResult, ToolUpdateStatus } from "../updates/types"
 import { COMPONENT_LABELS } from "../config/schema"
 import { cyan, green, red, yellow, gray, bold } from "../tui/theme"
 
@@ -94,6 +95,24 @@ export function formatUpgradeResult(result: UpgradeResult, asJson: boolean): str
     case "error":
       return red(`✗ Error: ${result.error}`)
   }
+}
+
+export function formatToolUpdateStatuses(statuses: ToolUpdateStatus[], asJson: boolean): string {
+  if (asJson) return JSON.stringify(statuses, null, 2)
+  return statuses.map(s => {
+    if (s.error) return `  ${yellow("○")} ${s.tool} — check failed: ${s.error}`
+    if (s.available) return `  ${yellow("↑")} ${s.tool} — ${s.current ?? "unknown"} → ${s.latest ?? "latest"} (run cyberpunk upgrade --tool ${s.tool})`
+    return `  ${green("✓")} ${s.tool} — up to date${s.current ? ` (${s.current})` : ""}`
+  }).join("\n")
+}
+
+export function formatToolUpdateResults(results: ToolUpdateResult[], asJson: boolean): string {
+  if (asJson) return JSON.stringify(results, null, 2)
+  return results.map(r => {
+    if (r.status === "error") return `  ${red("✗")} ${r.tool} — ${r.message ?? "error"}`
+    if (r.status === "up-to-date") return `  ${green("✓")} ${r.tool} — up to date`
+    return `  ${green("✓")} ${r.tool} — ${r.message ?? "updated"}`
+  }).join("\n")
 }
 
 export function formatDoctorJson(results: DoctorRunResult): string {
@@ -297,6 +316,7 @@ ${bold("COMANDOS")}
    --verbose       Log detallado
     --fix           Aplicar reparaciones (doctor)
     --check         Solo verificar (upgrade)
+    --tool <name>   Actualizar tool explícita (cyberpunk, context-mode, rtk, codebase-memory, all)
     --list          Listar config
    --init          Crear config por defecto
 

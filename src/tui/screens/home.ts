@@ -2,7 +2,7 @@
 
 import type { KeyEvent, ScreenModule, ScreenResult, TUIState } from "../types"
 import { route } from "../router"
-import { BANNER, cyan, green, pink, bold, gray, separator } from "../theme"
+import { BANNER, cyan, yellow, bold, gray } from "../theme"
 
 const MENU_ITEMS = [
   { id: "install" as const, label: "Instalar componentes", hint: "Seleccionar qué instalar" },
@@ -21,26 +21,18 @@ export const homeScreen: ScreenModule = {
     lines.push(BANNER)
     lines.push("")
 
-    // Show quick status summary
-    for (const s of state.statuses) {
-      const icon = s.status === "installed" ? green("[INSTALLED]")
-        : s.status === "error" ? "[ERROR]"
-          : cyan("[AVAILABLE]")
-      const statusText = s.status === "installed" ? green("instalado")
-        : s.status === "error" ? `error`
-        : gray("disponible")
-      lines.push(`  ${icon} ${s.label}  ${statusText}`)
-    }
-
-    lines.push("")
-    lines.push(separator())
-    lines.push("")
+    const pendingUpdates = state.upgrade?.status?.filter(status => status.available).length ?? 0
 
     for (let i = 0; i < MENU_ITEMS.length; i++) {
       const item = MENU_ITEMS[i]
       const cursor = state.cursor === i ? cyan(">") : " "
-      const label = state.cursor === i ? bold(item.label) : item.label
-      const hint = item.hint ? gray(`  ${item.hint}`) : ""
+      const hasUpgradeBadge = item.id === "upgrade" && pendingUpdates > 0
+      const baseLabel = hasUpgradeBadge ? `${item.label} ${yellow("✦")}` : item.label
+      const label = state.cursor === i ? bold(baseLabel) : baseLabel
+      const hintText = hasUpgradeBadge
+        ? `${pendingUpdates} actualización${pendingUpdates === 1 ? "" : "es"} pendiente${pendingUpdates === 1 ? "" : "s"}`
+        : item.hint
+      const hint = hintText ? gray(`  ${hintText}`) : ""
       lines.push(`  ${cursor} ${label}${hint}`)
     }
 

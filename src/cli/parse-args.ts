@@ -2,6 +2,7 @@
 
 import type { ComponentId, COMPONENT_IDS } from "../config/schema"
 import type { AgentTarget, UserProfile } from "../domain/environment"
+import type { UpdateTool } from "../updates/types"
 
 /** CLI interaction mode for TUI flow control. */
 export type CliMode = "guided" | "advanced"
@@ -31,6 +32,7 @@ export interface ParsedArgs {
   /** CLI interaction mode — undefined when not specified */
   mode?: CliMode
   preset?: string
+  updateTool?: UpdateTool | "all"
   parseErrors: string[]
   configKey?: string
   configValue?: string
@@ -90,6 +92,18 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
         i++ // skip the value
       } else {
         result.parseErrors.push("--target requires a value (opencode, claude, codex)")
+      }
+    } else if (argv[i] === "--tool") {
+      const next = argv[i + 1]
+      if (next && !next.startsWith("--")) {
+        if (["cyberpunk", "context-mode", "rtk", "codebase-memory", "all"].includes(next)) {
+          result.updateTool = next as UpdateTool | "all"
+        } else {
+          result.parseErrors.push(`--tool: unknown update tool "${next}". Valid: cyberpunk, context-mode, rtk, codebase-memory, all`)
+        }
+        i++
+      } else {
+        result.parseErrors.push("--tool requires a value")
       }
     } else if (argv[i] === "--profile") {
       const next = argv[i + 1]

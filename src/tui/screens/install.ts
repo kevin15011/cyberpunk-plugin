@@ -2,7 +2,7 @@
 
 import type { KeyEvent, ScreenModule, ScreenResult, TUIState, InstallPhase } from "../types"
 import { cyan, green, red, yellow, bold, gray, separator, pink } from "../theme"
-import { PRESET_NAMES } from "../../presets"
+import { getPresetNames } from "../../presets"
 import type { ComponentId } from "../../components/types"
 import { detectEnvironment, getPlatformLabel, type DetectedEnvironment } from "../../platform/detect"
 import type { AgentTarget } from "../../domain/environment"
@@ -19,7 +19,7 @@ const OS_OPTIONS: { value: DetectedEnvironment; label: string }[] = [
 const TOOL_OPTIONS: { value: AgentTarget; label: string; implemented: boolean; hint: string }[] = [
   { value: "opencode", label: "OpenCode", implemented: true, hint: "Soporte completo" },
   { value: "claude", label: "Claude Code", implemented: false, hint: "Próximamente / No implementado" },
-  { value: "codex", label: "Codex", implemented: false, hint: "Próximamente / No implementado" },
+  { value: "codex", label: "Codex", implemented: true, hint: "Ahorro de tokens: RTK, context-mode y codebase-memory" },
 ]
 
 /** Auto-detected OS — used as default in os-select */
@@ -45,11 +45,29 @@ function getPhase(state: TUIState): InstallPhase {
   return "preset"
 }
 
-function getPresetOptions() {
+function getPresetOptions(target: AgentTarget = "opencode") {
   return [
-    ...PRESET_NAMES.map(p => ({ value: p.value, label: p.label, hint: p.hint })),
+    ...getPresetNames(target).map(p => ({ value: p.value, label: p.label, hint: p.hint })),
     { value: "manual", label: "Selección manual", hint: "Elegir componentes individualmente" },
   ]
+}
+
+function renderTargetStatus(lines: string[], state: TUIState): void {
+  const toolLabel = state.selectedTool === "codex" ? "Codex" : "OpenCode"
+  lines.push(gray(`  Estado rápido para ${toolLabel}:`))
+  if (state.statuses.length === 0) {
+    lines.push(gray("  No hay componentes compatibles para este target"))
+    return
+  }
+  for (const s of state.statuses) {
+    const icon = s.status === "installed" ? green("[INSTALLED]")
+      : s.status === "error" ? red("[ERROR]")
+        : cyan("[AVAILABLE]")
+    const statusText = s.status === "installed" ? green("instalado")
+      : s.status === "error" ? red("error")
+        : gray("disponible")
+    lines.push(`  ${icon} ${s.label}  ${statusText}`)
+  }
 }
 
 export const installScreen: ScreenModule = {
@@ -101,9 +119,11 @@ export const installScreen: ScreenModule = {
       const toolLabel = state.selectedTool ?? "?"
       lines.push(gray(`  OS: ${green(osLabel)} · Tool: ${green(toolLabel)}`))
       lines.push("")
+      renderTargetStatus(lines, state)
+      lines.push("")
       lines.push(gray("  Paso 3/3: Elegí un preset o selección manual:"))
       lines.push("")
-      const options = getPresetOptions()
+      const options = getPresetOptions(state.selectedTool)
       for (let i = 0; i < options.length; i++) {
         const opt = options[i]
         const cursor = state.cursor === i ? cyan(">") : " "
@@ -117,6 +137,8 @@ export const installScreen: ScreenModule = {
       const osLabel = state.selectedOS ? getPlatformLabel(state.selectedOS) : "?"
       const toolLabel = state.selectedTool ?? "?"
       lines.push(gray(`  OS: ${green(osLabel)} · Tool: ${green(toolLabel)}`))
+      lines.push("")
+      renderTargetStatus(lines, state)
       lines.push("")
       lines.push(gray("  Seleccioná componentes (space para toggle):"))
       lines.push("")
@@ -204,7 +226,7 @@ export const installScreen: ScreenModule = {
             intent: { type: "none" },
           }
         } else if (phase === "preset") {
-          const options = getPresetOptions()
+          const options = getPresetOptions(state.selectedTool)
           return {
             state: { ...state, cursor: Math.min(options.length - 1, state.cursor + 1) },
             intent: { type: "none" },
@@ -241,7 +263,7 @@ export const installScreen: ScreenModule = {
             return {
               state: {
                 ...state,
-                message: `${chosen.label} aún no está implementado. Seleccioná OpenCode para continuar.`,
+                message: `${chosen.label} aún no está implementado. Seleccioná OpenCode o Codex para continuar.`,
               },
               intent: { type: "none" },
             }
@@ -259,7 +281,7 @@ export const installScreen: ScreenModule = {
             intent: { type: "none" },
           }
         } else if (phase === "preset") {
-          const options = getPresetOptions()
+          const options = getPresetOptions(state.selectedTool)
           const chosen = options[state.cursor]
           if (!chosen) return { state, intent: { type: "none" } }
 

@@ -193,6 +193,7 @@ describe("runDoctor summary derivation", () => {
   })
 
   afterEach(() => {
+    mock.restore()
     fixture.cleanup()
   })
 
@@ -303,6 +304,49 @@ describe("runDoctor summary derivation", () => {
     const raw = JSON.parse(readFileSync(configPath, "utf8"))
     expect(raw.version).toBeDefined()
   }, 30000)
+
+  test("doctor --fix applies cached tool update warnings via update manager", async () => {
+    setDefaultConfig(fixture.configDir)
+    writeFileSync(join(fixture.configDir, "updates.json"), JSON.stringify({
+      checkedAt: new Date().toISOString(),
+      tools: [{
+        tool: "rtk",
+        current: "0.37.2",
+        latest: "0.39.0",
+        available: true,
+      }],
+    }, null, 2) + "\n", "utf8")
+
+    const applied: string[][] = []
+    mock.module("../src/updates/manager", () => ({
+      createUpdateManager: (force: boolean) => ({
+        apply: async (tools: string[]) => {
+          expect(force).toBe(true)
+          applied.push(tools)
+          return tools.map(tool => ({ tool, status: "updated", message: `${tool} updated` }))
+        },
+      }),
+    }))
+
+    const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
+    const result = await withHome(fixture.home, () => runDoctor({
+      fix: true,
+      verbose: false,
+      components: [],
+    }))
+
+    expect(result.checks.find(c => c.id === "updates:rtk")).toMatchObject({
+      status: "warn",
+      fixable: true,
+      fixed: true,
+    })
+    expect(applied).toEqual([["rtk"]])
+    expect(result.fixes).toContainEqual(expect.objectContaining({
+      checkId: "updates:rtk",
+      status: "fixed",
+      message: "rtk updated",
+    }))
+  })
 
   test("exit code derivation: 0 when no remaining failures", async () => {
     const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)

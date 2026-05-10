@@ -10,9 +10,7 @@ import type { ComponentId } from "./types"
 /**
  * Static capability map for all 6 cyberpunk components.
  *
- * Current state: all components target "opencode" only. Claude and Codex
- * capabilities remain "unknown"/empty until their extension surfaces are verified.
- * This is intentional per design — adapters are low-risk parity wrappers.
+ * Codex is intentionally limited to token-saving tools only.
  */
 const CAPABILITY_MAP: ComponentCapability[] = [
   {
@@ -38,14 +36,14 @@ const CAPABILITY_MAP: ComponentCapability[] = [
   },
   {
     component: "context-mode",
-    targets: ["opencode"],
+    targets: ["opencode", "codex"],
     platforms: ["linux", "wsl", "darwin"],
     requires: ["npm"],
     status: "supported",
   },
   {
     component: "rtk",
-    targets: ["opencode"],
+    targets: ["opencode", "codex"],
     platforms: ["linux", "wsl", "darwin"],
     requires: ["curl"],
     status: "supported",
@@ -66,7 +64,7 @@ const CAPABILITY_MAP: ComponentCapability[] = [
   },
   {
     component: "codebase-memory",
-    targets: ["opencode"],
+    targets: ["opencode", "codex"],
     platforms: ["linux", "wsl", "darwin"],
     requires: ["curl"],
     status: "supported",

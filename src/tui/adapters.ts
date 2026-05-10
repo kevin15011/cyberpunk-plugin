@@ -9,36 +9,42 @@ import type { ComponentStatus } from "../components/types"
 import { runDoctor } from "../commands/doctor"
 import { checkUpgrade, runUpgrade } from "../commands/upgrade"
 import type { DoctorRunResult } from "../components/types"
-import type { UpgradeStatus, UpgradeResult } from "../commands/upgrade"
+import type { UpgradeResult } from "../commands/upgrade"
+import type { ToolUpdateResult, ToolUpdateStatus, UpdateTool } from "../updates/types"
+import { createUpdateManager } from "../updates/manager"
+import type { AgentTarget } from "../domain/environment"
 
 /** Collect fresh status for all components */
-export async function collectFreshStatus(): Promise<ComponentStatus[]> {
-  return collectStatus()
+export async function collectFreshStatus(target: AgentTarget = "opencode"): Promise<ComponentStatus[]> {
+  return collectStatus(undefined, { target })
 }
 
 /** Start an install task with optional hooks */
 export async function startInstallTask(
   componentIds: ComponentId[],
-  hooks?: TaskHooks
+  hooks?: TaskHooks,
+  target: AgentTarget = "opencode"
 ): Promise<InstallResult[]> {
-  return runInstall(componentIds, "install", { hooks })
+  return runInstall(componentIds, "install", { hooks, target })
 }
 
 /** Start an uninstall task with optional hooks */
 export async function startUninstallTask(
   componentIds: ComponentId[],
-  hooks?: TaskHooks
+  hooks?: TaskHooks,
+  target: AgentTarget = "opencode"
 ): Promise<InstallResult[]> {
-  return runInstall(componentIds, "uninstall", { hooks })
+  return runInstall(componentIds, "uninstall", { hooks, target })
 }
 
 /** Start a preset-based install */
 export async function startPresetInstall(
   presetName: string,
-  hooks?: TaskHooks
+  hooks?: TaskHooks,
+  target: AgentTarget = "opencode"
 ): Promise<InstallResult[]> {
-  const resolved = resolvePreset(presetName)
-  return runInstall(resolved.components, "install", { hooks })
+  const resolved = resolvePreset(presetName, { target })
+  return runInstall(resolved.components, "install", { hooks, target })
 }
 
 /** Load doctor summary in read-only mode (no fixes) */
@@ -52,13 +58,17 @@ export async function startDoctorFixTask(): Promise<DoctorRunResult> {
 }
 
 /** Load upgrade check status */
-export async function loadUpgradeStatus(): Promise<UpgradeStatus> {
-  return checkUpgrade()
+export async function loadUpgradeStatus(): Promise<ToolUpdateStatus[]> {
+  return createUpdateManager(false).checkAll()
 }
 
 /** Start an upgrade task */
 export async function startUpgradeTask(): Promise<UpgradeResult> {
   return runUpgrade()
+}
+
+export async function startToolUpdateTask(tools: UpdateTool[]): Promise<ToolUpdateResult[]> {
+  return createUpdateManager(true).apply(tools)
 }
 
 /** Create TaskHooks that update a TUIState's task field */

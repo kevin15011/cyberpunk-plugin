@@ -9,6 +9,8 @@ import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
+import { ensureCodexAgentsInclude, ensureCodexInstructionFile, getCodexPaths, patchCodexMcpToml, removeCodexAgentsInclude, removeCodexInstructionFile, unpatchCodexMcpToml } from "../platform/codex-paths"
+import type { AgentTarget } from "../domain/environment"
 
 const ROUTING_MARKER = "<!-- cyberpunk-managed:codebase-memory-routing -->"
 const BINARY_NAME = "codebase-memory-mcp"
@@ -27,6 +29,20 @@ function getPaths() {
     routingPath: join(instructionsDir, "codebase-memory-routing.md"),
     localBinPath: join(home, ".local", "bin", BINARY_NAME),
   }
+}
+
+function getPathsForTarget(target: AgentTarget = "opencode") {
+  if (target === "codex") {
+    const codex = getCodexPaths()
+    return {
+      opencodeDir: codex.codexHome,
+      opencodeJsonPath: codex.configTomlPath,
+      instructionsDir: codex.instructionsDir,
+      routingPath: codex.codebaseMemoryRoutingPath,
+      localBinPath: join(getHomeDirAuto(), ".local", "bin", BINARY_NAME),
+    }
+  }
+  return getPaths()
 }
 
 /**
@@ -179,6 +195,16 @@ function removeRoutingFile(): void {
   }
 }
 
+function ensureCodexRoutingFile(): boolean {
+  ensureCodexAgentsInclude(["codebase-memory-routing.md"])
+  return ensureCodexInstructionFile(getCodexPaths().codebaseMemoryRoutingPath, ROUTING_CONTENT + "\n")
+}
+
+function removeCodexRoutingFile(): void {
+  removeCodexInstructionFile(getCodexPaths().codebaseMemoryRoutingPath, ROUTING_MARKER)
+  removeCodexAgentsInclude()
+}
+
 function patchOpencodeJsonMcp(): boolean {
   const { opencodeJsonPath } = getPaths()
   if (!existsSync(opencodeJsonPath)) return false
@@ -255,8 +281,9 @@ export function getCodebaseMemoryComponent(): ComponentModule {
     id: "codebase-memory",
     label: COMPONENT_LABELS["codebase-memory"],
 
-    async install(): Promise<InstallResult> {
-      const { routingPath } = getPaths()
+    async install(ctx): Promise<InstallResult> {
+      const target = ctx?.target ?? "opencode"
+      const { routingPath } = getPathsForTarget(target)
 
       // Auto-download if missing
       let alreadyInstalled = isBinaryAvailable()
@@ -281,10 +308,11 @@ export function getCodebaseMemoryComponent(): ComponentModule {
       }
 
       // Write routing instructions
-      ensureRoutingFile()
+      target === "codex" ? ensureCodexRoutingFile() : ensureRoutingFile()
 
-      // Add MCP configuration
-      patchOpencodeJsonMcp()
+      // Add MCP configuration only when target config is verified safe.
+      const executable = resolveCodebaseMemoryExecutable() ?? BINARY_NAME
+      target === "codex" ? patchCodexMcpToml(MCP_NAME, executable) : patchOpencodeJsonMcp()
 
       const config = loadConfig()
       config.components["codebase-memory"] = {
@@ -306,9 +334,15 @@ export function getCodebaseMemoryComponent(): ComponentModule {
       }
     },
 
-    async uninstall(): Promise<InstallResult> {
-      removeRoutingFile()
-      unpatchOpencodeJsonMcp()
+    async uninstall(ctx): Promise<InstallResult> {
+      const target = ctx?.target ?? "opencode"
+      if (target === "codex") {
+        removeCodexRoutingFile()
+        unpatchCodexMcpToml(MCP_NAME)
+      } else {
+        removeRoutingFile()
+        unpatchOpencodeJsonMcp()
+      }
 
       const config = loadConfig()
       config.components["codebase-memory"] = { installed: false }
@@ -322,13 +356,16 @@ export function getCodebaseMemoryComponent(): ComponentModule {
       }
     },
 
-    async status(): Promise<ComponentStatus> {
-      const { opencodeJsonPath, routingPath } = getPaths()
+    async status(ctx): Promise<ComponentStatus> {
+      const target = ctx?.target ?? "opencode"
+      const { opencodeJsonPath, routingPath } = getPathsForTarget(target)
       const binaryOk = isBinaryAvailable()
       const routingExists = existsSync(routingPath)
 
       let mcpConfigured = false
-      if (existsSync(opencodeJsonPath)) {
+      if (target === "codex") {
+        mcpConfigured = existsSync(opencodeJsonPath) && readFileSync(opencodeJsonPath, "utf8").includes(`[mcp_servers.${MCP_NAME}]`)
+      } else if (existsSync(opencodeJsonPath)) {
         try {
           const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           const mcp = config.mcp as Record<string, Record<string, unknown>> | undefined
@@ -336,7 +373,7 @@ export function getCodebaseMemoryComponent(): ComponentModule {
         } catch { /* ignore */ }
       }
 
-      if (binaryOk && routingExists && mcpConfigured) {
+      if (binaryOk && routingExists && (mcpConfigured || target === "codex")) {
         return {
           id: "codebase-memory",
           label: COMPONENT_LABELS["codebase-memory"],
@@ -371,7 +408,8 @@ export function getCodebaseMemoryComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
-      const { opencodeJsonPath, routingPath } = getPaths()
+      const target = ctx.target ?? "opencode"
+      const { opencodeJsonPath, routingPath } = getPathsForTarget(target)
 
       // Check 1: binary
       if (!isBinaryAvailable()) {
@@ -425,7 +463,9 @@ export function getCodebaseMemoryComponent(): ComponentModule {
       // Check 3: MCP config
       let mcpConfigured = false
       let mcpBareName = false
-      if (existsSync(opencodeJsonPath)) {
+      if (target === "codex") {
+        mcpConfigured = existsSync(opencodeJsonPath) && readFileSync(opencodeJsonPath, "utf8").includes(`[mcp_servers.${MCP_NAME}]`)
+      } else if (existsSync(opencodeJsonPath)) {
         try {
           const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           const mcp = config.mcp as Record<string, Record<string, unknown>> | undefined
@@ -454,10 +494,10 @@ export function getCodebaseMemoryComponent(): ComponentModule {
       } else if (!mcpConfigured) {
         checks.push({
           id: "codebase-memory:mcp",
-          label: "MCP en opencode.json",
-          status: "fail",
-          message: "codebase-memory MCP no configurado en opencode.json",
-          fixable: true,
+          label: target === "codex" ? "MCP en Codex config" : "MCP en opencode.json",
+          status: target === "codex" ? "warn" : "fail",
+          message: target === "codex" ? "Codex MCP no verificado; instalado en modo instrucciones" : "codebase-memory MCP no configurado en opencode.json",
+          fixable: target !== "codex",
         })
       } else {
         checks.push({

@@ -1,6 +1,7 @@
 // src/components/types.ts — ComponentId, InstallResult, ComponentStatus, ComponentModule, Doctor interfaces
 
 import type { CyberpunkConfig } from "../config/schema"
+import type { AgentTarget } from "../domain/environment"
 
 export type ComponentId = "plugin" | "sdd-integration" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory"
 
@@ -44,6 +45,10 @@ export interface ComponentStatus {
   error?: string
 }
 
+export interface ComponentContext {
+  target?: AgentTarget
+}
+
 // --- Doctor interfaces ---
 
 export interface DoctorCheck {
@@ -68,6 +73,7 @@ export interface DoctorFixResult {
 export interface DoctorContext {
   cyberpunkConfig: CyberpunkConfig | null
   verbose: boolean
+  target?: AgentTarget
   /** Prerequisites already checked once by the platform doctor */
   prerequisites: {
     ffmpeg: boolean
@@ -79,7 +85,7 @@ export interface DoctorContext {
 }
 
 export interface DoctorResult {
-  component: ComponentId | "platform" | "config" | "agent-detection"
+  component: ComponentId | "platform" | "config" | "agent-detection" | "updates" | "support-boundary"
   checks: DoctorCheck[]
 }
 
@@ -100,8 +106,8 @@ export interface DoctorRunResult {
 export interface ComponentModule {
   id: ComponentId
   label: string
-  install(): Promise<InstallResult>
-  uninstall(): Promise<InstallResult>
-  status(): Promise<ComponentStatus>
+  install(ctx?: ComponentContext): Promise<InstallResult>
+  uninstall(ctx?: ComponentContext): Promise<InstallResult>
+  status(ctx?: ComponentContext): Promise<ComponentStatus>
   doctor?(ctx: DoctorContext): Promise<DoctorResult>
 }

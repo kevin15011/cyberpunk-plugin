@@ -12,6 +12,8 @@ import { getTuiPluginsComponent } from "../components/tui-plugins"
 import { getCodebaseMemoryComponent } from "../components/codebase-memory"
 import type { ComponentModule } from "../components/types"
 import type { ComponentId } from "../config/schema"
+import type { AgentTarget } from "../domain/environment"
+import { isComponentSupportedForTarget } from "../components/registry"
 export { buildEnvironmentStatus } from "./status-routing"
 
 const ALL_COMPONENTS: (() => ComponentModule)[] = [
@@ -27,18 +29,21 @@ const ALL_COMPONENTS: (() => ComponentModule)[] = [
 ]
 
 export async function collectStatus(
-  filterIds?: ComponentId[]
+  filterIds?: ComponentId[],
+  options?: { target?: AgentTarget }
 ): Promise<ComponentStatus[]> {
   const modules = ALL_COMPONENTS.map(fn => fn())
 
+  const target = options?.target ?? "opencode"
+  const targetSupported = modules.filter(m => isComponentSupportedForTarget(m.id, target))
   const filtered = filterIds && filterIds.length > 0
-    ? modules.filter(m => filterIds.includes(m.id))
-    : modules
+    ? targetSupported.filter(m => filterIds.includes(m.id))
+    : targetSupported
 
   const statuses: ComponentStatus[] = []
   for (const mod of filtered) {
     try {
-      const status = await mod.status()
+      const status = await mod.status({ target })
       statuses.push(status)
     } catch (err) {
       statuses.push({

@@ -72,6 +72,11 @@ export function normalizeConfig(config: CyberpunkConfig): CyberpunkConfig {
     target: config.target ?? "opencode",
     profile: config.profile,
     agentState: config.agentState ?? {},
+    updates: {
+      enabled: config.updates?.enabled ?? true,
+      ttlMs: config.updates?.ttlMs ?? 24 * 60 * 60 * 1000,
+      timeoutMs: config.updates?.timeoutMs ?? 2500,
+    },
     repoUrl: config.repoUrl ?? defaults.repoUrl,
     lastUpgradeCheck: config.lastUpgradeCheck,
     pluginRegistered: config.pluginRegistered,

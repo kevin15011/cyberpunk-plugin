@@ -1,31 +1,41 @@
-// src/detection/agents/codex.ts — Codex agent detector (stub: always unknown)
+// src/detection/agents/codex.ts — Codex agent detector for conservative token-tool support
 
 import type { PlatformInfo } from "../../domain/environment"
 import type { AgentDetectResult, AgentDetector } from "../types"
+import { existsSync, readFileSync } from "fs"
+import { CODEX_AGENTS_BLOCK_START, getCodexPaths } from "../../platform/codex-paths"
 
-const CODEX_RATIONALE = "Codex presence and extension support cannot be verified safely; detection deferred until integration surface is confirmed"
+const CODEX_RATIONALE = "Codex full ecosystem support cannot be verified safely; only RTK/context-mode/codebase-memory token-saving assets are implemented"
 
 /**
  * Create a Codex agent detector.
  *
- * This is a conservative stub that always returns `status: "unknown"`
- * because Codex target identity and config surface remain ambiguous.
- * No probing is performed — no real binaries are invoked, no paths checked.
- *
- * Per spec: "cannot be verified safely" — no support claim is made
- * without explicit rationale.
+ * This detector only checks Codex file locations. It does not invoke Codex.
  */
 export function createCodexDetector(): AgentDetector {
   return {
     target: "codex",
 
     detect(_platform: PlatformInfo): AgentDetectResult {
+      const paths = getCodexPaths()
+      const installed = hasManagedCodexAssets(paths)
       return {
-        installed: false,
-        status: "unknown",
+        installed,
+        status: installed ? "installed" : "unknown",
         rationale: CODEX_RATIONALE,
-        implemented: false,
+        implemented: true,
+        configPath: installed ? (existsSync(paths.configTomlPath) ? paths.configTomlPath : paths.agentsPath) : undefined,
       }
     },
+  }
+}
+
+function hasManagedCodexAssets(paths: ReturnType<typeof getCodexPaths>): boolean {
+  if (existsSync(paths.rtkRoutingPath) || existsSync(paths.contextModeRoutingPath) || existsSync(paths.codebaseMemoryRoutingPath)) return true
+  if (!existsSync(paths.agentsPath)) return false
+  try {
+    return readFileSync(paths.agentsPath, "utf8").includes(CODEX_AGENTS_BLOCK_START)
+  } catch {
+    return false
   }
 }

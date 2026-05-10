@@ -18,6 +18,7 @@ import type { TaskHooks } from "../tui/types"
 import type { AgentTarget, PlatformInfo } from "../domain/environment"
 import { filterComponentsForTarget } from "./install-routing"
 import { normalizeComponentId } from "../components/types"
+import { getSupportedComponentIds } from "../components/registry"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
@@ -52,8 +53,14 @@ export async function runInstall(
   // Default to all components if none specified
   let ids = componentIds.length > 0 ? [...componentIds] : [...COMPONENT_IDS]
 
-  // When a platform is provided, filter to compatible components
-  if (options?.platform && target !== "opencode") {
+  // Non-OpenCode targets only receive explicitly supported components.
+  if (target !== "opencode") {
+    const supported = options?.platform
+      ? filterComponentsForTarget(target, options.platform)
+      : getSupportedComponentIds(target)
+    const supportedSet = new Set(supported)
+    ids = ids.filter(id => supportedSet.has(id))
+  } else if (options?.platform) {
     const compatible = filterComponentsForTarget(target, options.platform)
     const compatibleSet = new Set(compatible)
     ids = ids.filter(id => compatibleSet.has(id))
@@ -87,8 +94,8 @@ export async function runInstall(
     options?.hooks?.onComponentStart?.(id)
     try {
       const result = action === "install"
-        ? await module.install()
-        : await module.uninstall()
+        ? await module.install({ target })
+        : await module.uninstall({ target })
       results.push(result)
       options?.hooks?.onComponentFinish?.(result)
     } catch (err) {
@@ -116,6 +123,6 @@ export async function runInstall(
   return results
 }
 
-export async function runUninstall(componentIds: ComponentId[]): Promise<InstallResult[]> {
-  return runInstall(componentIds, "uninstall")
+export async function runUninstall(componentIds: ComponentId[], options?: InstallOptions): Promise<InstallResult[]> {
+  return runInstall(componentIds, "uninstall", options)
 }

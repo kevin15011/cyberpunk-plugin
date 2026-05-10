@@ -135,6 +135,7 @@ describe("Spec S1: Install tmux into existing user config", () => {
 
     expect(second.status).toBe("skipped")
   }, 60000)
+
 })
 
 // ---------------------------------------------------------------------------

@@ -23,9 +23,9 @@ describe("filterComponentsForTarget", () => {
     expect(result).toEqual([])
   })
 
-  test("codex target returns empty array (no components support codex yet)", () => {
+  test("codex target returns token-saving tools", () => {
     const result = filterComponentsForTarget("codex", linuxPlatform)
-    expect(result).toEqual([])
+    expect(result.sort()).toEqual(["codebase-memory", "context-mode", "rtk"])
   })
 
   const windowsPlatform: PlatformInfo = {

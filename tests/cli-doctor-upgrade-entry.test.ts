@@ -156,14 +156,32 @@ describe("CLI install target guard", () => {
     expect(result.stdout + result.stderr).not.toContain("Hasta la próxima")
   })
 
-  test("cyberpunk install --target codex rejects unsupported target before install planning", () => {
-    const result = runMainIsolated(home, ["bun", "src/index.ts", "install", "--target", "codex", "--plugin", "--check"])
+  test("cyberpunk install --target codex filters unsupported full-ecosystem components", () => {
+    const result = runMainIsolated(home, ["bun", "src/index.ts", "install", "--target", "codex", "--plugin", "--rtk", "--check"])
 
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain('"codex" no está implementado')
-    expect(result.stderr).toContain('Solo "opencode" es soportado actualmente')
-    expect(result.stdout).not.toContain("Plan de instalación")
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("RTK")
+    expect(result.stdout).not.toContain("OpenCode Event Sounds")
     expect(result.stdout + result.stderr).not.toContain("Hasta la próxima")
+  })
+
+  test("cyberpunk status --target codex reports only supported token tools", () => {
+    const result = runMainIsolated(home, ["bun", "src/index.ts", "status", "--target", "codex", "--json"])
+    const parsed = JSON.parse(result.stdout)
+
+    expect(result.exitCode).toBe(0)
+    expect(parsed.map((entry: { id: string }) => entry.id).sort()).toEqual(["codebase-memory", "context-mode", "rtk"])
+  })
+
+  test("cyberpunk doctor --target codex reports support boundary", () => {
+    const result = runMainIsolated(home, ["bun", "src/index.ts", "doctor", "--target", "codex", "--json"])
+    const parsed = JSON.parse(result.stdout)
+    const boundary = parsed.find((entry: { component: string }) => entry.component === "support-boundary")
+
+    expect(boundary.checks[0].message).toContain("rtk")
+    expect(boundary.checks[0].message).toContain("context-mode")
+    expect(boundary.checks[0].message).toContain("codebase-memory")
+    expect(boundary.checks[0].message).toContain("unavailable full ecosystem features")
   })
 })
 

@@ -9,6 +9,8 @@ import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
+import { ensureCodexAgentsInclude, ensureCodexInstructionFile, getCodexPaths, patchCodexMcpToml, removeCodexAgentsInclude, removeCodexInstructionFile, unpatchCodexMcpToml } from "../platform/codex-paths"
+import type { AgentTarget } from "../domain/environment"
 
 const ROUTING_MARKER = "<!-- cyberpunk-managed:context-mode-routing -->"
 
@@ -23,6 +25,19 @@ function getContextModePaths() {
     instructionsDir,
     routingPath: join(instructionsDir, "context-mode-routing.md"),
   }
+}
+
+function getContextModePathsForTarget(target: AgentTarget = "opencode") {
+  if (target === "codex") {
+    const codex = getCodexPaths()
+    return {
+      opencodeDir: codex.codexHome,
+      opencodeJsonPath: codex.configTomlPath,
+      instructionsDir: codex.instructionsDir,
+      routingPath: codex.contextModeRoutingPath,
+    }
+  }
+  return getContextModePaths()
 }
 
 export const CONTEXT_MODE_ROUTING = `${ROUTING_MARKER}
@@ -114,6 +129,16 @@ function removeRoutingFile(): void {
   }
 }
 
+function ensureCodexRoutingFile(): boolean {
+  ensureCodexAgentsInclude(["context-mode-routing.md"])
+  return ensureCodexInstructionFile(getCodexPaths().contextModeRoutingPath, CONTEXT_MODE_ROUTING + "\n")
+}
+
+function removeCodexRoutingFile(): void {
+  removeCodexInstructionFile(getCodexPaths().contextModeRoutingPath, ROUTING_MARKER)
+  removeCodexAgentsInclude()
+}
+
 function patchOpencodeJsonMcp(): boolean {
   const { opencodeJsonPath } = getContextModePaths()
   if (!existsSync(opencodeJsonPath)) return false
@@ -169,8 +194,13 @@ export function getContextModeComponent(): ComponentModule {
     id: "context-mode",
     label: COMPONENT_LABELS["context-mode"],
 
-    async install(): Promise<InstallResult> {
-      const { routingPath } = getContextModePaths()
+    async install(ctx): Promise<InstallResult> {
+      const target = ctx?.target ?? "opencode"
+      const { routingPath } = getContextModePathsForTarget(target)
+
+      if (target === "codex") {
+        ensureCodexRoutingFile()
+      }
 
       // Check npm
       if (!isNpmAvailable()) {
@@ -197,10 +227,10 @@ export function getContextModeComponent(): ComponentModule {
       }
 
       // Write routing instructions
-      ensureRoutingFile()
+      target === "codex" ? ensureCodexRoutingFile() : ensureRoutingFile()
 
-      // Add MCP configuration to opencode.json
-      const mcpPatched = patchOpencodeJsonMcp()
+      // Add MCP configuration to verified target config only.
+      const mcpPatched = target === "codex" ? patchCodexMcpToml("context-mode", "context-mode") : patchOpencodeJsonMcp()
 
       const config = loadConfig()
       config.components["context-mode"] = {
@@ -224,9 +254,15 @@ export function getContextModeComponent(): ComponentModule {
       }
     },
 
-    async uninstall(): Promise<InstallResult> {
-      removeRoutingFile()
-      unpatchOpencodeJsonMcp()
+    async uninstall(ctx): Promise<InstallResult> {
+      const target = ctx?.target ?? "opencode"
+      if (target === "codex") {
+        removeCodexRoutingFile()
+        unpatchCodexMcpToml("context-mode")
+      } else {
+        removeRoutingFile()
+        unpatchOpencodeJsonMcp()
+      }
 
       const config = loadConfig()
       config.components["context-mode"] = { installed: false }
@@ -240,21 +276,24 @@ export function getContextModeComponent(): ComponentModule {
       }
     },
 
-    async status(): Promise<ComponentStatus> {
-      const { opencodeJsonPath, routingPath } = getContextModePaths()
+    async status(ctx): Promise<ComponentStatus> {
+      const target = ctx?.target ?? "opencode"
+      const { opencodeJsonPath, routingPath } = getContextModePathsForTarget(target)
       const cmInstalled = isContextModeInstalled()
       const routingExists = existsSync(routingPath)
 
       // Check if MCP is configured in opencode.json
       let mcpConfigured = false
-      if (existsSync(opencodeJsonPath)) {
+      if (target === "codex") {
+        mcpConfigured = existsSync(opencodeJsonPath) && readFileSync(opencodeJsonPath, "utf8").includes("[mcp_servers.context-mode]")
+      } else if (existsSync(opencodeJsonPath)) {
         try {
           const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           mcpConfigured = config.mcp?.["context-mode"]?.type === "local"
         } catch {}
       }
 
-      if (cmInstalled && routingExists && mcpConfigured) {
+      if (cmInstalled && routingExists && (mcpConfigured || target === "codex")) {
         return {
           id: "context-mode",
           label: COMPONENT_LABELS["context-mode"],
@@ -289,7 +328,8 @@ export function getContextModeComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
-      const { opencodeJsonPath, routingPath } = getContextModePaths()
+      const target = ctx.target ?? "opencode"
+      const { opencodeJsonPath, routingPath } = getContextModePathsForTarget(target)
 
       // Check 1: npm available
       if (!ctx.prerequisites.npm && !ctx.prerequisites.bun) {
@@ -356,14 +396,16 @@ export function getContextModeComponent(): ComponentModule {
             label: "Archivo routing",
             status: "warn",
             message: "Archivo routing existe pero no contiene marcador cyberpunk",
-            fixable: false,
+            fixable: true,
           })
         }
       }
 
       // Check 4: MCP configured in opencode.json
       let mcpConfigured = false
-      if (existsSync(opencodeJsonPath)) {
+      if (target === "codex") {
+        mcpConfigured = existsSync(opencodeJsonPath) && readFileSync(opencodeJsonPath, "utf8").includes("[mcp_servers.context-mode]")
+      } else if (existsSync(opencodeJsonPath)) {
         try {
           const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           mcpConfigured = config.mcp?.["context-mode"]?.type === "local"
@@ -373,10 +415,10 @@ export function getContextModeComponent(): ComponentModule {
       if (!mcpConfigured) {
         checks.push({
           id: "context-mode:mcp",
-          label: "MCP en opencode.json",
-          status: "fail",
-          message: "context-mode MCP no configurado en opencode.json",
-          fixable: true,
+          label: target === "codex" ? "MCP en Codex config" : "MCP en opencode.json",
+          status: target === "codex" ? "warn" : "fail",
+          message: target === "codex" ? "Codex MCP no verificado; instalado en modo instrucciones" : "context-mode MCP no configurado en opencode.json",
+          fixable: target !== "codex",
         })
       } else {
         checks.push({

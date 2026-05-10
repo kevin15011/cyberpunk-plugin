@@ -1,7 +1,7 @@
 // src/index.ts — entry point: argv parse → command dispatch
 
 import { parseArgs } from "./cli/parse-args"
-import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson, formatPresetPreflight } from "./cli/output"
+import { formatHelp, formatStatus, formatInstallResults, formatUpgradeStatus, formatUpgradeResult, formatDoctorText, formatDoctorJson, formatPresetPreflight, formatToolUpdateResults, formatToolUpdateStatuses } from "./cli/output"
 import { runInstall, runUninstall } from "./commands/install"
 import { collectStatus } from "./commands/status"
 import { buildPresetPreflight } from "./commands/preflight"
@@ -10,8 +10,13 @@ import { checkUpgrade, runUpgrade } from "./commands/upgrade"
 import { runDoctor } from "./commands/doctor"
 import { runTUI } from "./tui/index"
 import { ensureConfigExists } from "./config/load"
+import { existsSync } from "fs"
+import { getConfigPath } from "./config/load"
 import { resolvePreset } from "./presets"
 import { red } from "./tui/theme"
+import { createUpdateManager, formatUpdateNotice } from "./updates/manager"
+import { UPDATE_TOOLS } from "./updates/types"
+import { removeUpdateCache } from "./updates/cache"
 
 export async function main() {
   // Parse args first — doctor command must be read-only, so we skip config auto-creation
@@ -42,8 +47,8 @@ export async function main() {
         break
 
       case "install": {
-        // Reject non-OpenCode targets: Claude and Codex are not implemented yet
-        if (args.target !== "opencode") {
+        // Reject unsupported non-OpenCode targets; Codex supports token-saving tools only.
+        if (args.target === "claude") {
           console.error(red(`Error: "${args.target}" no está implementado. Solo "opencode" es soportado actualmente. Claude y Codex estarán disponibles próximamente.`))
           process.exit(1)
         }
@@ -52,7 +57,7 @@ export async function main() {
 
         if (args.preset) {
           try {
-            const resolved = resolvePreset(args.preset)
+            const resolved = resolvePreset(args.preset, { target: args.target })
             const preflight = await buildPresetPreflight(resolved)
             console.log(formatPresetPreflight(preflight))
             componentIds = resolved.components
@@ -67,6 +72,7 @@ export async function main() {
           check: args.flags.check,
         })
         console.log(formatInstallResults(results, args.flags.json))
+        await maybePrintUpdateNotice(args.flags.json)
 
         const hasErrors = results.some(r => r.status === "error")
         process.exit(hasErrors ? 1 : 0)
@@ -74,26 +80,36 @@ export async function main() {
       }
 
       case "uninstall": {
-        const results = await runUninstall(args.components)
+        const results = await runUninstall(args.components, { target: args.target })
+        removeUpdateCache()
         console.log(formatInstallResults(results, args.flags.json))
+        await maybePrintUpdateNotice(args.flags.json)
         process.exit(0)
         break
       }
 
       case "status": {
         const statuses = await collectStatus(
-          args.components.length > 0 ? args.components : undefined
+          args.components.length > 0 ? args.components : undefined,
+          { target: args.target }
         )
         console.log(formatStatus(statuses, args.flags.json))
+        await maybePrintUpdateNotice(args.flags.json)
         process.exit(0)
         break
       }
 
       case "upgrade": {
+        if (args.updateTool) {
+          const tools = args.updateTool === "all" ? UPDATE_TOOLS : [args.updateTool]
+          const result = await createUpdateManager(true).apply(tools)
+          console.log(formatToolUpdateResults(result, args.flags.json))
+          process.exit(result.some(r => r.status === "error") ? 1 : 0)
+        }
         if (args.flags.check) {
           try {
-            const status = await checkUpgrade()
-            console.log(formatUpgradeStatus(status, args.flags.json))
+            const status = await createUpdateManager(true).checkAll()
+            console.log(formatToolUpdateStatuses(status, args.flags.json))
             process.exit(0)
           } catch (err) {
             console.error(red(`Error: ${err instanceof Error ? err.message : err}`))
@@ -125,12 +141,14 @@ export async function main() {
           fix: args.flags.fix,
           verbose: args.flags.verbose,
           components: args.components.length > 0 ? args.components : undefined,
+          target: args.target,
         })
         console.log(
           args.flags.json
             ? formatDoctorJson(result)
             : formatDoctorText(result, args.flags.verbose)
         )
+        await maybePrintUpdateNotice(args.flags.json)
         // Exit 0 if no remaining failures, 1 otherwise
         process.exit(result.summary.remainingFailures > 0 ? 1 : 0)
         break
@@ -142,6 +160,18 @@ export async function main() {
       console.error(err.stack)
     }
     process.exit(1)
+  }
+}
+
+async function maybePrintUpdateNotice(json: boolean): Promise<void> {
+  if (json) return
+  if (!existsSync(getConfigPath())) return
+  try {
+    const statuses = await createUpdateManager(false).checkAll()
+    const notice = formatUpdateNotice(statuses)
+    if (notice) console.error(notice)
+  } catch {
+    // Update checks are best-effort and must never block command execution.
   }
 }
 

@@ -9,8 +9,19 @@ import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
+import { ensureCodexAgentsInclude, ensureCodexInstructionFile, getCodexPaths, removeCodexAgentsInclude, removeCodexInstructionFile } from "../platform/codex-paths"
+import type { AgentTarget } from "../domain/environment"
 
 const RTK_ROUTING_MARKER = "<!-- cyberpunk-managed:rtk-routing -->"
+
+let rtkTestOverrides: {
+  command?: string | null
+  exec?: (command: string) => void
+} | null = null
+
+export function __setRtkTestOverrides(overrides: typeof rtkTestOverrides): void {
+  rtkTestOverrides = overrides
+}
 
 function getRtkPaths() {
   const home = getHomeDirAuto()
@@ -22,6 +33,13 @@ function getRtkPaths() {
     localRtkPath: join(home, ".local", "bin", "rtk"),
     routingPath: join(instructionsDir, "rtk-routing.md"),
   }
+}
+
+function getRtkPathsForTarget(target: AgentTarget = "opencode") {
+  if (target === "codex") {
+    return { routingPath: getCodexPaths().rtkRoutingPath }
+  }
+  return getRtkPaths()
 }
 
 const RTK_ROUTING = `${RTK_ROUTING_MARKER}
@@ -80,6 +98,7 @@ function installRtk(): boolean {
 }
 
 function getRtkCommand(): string | null {
+  if (rtkTestOverrides && "command" in rtkTestOverrides) return rtkTestOverrides.command ?? null
   const { localRtkPath } = getRtkPaths()
   if (isCommandOnPath("rtk")) {
     try {
@@ -96,12 +115,15 @@ function getRtkCommand(): string | null {
   return existsSync(localRtkPath) ? localRtkPath : null
 }
 
-function runRtkInit(): boolean {
+function runRtkInit(target: AgentTarget = "opencode"): boolean {
   const rtk = getRtkCommand()
   if (!rtk) return false
 
   try {
-    execSync(`"${rtk}" init -g --opencode`, { stdio: "pipe" })
+    const flag = target === "codex" ? "--codex" : "--opencode"
+    const command = `"${rtk}" init -g ${flag}`
+    if (rtkTestOverrides?.exec) rtkTestOverrides.exec(command)
+    else execSync(command, { stdio: "pipe" })
     return true
   } catch {
     return false
@@ -141,6 +163,16 @@ function removeRoutingFile(): void {
   }
 }
 
+function ensureCodexRtkRoutingFile(): boolean {
+  ensureCodexAgentsInclude(["rtk-routing.md"])
+  return ensureCodexInstructionFile(getCodexPaths().rtkRoutingPath, RTK_ROUTING + "\n")
+}
+
+function removeCodexRtkRoutingFile(): void {
+  removeCodexInstructionFile(getCodexPaths().rtkRoutingPath, RTK_ROUTING_MARKER)
+  removeCodexAgentsInclude()
+}
+
 function runRtkUninstall(): boolean {
   const rtk = getRtkCommand()
   if (!rtk) return false
@@ -158,8 +190,9 @@ export function getRtkComponent(): ComponentModule {
     id: "rtk",
     label: COMPONENT_LABELS.rtk,
 
-    async install(): Promise<InstallResult> {
-      const { routingPath } = getRtkPaths()
+    async install(ctx): Promise<InstallResult> {
+      const target = ctx?.target ?? "opencode"
+      const { routingPath } = getRtkPathsForTarget(target)
       // Check if rtk is already available
       let alreadyInstalled = isRtkAvailable()
       if (!alreadyInstalled) {
@@ -183,11 +216,11 @@ export function getRtkComponent(): ComponentModule {
         }
       }
 
-      // Run `rtk init -g --opencode`
-      const initOk = runRtkInit()
+      // Run upstream RTK init for the selected target.
+      const initOk = runRtkInit(target)
 
       // Write routing instructions
-      ensureRoutingFile()
+      target === "codex" ? ensureCodexRtkRoutingFile() : ensureRoutingFile()
 
       const config = loadConfig()
       config.components.rtk = {
@@ -205,15 +238,16 @@ export function getRtkComponent(): ComponentModule {
         message: alreadyInstalled
           ? "rtk ya instalado, routing e init actualizados"
           : initOk
-            ? "rtk instalado, routing y OpenCode plugin configurados"
-            : "rtk instalado pero init falló — ejecutá 'rtk init -g --opencode' manualmente",
+            ? `rtk instalado, routing y ${target === "codex" ? "Codex" : "OpenCode"} configurados`
+            : `rtk instalado pero init falló — ejecutá 'rtk init -g ${target === "codex" ? "--codex" : "--opencode"}' manualmente`,
         path: routingPath,
       }
     },
 
-    async uninstall(): Promise<InstallResult> {
+    async uninstall(ctx): Promise<InstallResult> {
+      const target = ctx?.target ?? "opencode"
       // Remove routing instructions
-      removeRoutingFile()
+      target === "codex" ? removeCodexRtkRoutingFile() : removeRoutingFile()
 
       // Run rtk uninstall for OpenCode
       runRtkUninstall()
@@ -230,8 +264,9 @@ export function getRtkComponent(): ComponentModule {
       }
     },
 
-    async status(): Promise<ComponentStatus> {
-      const { routingPath } = getRtkPaths()
+    async status(ctx): Promise<ComponentStatus> {
+      const target = ctx?.target ?? "opencode"
+      const { routingPath } = getRtkPathsForTarget(target)
       const rtkInstalled = isRtkAvailable()
       const routingExists = existsSync(routingPath)
 
@@ -261,7 +296,7 @@ export function getRtkComponent(): ComponentModule {
 
     async doctor(ctx: DoctorContext): Promise<DoctorResult> {
       const checks: DoctorCheck[] = []
-      const { routingPath } = getRtkPaths()
+      const { routingPath } = getRtkPathsForTarget(ctx.target ?? "opencode")
 
       // Check 1: rtk binary on PATH
       const rtkInstalled = isRtkAvailable()

@@ -35,6 +35,11 @@ export interface CyberpunkConfig {
   profile?: UserProfile
   /** v2: per-agent detection state cache */
   agentState?: Record<string, AgentStateEntry>
+  updates?: {
+    enabled: boolean
+    ttlMs: number
+    timeoutMs: number
+  }
 }
 
 export const COMPONENT_IDS: ComponentId[] = ["plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"]
@@ -73,5 +78,6 @@ export function createDefaultConfig(): CyberpunkConfig {
     target: "opencode",
     profile: undefined,
     agentState: {},
+    updates: { enabled: true, ttlMs: 24 * 60 * 60 * 1000, timeoutMs: 2500 },
   }
 }

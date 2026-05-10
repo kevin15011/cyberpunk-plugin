@@ -98,13 +98,17 @@ describe("TUI install flow — tool selection", () => {
     expect(opencodeLines.some(l => !l.includes("Próximamente"))).toBe(true)
   })
 
-  test("Claude/Codex show as not-implemented/disabled", () => {
+  test("Claude shows as disabled while Codex is selectable for token tools", () => {
     const state = makeState({
       selectedOS: "darwin",
       _installPhase: "tool-select",
     })
     const lines = installScreen.render(state)
-    expect(lines.some(l => l.includes("Próximamente") || l.includes("No implementado"))).toBe(true)
+    const claudeLine = lines.find(l => l.includes("Claude Code")) ?? ""
+    const codexLine = lines.find(l => l.includes("Codex")) ?? ""
+    expect(claudeLine).toMatch(/Próximamente|No implementado/)
+    expect(codexLine).toContain("Ahorro de tokens")
+    expect(codexLine).not.toMatch(/Próximamente|No implementado/)
   })
 
   test("selecting OpenCode moves to preset phase", () => {
@@ -130,16 +134,16 @@ describe("TUI install flow — tool selection", () => {
     expect(result.state.message).toContain("no está implementado")
   })
 
-  test("selecting Codex (disabled) stays on tool-select with info message", () => {
+  test("selecting Codex moves to preset phase", () => {
     const state = makeState({
       selectedOS: "darwin",
       _installPhase: "tool-select",
       cursor: 2, // Codex
     })
     const result = installScreen.update(state, keyPress("enter"))
-    expect(result.state.selectedTool).toBeUndefined()
-    expect(result.state._installPhase).toBe("tool-select")
-    expect(result.state.message).toContain("no está implementado")
+    expect(result.state.selectedTool).toBe("codex")
+    expect(result.state._installPhase).toBe("preset")
+    expect(result.state.message).toBeUndefined()
   })
 
   test("back on tool-select returns to os-select", () => {
@@ -208,6 +212,39 @@ describe("TUI install flow — preset selection (gated)", () => {
     expect(resolved.id).toBe("cyberpunk-full")
     expect(resolved.components).toContain("theme")
     expect(resolved.components).toContain("sounds")
+  })
+
+  test("Codex preset screen shows Codex-specific presets and target status", () => {
+    const state = makeState({
+      selectedOS: "darwin",
+      selectedTool: "codex",
+      _installPhase: "preset",
+      statuses: [
+        { id: "rtk", label: "RTK", status: "available" },
+        { id: "context-mode", label: "Context Mode", status: "installed" },
+      ],
+    })
+    const output = installScreen.render(state).join("\n")
+
+    expect(output).toContain("Estado rápido para Codex")
+    expect(output).toContain("Codex RTK")
+    expect(output).toContain("Codex Token Saver")
+    expect(output).toContain("Codex Token Toolkit")
+    expect(output).not.toContain("Cyberpunk Full Experience")
+  })
+
+  test("Codex toolkit preset resolves only Codex-supported token tools", () => {
+    const state = makeState({
+      selectedOS: "darwin",
+      selectedTool: "codex",
+      _installPhase: "preset",
+      cursor: 2, // Codex Token Toolkit
+    })
+    const result = installScreen.update(state, keyPress("enter"))
+    const resolved = resolvePreset(result.state.selectedPreset!, { target: "codex" })
+
+    expect(resolved.id).toBe("developer-toolkit")
+    expect(resolved.components.sort()).toEqual(["codebase-memory", "context-mode", "rtk"])
   })
 
   test("manual selection from preset works", () => {

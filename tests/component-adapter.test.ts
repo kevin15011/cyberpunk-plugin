@@ -32,13 +32,13 @@ describe("getCapabilities()", () => {
     expect(plugin!.status).toBe("supported")
   })
 
-  test("rtk targets opencode only on linux/wsl/darwin", async () => {
+  test("rtk targets opencode and codex on linux/wsl/darwin", async () => {
     const { getCapabilities } = await import(`../src/components/registry.ts?t=${Date.now()}`)
 
     const caps = getCapabilities()
     const rtk = caps.find(c => c.component === "rtk")
     expect(rtk).toBeDefined()
-    expect(rtk!.targets).toEqual(["opencode"])
+    expect(rtk!.targets).toEqual(["opencode", "codex"])
     expect(rtk!.platforms).toEqual(["linux", "wsl", "darwin"])
     expect(rtk!.status).toBe("supported")
   })
@@ -65,13 +65,13 @@ describe("getCapabilities()", () => {
     expect(sounds!.status).toBe("supported")
   })
 
-  test("context-mode targets opencode with unknown status for claude", async () => {
+  test("context-mode targets opencode and codex", async () => {
     const { getCapabilities } = await import(`../src/components/registry.ts?t=${Date.now()}`)
 
     const caps = getCapabilities()
     const cm = caps.find(c => c.component === "context-mode")
     expect(cm).toBeDefined()
-    expect(cm!.targets).toEqual(["opencode"])
+    expect(cm!.targets).toEqual(["opencode", "codex"])
     expect(cm!.platforms).toEqual(["linux", "wsl", "darwin"])
     expect(cm!.status).toBe("supported")
   })
