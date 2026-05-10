@@ -32,8 +32,6 @@ function writeCyberpunkConfig() {
         tmux: { installed: false },
         "tui-plugins": { installed: false },
         "codebase-memory": { installed: false },
-        otel: { installed: false },
-        "otel-collector": { installed: false },
       },
     }, null, 2) + "\n",
     "utf8"

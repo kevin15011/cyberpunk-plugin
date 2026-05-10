@@ -32,6 +32,17 @@ export interface PresetPreflightSummary {
 
 export const FILE_TOUCH_MAP: Record<ComponentId, string[]> = {
   plugin: ["~/.config/opencode/plugins/cyberpunk.ts"],
+  "sdd-integration": [
+    "~/.config/opencode/skills/_shared/sdd-phase-common.md",
+    "~/.config/opencode/skills/sdd-propose/SKILL.md",
+    "~/.config/opencode/skills/sdd-spec/SKILL.md",
+    "~/.config/opencode/skills/sdd-design/SKILL.md",
+    "~/.config/opencode/skills/sdd-tasks/SKILL.md",
+    "~/.config/opencode/skills/sdd-apply/SKILL.md",
+    "~/.config/opencode/skills/sdd-review/SKILL.md",
+    "~/.config/opencode/skills/sdd-verify/SKILL.md",
+    "~/.config/opencode/skills/sdd-archive/SKILL.md",
+  ],
   theme: [
     "~/.config/opencode/themes/cyberpunk.json",
     "~/.config/opencode/themes/tui.json",
@@ -51,18 +62,11 @@ export const FILE_TOUCH_MAP: Record<ComponentId, string[]> = {
     "~/.config/opencode/opencode.json",
     "~/.config/opencode/instructions/codebase-memory-routing.md",
   ],
-  otel: [
-    "~/.config/opencode/opencode.json",
-    "~/.bashrc or ~/.zshrc",
-  ],
-  "otel-collector": [
-    "~/.config/cyberpunk/otel-collector/config.yaml",
-    "~/.local/state/cyberpunk/otel/",
-  ],
 }
 
 export const DEPENDENCY_MAP: Record<ComponentId, { id: PreflightDependencyStatus["id"]; label: string; severity: "info" | "warn" }[]> = {
   plugin: [],
+  "sdd-integration": [],
   theme: [],
   sounds: [{ id: "ffmpeg", label: "ffmpeg", severity: "warn" }],
   "context-mode": [
@@ -73,8 +77,6 @@ export const DEPENDENCY_MAP: Record<ComponentId, { id: PreflightDependencyStatus
   tmux: [],
   "tui-plugins": [],
   "codebase-memory": [{ id: "curl", label: "curl", severity: "warn" }],
-  otel: [],
-  "otel-collector": [{ id: "curl", label: "curl", severity: "warn" }],
 }
 
 export async function buildPresetPreflight(resolved: ResolvedPreset): Promise<PresetPreflightSummary> {

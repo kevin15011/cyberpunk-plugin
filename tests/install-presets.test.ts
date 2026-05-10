@@ -72,39 +72,71 @@ describe("platform detection", () => {
 })
 
 describe("resolvePreset", () => {
-  test("minimal resolves to plugin + theme", async () => {
+  test("minimal resolves to plugin only", async () => {
     const { resolvePreset } = await importPresetModules()
     const resolved = resolvePreset("minimal")
     expect(resolved.id).toBe("minimal")
-    expect(resolved.components).toEqual(["plugin", "theme"])
+    expect(resolved.components).toEqual(["plugin"])
   })
 
-  test("full resolves to all ten components", async () => {
+  test("cyberpunk-full resolves to all components", async () => {
+    const { resolvePreset } = await importPresetModules()
+    const resolved = resolvePreset("cyberpunk-full")
+    expect(resolved.id).toBe("cyberpunk-full")
+    expect(resolved.components).toEqual(["plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"])
+    expect(resolved.components).not.toContain("otel" as never)
+    expect(resolved.components).not.toContain("otel-collector" as never)
+  })
+
+  test("developer-toolkit resolves to dev components", async () => {
+    const { resolvePreset } = await importPresetModules()
+    const resolved = resolvePreset("developer-toolkit")
+    expect(resolved.id).toBe("developer-toolkit")
+    expect(resolved.components).toEqual(["plugin", "context-mode", "rtk", "codebase-memory", "sdd-integration"])
+  })
+
+  test("token-saver-dev resolves to plugin + rtk + sdd-integration", async () => {
+    const { resolvePreset } = await importPresetModules()
+    const resolved = resolvePreset("token-saver-dev")
+    expect(resolved.id).toBe("token-saver-dev")
+    expect(resolved.components).toEqual(["plugin", "rtk", "sdd-integration"])
+  })
+
+  test("normal presets exclude aesthetic components", async () => {
+    const { resolvePreset } = await importPresetModules()
+    for (const preset of ["minimal", "token-saver-general", "token-saver-dev", "developer-toolkit"]) {
+      const resolved = resolvePreset(preset)
+      expect(resolved.components).not.toContain("theme")
+      expect(resolved.components).not.toContain("sounds")
+    }
+  })
+
+  test("cyberpunk-full keeps aesthetic components", async () => {
+    const { resolvePreset } = await importPresetModules()
+    const resolved = resolvePreset("cyberpunk-full")
+    expect(resolved.components).toContain("theme")
+    expect(resolved.components).toContain("sounds")
+  })
+
+  test("old 'full' alias resolves to cyberpunk-full with deprecation warning", async () => {
     const { resolvePreset } = await importPresetModules()
     const resolved = resolvePreset("full")
-    expect(resolved.id).toBe("full")
-    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
+    expect(resolved.id).toBe("cyberpunk-full")
+    expect(resolved.warnings.some(w => w.includes("deprecado"))).toBe(true)
   })
 
-  test("wsl resolves to plugin + theme + sounds + tmux", async () => {
-    procVersionContent = "Linux version 5.15.167.4-microsoft-standard-WSL2"
-
-    await withMockedPlatform("linux", async () => {
-      spyOn(fs, "readFileSync").mockImplementation(() => procVersionContent as any)
-      const { resolvePreset } = await importPresetModules()
-      const resolved = resolvePreset("wsl")
-      expect(resolved.id).toBe("wsl")
-      expect(resolved.components).toEqual(["plugin", "theme", "sounds", "tmux"])
-    })
+  test("old 'wsl' alias resolves to developer-toolkit with deprecation warning", async () => {
+    const { resolvePreset } = await importPresetModules()
+    const resolved = resolvePreset("wsl")
+    expect(resolved.id).toBe("developer-toolkit")
+    expect(resolved.warnings.some(w => w.includes("deprecado"))).toBe(true)
   })
 
-  test("mac resolves to plugin + theme + sounds + context-mode + rtk", async () => {
-    await withMockedPlatform("darwin", async () => {
-      const { resolvePreset } = await importPresetModules()
-      const resolved = resolvePreset("mac")
-      expect(resolved.id).toBe("mac")
-      expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk"])
-    })
+  test("old 'mac' alias resolves to developer-toolkit with deprecation warning", async () => {
+    const { resolvePreset } = await importPresetModules()
+    const resolved = resolvePreset("mac")
+    expect(resolved.id).toBe("developer-toolkit")
+    expect(resolved.warnings.some(w => w.includes("deprecado"))).toBe(true)
   })
 
   test("minimal has no warnings", async () => {
@@ -113,63 +145,49 @@ describe("resolvePreset", () => {
     expect(resolved.warnings).toEqual([])
   })
 
-  test("full has warnings populated", async () => {
+  test("cyberpunk-full has warnings populated", async () => {
     const { resolvePreset } = await importPresetModules()
-    const resolved = resolvePreset("full")
+    const resolved = resolvePreset("cyberpunk-full")
     expect(resolved.warnings.length).toBeGreaterThan(0)
   })
 
-  test("full warns about sounds/ffmpeg", async () => {
+  test("cyberpunk-full warns about sounds/ffmpeg", async () => {
     const { resolvePreset } = await importPresetModules()
-    const resolved = resolvePreset("full")
+    const resolved = resolvePreset("cyberpunk-full")
     expect(resolved.warnings.some(w => w.includes("sounds") && w.includes("ffmpeg"))).toBe(true)
   })
 
-  test("full warns about context-mode/npm", async () => {
+  test("cyberpunk-full warns about context-mode/npm", async () => {
     const { resolvePreset } = await importPresetModules()
-    const resolved = resolvePreset("full")
+    const resolved = resolvePreset("cyberpunk-full")
     expect(resolved.warnings.some(w => w.includes("context-mode") && w.includes("npm"))).toBe(true)
   })
 
-  test("full warns about rtk/curl", async () => {
+  test("cyberpunk-full warns about rtk/curl", async () => {
     const { resolvePreset } = await importPresetModules()
-    const resolved = resolvePreset("full")
+    const resolved = resolvePreset("cyberpunk-full")
     expect(resolved.warnings.some(w => w.includes("rtk") && w.includes("curl"))).toBe(true)
   })
 
-  test("full warns about tmux managed block", async () => {
+  test("cyberpunk-full warns about tmux managed block", async () => {
     const { resolvePreset } = await importPresetModules()
-    const resolved = resolvePreset("full")
+    const resolved = resolvePreset("cyberpunk-full")
     expect(resolved.warnings.some(w => w.includes("tmux") && w.includes("tmux.conf"))).toBe(true)
   })
 
-  test("wsl keeps its base warning on matching platform", async () => {
-    procVersionContent = "Linux version 5.15.167.4-microsoft-standard-WSL2"
-
+  test("old wsl alias produces deprecation warning", async () => {
     await withMockedPlatform("linux", async () => {
-      spyOn(fs, "readFileSync").mockImplementation(() => procVersionContent as any)
       const { resolvePreset } = await importPresetModules()
       const resolved = resolvePreset("wsl")
-      expect(resolved.warnings.some(w => w.includes("WSL"))).toBe(true)
+      expect(resolved.warnings.some(w => w.includes("deprecado"))).toBe(true)
     })
   })
 
-  test("wsl appends mismatch warning outside WSL", async () => {
-    await withMockedPlatform("linux", async () => {
-      procVersionContent = "Linux version 6.1.0-generic"
-      spyOn(fs, "readFileSync").mockImplementation(() => procVersionContent as any)
-      const { resolvePreset } = await importPresetModules()
-
-      const resolved = resolvePreset("wsl")
-      expect(resolved.warnings.filter(w => w.includes("WSL")).length).toBeGreaterThanOrEqual(2)
-    })
-  })
-
-  test("mac appends mismatch warning outside macOS", async () => {
-    await withMockedPlatform("linux", async () => {
+  test("old mac alias produces deprecation warning", async () => {
+    await withMockedPlatform("darwin", async () => {
       const { resolvePreset } = await importPresetModules()
       const resolved = resolvePreset("mac")
-      expect(resolved.warnings.filter(w => /mac/i.test(w)).length).toBeGreaterThanOrEqual(2)
+      expect(resolved.warnings.some(w => w.includes("deprecado"))).toBe(true)
     })
   })
 
@@ -202,10 +220,15 @@ describe("resolvePreset", () => {
 })
 
 describe("PRESET_NAMES", () => {
-  test("contains minimal, full, wsl, and mac", async () => {
+  test("contains new preset ids", async () => {
     const { PRESET_NAMES } = await importPresetModules()
     const values = PRESET_NAMES.map(p => p.value)
-    expect(values).toEqual(["minimal", "full", "wsl", "mac"])
+    expect(values).toContain("minimal")
+    expect(values).toContain("cyberpunk-full")
+    expect(values).toContain("developer-toolkit")
+    expect(values).toContain("token-saver-general")
+    expect(values).toContain("token-saver-dev")
+    expect(values).toContain("custom")
   })
 
   test("each entry has label and hint", async () => {
@@ -218,19 +241,19 @@ describe("PRESET_NAMES", () => {
 })
 
 describe("PRESET_DEFINITIONS", () => {
-  test("has exactly 4 entries", async () => {
+  test("has exactly 6 entries", async () => {
     const { PRESET_DEFINITIONS } = await importPresetModules()
-    expect(PRESET_DEFINITIONS.size).toBe(4)
+    expect(PRESET_DEFINITIONS.size).toBe(6)
   })
 })
 
 describe("formatHelp", () => {
-  test("includes wsl/mac presets and examples", async () => {
+  test("includes preset names and examples", async () => {
     const { formatHelp } = await importPresetModules()
     const help = formatHelp()
 
-    expect(help).toContain("--preset <name> Instalar desde preset (minimal, full, wsl, mac)")
-    expect(help).toContain("cyberpunk install --preset wsl")
-    expect(help).toContain("cyberpunk install --preset mac")
+    expect(help).toContain("--preset <name>")
+    expect(help).toContain("developer-toolkit")
+    expect(help).toContain("cyberpunk-full")
   })
 })

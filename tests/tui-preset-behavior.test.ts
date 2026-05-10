@@ -29,7 +29,7 @@ mock.module("../src/commands/install", () => ({
 
 mock.module("../src/commands/status", () => ({
   collectStatus: mock(async () => [
-    { id: "plugin", label: "Plugin de OpenCode", status: "available" },
+    { id: "plugin", label: "OpenCode Event Sounds", status: "available" },
     { id: "theme", label: "Tema cyberpunk", status: "available" },
     { id: "sounds", label: "Sonidos", status: "available" },
     { id: "context-mode", label: "Context-Mode", status: "available" },
@@ -61,38 +61,47 @@ describe("TUI preset install flow via router", () => {
     runInstallCalls.length = 0
   })
 
-  test("preset options are built from PRESET_NAMES including wsl and mac", async () => {
+  test("preset options are built from PRESET_NAMES including new presets", async () => {
     const { PRESET_NAMES } = await import("../src/presets/index")
 
     const presetValues = PRESET_NAMES.map(p => p.value)
     expect(presetValues).toContain("minimal")
-    expect(presetValues).toContain("full")
-    expect(presetValues).toContain("wsl")
-    expect(presetValues).toContain("mac")
+    expect(presetValues).toContain("cyberpunk-full")
+    expect(presetValues).toContain("developer-toolkit")
+    expect(presetValues).toContain("token-saver-dev")
+    expect(presetValues).toContain("custom")
   })
 
-  test("resolvePreset resolves minimal to plugin + theme", async () => {
+  test("resolvePreset resolves minimal to plugin only", async () => {
     const { resolvePreset } = await import("../src/presets/index")
     const resolved = resolvePreset("minimal")
-    expect(resolved.components).toEqual(["plugin", "theme"])
+    expect(resolved.components).toEqual(["plugin"])
   })
 
-  test("resolvePreset resolves full to all components", async () => {
+  test("resolvePreset resolves cyberpunk-full to all components", async () => {
     const { resolvePreset } = await import("../src/presets/index")
-    const resolved = resolvePreset("full")
-    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
+    const resolved = resolvePreset("cyberpunk-full")
+    expect(resolved.components).toEqual(["plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"])
+    expect(resolved.components).not.toContain("otel" as never)
+    expect(resolved.components).not.toContain("otel-collector" as never)
   })
 
-  test("resolvePreset resolves wsl to wsl components", async () => {
+  test("resolvePreset resolves developer-toolkit to toolkit components", async () => {
+    const { resolvePreset } = await import("../src/presets/index")
+    const resolved = resolvePreset("developer-toolkit")
+    expect(resolved.components).toEqual(["plugin", "context-mode", "rtk", "codebase-memory", "sdd-integration"])
+  })
+
+  test("resolvePreset resolves old 'wsl' alias to developer-toolkit", async () => {
     const { resolvePreset } = await import("../src/presets/index")
     const resolved = resolvePreset("wsl")
-    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "tmux"])
+    expect(resolved.id).toBe("developer-toolkit")
   })
 
-  test("resolvePreset resolves mac to mac components", async () => {
+  test("resolvePreset resolves old 'mac' alias to developer-toolkit", async () => {
     const { resolvePreset } = await import("../src/presets/index")
     const resolved = resolvePreset("mac")
-    expect(resolved.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk"])
+    expect(resolved.id).toBe("developer-toolkit")
   })
 
   test("resolvePreset throws on unknown preset", async () => {
@@ -116,7 +125,7 @@ describe("TUI preset install flow via router", () => {
     runInstallCalls.length = 0
     await startPresetInstall("minimal")
     expect(runInstallCalls.length).toBe(1)
-    expect(runInstallCalls[0]).toEqual(["plugin", "theme"])
+    expect(runInstallCalls[0]).toEqual(["plugin"])
   })
 
   test("startInstallTask calls runInstall with selected components", async () => {

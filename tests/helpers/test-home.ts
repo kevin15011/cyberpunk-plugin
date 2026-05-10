@@ -11,9 +11,11 @@ type ComponentState = {
   path?: string
 }
 
+type ComponentKey = "plugin" | "sdd-integration" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory"
+
 type TestConfigOverrides = {
   installMode?: InstallMode
-  components?: Partial<Record<"plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux", ComponentState>>
+  components?: Partial<Record<ComponentKey, ComponentState>>
   [key: string]: unknown
 }
 
@@ -39,11 +41,14 @@ export function setDefaultConfig(dir: string, overrides: TestConfigOverrides = {
     version: 1,
     components: {
       plugin: { installed: false },
+      "sdd-integration": { installed: false },
       theme: { installed: false },
       sounds: { installed: false },
       "context-mode": { installed: false },
       rtk: { installed: false },
       tmux: { installed: false },
+      "tui-plugins": { installed: false },
+      "codebase-memory": { installed: false },
       ...componentOverrides,
     },
     repoUrl: "https://github.com/kevin15011/cyberpunk-plugin",

@@ -15,7 +15,7 @@ export const uninstallScreen: ScreenModule = {
     if (installed.length === 0) {
       lines.push(gray("  No hay componentes instalados"))
       lines.push("")
-      lines.push(gray("  Esc volver al inicio"))
+      lines.push(gray("  Esc volver · H inicio"))
       return lines
     }
 
@@ -36,7 +36,7 @@ export const uninstallScreen: ScreenModule = {
     } else {
       lines.push(gray(`  ${state.selectedComponents.length} seleccionado(s) · Enter confirmar`))
     }
-    lines.push(gray("  Space toggle · Esc volver"))
+    lines.push(gray("  Space toggle · Esc volver · H inicio"))
 
     if (state.message) {
       lines.push("")
@@ -85,6 +85,11 @@ export const uninstallScreen: ScreenModule = {
           intent: { type: "confirm" },
         }
       }
+      case "back":
+        return {
+          state: { ...state, cursor: 0, selectedComponents: [], message: undefined },
+          intent: { type: "back" },
+        }
       case "ctrl-c":
         return { state: { ...state, quit: true }, intent: { type: "quit" } }
       default:

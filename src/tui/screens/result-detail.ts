@@ -65,7 +65,7 @@ export const resultDetailScreen: ScreenModule = {
     lines.push("")
     lines.push(separator())
     lines.push("")
-    lines.push(gray("  Esc volver a resultados"))
+    lines.push(gray("  Esc volver a resultados · H inicio"))
 
     return lines
   },

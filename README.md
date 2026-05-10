@@ -11,15 +11,27 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `error` — Low descending tone on session errors
   - `compact` — Neural compression sound on context compaction
   - `permission` — Alert beep when opencode asks for permission
+- **SDD Integration** — Patches `sdd-phase-common.md` to register SDD review agents and wire the `apply → review → verify` flow. This is now a separate component from the sound plugin for clean separation of concerns.
 - **RTK** (optional) — Token-optimized CLI proxy that filters verbose command outputs before they reach your LLM context. Installs `rtk`, runs `rtk init -g --opencode`, and adds instruction reinforcement.
 - **TUI Plugins** — Registers `opencode-sdd-engram-manage` and `opencode-subagent-statusline` in `tui.json` for enhanced TUI experience.
 - **Codebase Memory MCP** — Auto-downloads `codebase-memory-mcp` binary, adds MCP config for structural code exploration (call graphs, symbols, routes). Routing instructions enforce read-before-edit workflow.
-- **OpenTelemetry Plugin** — Registers `opencode-plugin-otel` in `opencode.json` and writes telemetry env vars (`OPENCODE_OTLP_ENDPOINT`, etc.) to shell profile with marker-managed blocks.
-- **OTEL Collector** — Installs `otelcol-contrib`, writes config binding only to `127.0.0.1:4317/4318`, exports to local JSON file. Uses `systemd --user` when available, fallback script otherwise.
 - **2 custom SDD review phases** — `sdd-review` (native model review) and `sdd-claude-review` (Claude Opus CLI review)
-- **Automatic SDD patching** — Registers review agents in `opencode.json` and patches `/sdd-continue` to `apply -> review -> verify`
 - **Automatic context-mode bootstrap** — Ensures `context-mode` MCP/plugin config, routing instructions, and SDD prompt defaults exist after OpenCode/Gentle AI updates
 - **Cross-platform** — macOS (`afplay`) and Linux (`ffplay`)
+
+### Components
+
+| Component | Flag | Description |
+|-----------|------|-------------|
+| **OpenCode Event Sounds** | `--plugin` | Cyberpunk theme + 4 generated sounds (idle, error, compact, permission) |
+| **Theme** | `--theme` | Dark cyberpunk TUI color scheme |
+| **Sounds** | `--sounds` | Sound effect WAV files (requires `ffmpeg`) |
+| **SDD Integration** | `--sdd-integration` | Patches `sdd-phase-common.md` with review/verify flow. Separated from the sound plugin for clean separation of concerns. |
+| **Context Mode** | `--context-mode` | MCP plugin + routing instructions for context protection |
+| **RTK** | `--rtk` | Token-optimized CLI proxy |
+| **Tmux** | `--tmux` | Cyberpunk HUD status bar + vim keybindings |
+| **TUI Plugins** | `--tui-plugins` | Registers opencode TUI plugins |
+| **Codebase Memory** | `--codebase-memory` | Auto-downloads `codebase-memory-mcp`, adds MCP config |
 
 ### Tmux Config
 - **Cyberpunk HUD** — Neon status bar with CPU, RAM, git branch, clock
@@ -48,6 +60,20 @@ If `~/.local/bin` is not already in your `PATH`, the script prints shell-aware P
 
 ## Verifying downloads
 
+### Presets
+
+The installer supports presets that bundle common component combinations:
+
+| Preset | Components |
+|--------|-----------|
+| `minimal` | Plugin, SDD Integration |
+| `token-saver-general` | Plugin, SDD Integration, Theme, Context Mode |
+| `token-saver-dev` | Plugin, SDD Integration, Theme, Context Mode, Codebase Memory, TUI Plugins |
+| `developer-toolkit` | Plugin, SDD Integration, Theme, Context Mode, Codebase Memory, TUI Plugins, RTK, Tmux |
+| `cyberpunk-full` | All supported components, including explicit aesthetic components |
+
+> **Deprecated preset names**: `full`, `wsl`, and `mac` still work but emit deprecation warnings. Migrate to `cyberpunk-full`, `developer-toolkit`, and `developer-toolkit` respectively.
+
 Every release publishes a `checksums.txt` asset alongside the platform binaries. After downloading the binary you want, verify it with:
 
 ```bash
@@ -64,7 +90,7 @@ bun install && bun run build
 ./cyberpunk tui
 ```
 
-Then restart opencode. The plugin will auto-configure on first load, install both review phases, patch the local SDD flow, and re-bootstrap `context-mode` integration if OpenCode or Gentle AI updates overwrite those files.
+Then restart opencode. The plugin will auto-configure on first load, install both review phases, and re-bootstrap `context-mode` integration if OpenCode or Gentle AI updates overwrite those files. SDD integration patching is handled by the separate `sdd-integration` component.
 
 Installation and SDD patch notices are silent by default so they do not clutter the OpenCode UI every time you open it. If you want to debug the setup flow, launch OpenCode with `OPENCODE_CYBERPUNK_INSTALL_NOTICES=1`.
 
@@ -148,7 +174,7 @@ Run `cyberpunk doctor` to check the status of TPM, plugin readiness, gitmux, and
 - **Linux** — `ffplay` (`sudo apt install ffmpeg`)
 - **macOS** — `ffplay` (`brew install ffmpeg`)
 - `npm` — Needed for `context-mode` component
-- `curl` — Needed for `rtk`, `codebase-memory`, and `otel-collector` components
+- `curl` — Needed for `rtk` and `codebase-memory` components
 - `git` — For TPM installation
 - [bun](https://bun.sh) — Only needed if building from source
 
@@ -188,13 +214,12 @@ To hear the permission alert sound, add this to your `opencode.json`:
 cyberpunk uninstall --all
 # Or individually:
 cyberpunk uninstall --plugin
+cyberpunk uninstall --sdd-integration
 cyberpunk uninstall --theme
 cyberpunk uninstall --sounds
 cyberpunk uninstall --tmux
 cyberpunk uninstall --tui-plugins
 cyberpunk uninstall --codebase-memory
-cyberpunk uninstall --otel
-cyberpunk uninstall --otel-collector
 rm -f ~/.local/bin/cyberpunk
 # Optional: remove RTK routing instructions
 rm -f ~/.config/opencode/instructions/rtk-routing.md
@@ -202,11 +227,9 @@ rm -f ~/.config/opencode/instructions/rtk-routing.md
 
 ## Security notes
 
-- **OTEL Collector** binds only to `127.0.0.1` — no remote access by default
 - **Shell profile modifications** use marker-managed blocks — only cyberpunk-owned sections are added/removed
 - **MCP configurations** are additive — existing entries in `opencode.json` are preserved
 - **Binary downloads** use HTTPS from official GitHub releases
-- **Environment variables** written by the `otel` component do not include `OPENCODE_OTLP_HEADERS`
 
 ## Keybindings (tmux)
 

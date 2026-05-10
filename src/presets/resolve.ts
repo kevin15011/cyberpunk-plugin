@@ -1,7 +1,8 @@
 // src/presets/resolve.ts — validates preset names and returns ResolvedPreset
 
-import { PRESET_DEFINITIONS, type PresetId, type ResolvedPreset } from "./definitions"
+import { PRESET_DEFINITIONS, PRESET_ALIASES, type PresetId, type ResolvedPreset } from "./definitions"
 import { detectEnvironment, type DetectedEnvironment } from "../platform/detect"
+import { normalizeComponentId } from "../components/types"
 
 export const PRESET_NAMES: { value: PresetId; label: string; hint: string }[] = Array.from(
   PRESET_DEFINITIONS.values()
@@ -14,33 +15,38 @@ export const PRESET_NAMES: { value: PresetId; label: string; hint: string }[] = 
 export function resolvePreset(name: string): ResolvedPreset {
   const lower = name.toLowerCase()
 
-  const def = PRESET_DEFINITIONS.get(lower as PresetId)
+  // Check if this is a legacy alias
+  const alias = PRESET_ALIASES[lower]
+  const resolvedName = alias ? alias.target : lower
+
+  const def = PRESET_DEFINITIONS.get(resolvedName as PresetId)
   if (!def) {
     throw new Error(`Preset desconocido: '${name}'. Presets disponibles: ${Array.from(PRESET_DEFINITIONS.keys()).join(", ")}`)
   }
 
   const warnings = [...def.warnings]
-  const mismatchWarning = getMismatchWarning(def.id, detectEnvironment())
 
-  if (mismatchWarning) {
-    warnings.push(mismatchWarning)
+  // Add alias deprecation warning if applicable
+  if (alias) {
+    warnings.push(alias.warning)
   }
+
+  // Normalize all component ids through the alias map
+  const components = def.id === "custom"
+    ? [] // Custom preset has no predefined components
+    : def.components.map(id => normalizeComponentId(id))
 
   return {
     id: def.id,
     label: def.label,
-    components: [...def.components],
+    components,
     warnings,
   }
 }
 
 function getMismatchWarning(presetId: PresetId, detected: DetectedEnvironment): string | null {
-  if (presetId === "wsl" && detected !== "wsl") {
-    return `Este preset está pensado para WSL; entorno detectado: ${detected}.`
-  }
-
-  if (presetId === "mac" && detected !== "darwin") {
-    return `Este preset está pensado para macOS; entorno detectado: ${detected}.`
+  if (presetId === "developer-toolkit" && detected === "wsl") {
+    return null // developer-toolkit is universal, no mismatch warning
   }
 
   return null

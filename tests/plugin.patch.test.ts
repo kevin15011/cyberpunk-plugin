@@ -1,201 +1,52 @@
-// tests/plugin.patch.test.ts — tests for extractBetweenMarkers and patchSddPhaseCommon
+// tests/plugin.patch.test.ts — tests for PLUGIN_SOURCE (sound hooks only, no SDD patching)
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "fs"
-import { join } from "path"
-import { tmpdir } from "os"
+import { describe, test, expect } from "bun:test"
 
 const loadPluginModule = () => import(`../src/components/plugin.ts?patch=${Date.now()}-${Math.random()}`)
 
-// ── extractBetweenMarkers tests ──────────────────────────────
+// ── PLUGIN_SOURCE must NOT contain SDD patching code ──────────
 
-describe("extractBetweenMarkers", () => {
-  const start = "<!-- start -->"
-  const end = "<!-- end -->"
-
-  test("extracts content between matching markers", async () => {
-    const { extractBetweenMarkers } = await loadPluginModule()
-    const content = `before<!-- start -->managed content<!-- end -->after`
-    const result = extractBetweenMarkers(content, start, end)
-    expect(result).not.toBeNull()
-    expect(result!.before).toBe("before")
-    expect(result!.managed).toBe("managed content")
-    expect(result!.after).toBe("after")
+describe("PLUGIN_SOURCE: no SDD patching code", () => {
+  test("must NOT contain SDD_PHASE_COMMON_PATH", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("SDD_PHASE_COMMON_PATH")
   })
 
-  test("returns null when only start marker exists", async () => {
-    const { extractBetweenMarkers } = await loadPluginModule()
-    const content = `before<!-- start -->some content without end`
-    const result = extractBetweenMarkers(content, start, end)
-    expect(result).toBeNull()
+  test("must NOT contain START_MARKER or END_MARKER constants", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("cyberpunk:start:section-e")
+    expect(PLUGIN_SOURCE).not.toContain("cyberpunk:end:section-e")
   })
 
-  test("returns null when only end marker exists", async () => {
-    const { extractBetweenMarkers } = await loadPluginModule()
-    const content = `some content without start<!-- end -->after`
-    const result = extractBetweenMarkers(content, start, end)
-    expect(result).toBeNull()
+  test("must NOT contain MANAGED_SDD_TEMPLATE", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("MANAGED_SDD_TEMPLATE")
   })
 
-  test("returns null when no markers exist", async () => {
-    const { extractBetweenMarkers } = await loadPluginModule()
-    const content = "just some regular content"
-    const result = extractBetweenMarkers(content, start, end)
-    expect(result).toBeNull()
+  test("must NOT contain patchSddPhaseCommon function", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("patchSddPhaseCommon")
   })
 
-  test("returns null for empty string", async () => {
-    const { extractBetweenMarkers } = await loadPluginModule()
-    const result = extractBetweenMarkers("", start, end)
-    expect(result).toBeNull()
+  test("must NOT contain extractBetweenMarkers function", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("extractBetweenMarkers")
   })
 
-  test("handles multiline content between markers", async () => {
-    const { extractBetweenMarkers } = await loadPluginModule()
-    const content = `header\n<!-- start -->\nline1\nline2\n<!-- end -->\nfooter`
-    const result = extractBetweenMarkers(content, start, end)
-    expect(result).not.toBeNull()
-    expect(result!.managed).toBe("\nline1\nline2\n")
-    expect(result!.before).toBe("header\n")
-    expect(result!.after).toBe("\nfooter")
-  })
-})
-
-// ── patchSddPhaseCommon tests ────────────────────────────────
-// We test patchSddPhaseCommon by temporarily overriding HOME
-// and creating a fake sdd-phase-common.md file.
-
-describe("patchSddPhaseCommon", () => {
-  const ORIGINAL_HOME = process.env.HOME
-  let tempHome = ""
-  let sharedDir = ""
-  let targetFile = ""
-
-  beforeEach(() => {
-    tempHome = join(tmpdir(), `cyberpunk-patch-test-${Date.now()}-${Math.random()}`)
-    sharedDir = join(tempHome, ".config", "opencode", "skills", "_shared")
-    targetFile = join(sharedDir, "sdd-phase-common.md")
-    process.env.HOME = tempHome
-    mkdirSync(sharedDir, { recursive: true })
+  test("must NOT contain SECTION_E_TEMPLATE or SECTION_F_TEMPLATE", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("SECTION_E_TEMPLATE")
+    expect(PLUGIN_SOURCE).not.toContain("SECTION_F_TEMPLATE")
   })
 
-  afterEach(() => {
-    if (ORIGINAL_HOME === undefined) {
-      delete process.env.HOME
-    } else {
-      process.env.HOME = ORIGINAL_HOME
-    }
-    if (tempHome && existsSync(tempHome)) {
-      rmSync(tempHome, { recursive: true, force: true })
-    }
+  test("must NOT contain writeFileSync import (runtime patching)", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("writeFileSync")
   })
 
-  test("fresh install: file exists with no markers → file written, returns true", async () => {
-    const { START_MARKER, END_MARKER } = await loadPluginModule()
-    // Write a file that has no markers
-    const contentWithoutMarkers = `# SDD Phase Common
-
-## A. Skill Loading
-
-Some content here.
-
-## B. Something Else
-
-More content.`
-    mkdirSync(sharedDir, { recursive: true })
-    writeFileSync(targetFile, contentWithoutMarkers, "utf8")
-
-    // Dynamic re-import to get fresh function with current HOME
-    const { patchSddPhaseCommon } = await loadPluginModule()
-    const result = patchSddPhaseCommon()
-
-    expect(result).toBe(true)
-
-    const patched = readFileSync(targetFile, "utf8")
-    expect(patched).toContain(START_MARKER)
-    expect(patched).toContain(END_MARKER)
-    expect(patched).toContain("## E. Session Stats")
-    // Original content preserved before markers
-    expect(patched).toContain("## A. Skill Loading")
-  })
-
-  test("fresh install with existing Section E heading → replaces heading", async () => {
-    const { END_MARKER, SECTION_E_TEMPLATE, START_MARKER } = await loadPluginModule()
-    const contentWithE = `# SDD Phase Common
-
-## A. Skill Loading
-
-Some content.
-
-## E. Old Stats Section
-
-Old content that should be replaced.`
-    mkdirSync(sharedDir, { recursive: true })
-    writeFileSync(targetFile, contentWithE, "utf8")
-
-    const { patchSddPhaseCommon } = await loadPluginModule()
-    const result = patchSddPhaseCommon()
-
-    expect(result).toBe(true)
-
-    const patched = readFileSync(targetFile, "utf8")
-    expect(patched).toContain(START_MARKER)
-    expect(patched).toContain(END_MARKER)
-    expect(patched).toContain(SECTION_E_TEMPLATE)
-    // Old Section E should be gone
-    expect(patched).not.toContain("Old Stats Section")
-    // Sections before E preserved
-    expect(patched).toContain("## A. Skill Loading")
-  })
-
-  test("no-op: file with matching marked section → returns false", async () => {
-    const { END_MARKER, MANAGED_SDD_TEMPLATE, START_MARKER } = await loadPluginModule()
-    // First, install the markers
-    const markedSection = `\n${START_MARKER}\n${MANAGED_SDD_TEMPLATE}\n${END_MARKER}\n`
-    const contentWithMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.${markedSection}`
-    mkdirSync(sharedDir, { recursive: true })
-    writeFileSync(targetFile, contentWithMarkers, "utf8")
-
-    const { patchSddPhaseCommon } = await loadPluginModule()
-    const result = patchSddPhaseCommon()
-
-    expect(result).toBe(false)
-
-    // File should be unchanged
-    const after = readFileSync(targetFile, "utf8")
-    expect(after).toBe(contentWithMarkers)
-  })
-
-  test("mismatch: file with mismatched marked section → file written, returns true", async () => {
-    const { END_MARKER, SECTION_E_TEMPLATE, START_MARKER } = await loadPluginModule()
-    const markedSection = `\n${START_MARKER}\n## E. Different Content\n\nThis is wrong.\n${END_MARKER}\n`
-    const contentWithBadMarkers = `# SDD Phase Common\n\n## A. Skill Loading\n\nSome content.${markedSection}`
-    mkdirSync(sharedDir, { recursive: true })
-    writeFileSync(targetFile, contentWithBadMarkers, "utf8")
-
-    const { patchSddPhaseCommon } = await loadPluginModule()
-    const result = patchSddPhaseCommon()
-
-    expect(result).toBe(true)
-
-    const patched = readFileSync(targetFile, "utf8")
-    expect(patched).toContain(START_MARKER)
-    expect(patched).toContain(END_MARKER)
-    expect(patched).toContain(SECTION_E_TEMPLATE)
-    expect(patched).toContain("## F. RTK Routing")
-    expect(patched).not.toContain("Different Content")
-  })
-
-  test("missing file: sdd-phase-common.md absent → returns false, no error", async () => {
-    // Remove the file if it exists
-    if (existsSync(targetFile)) {
-      rmSync(targetFile)
-    }
-
-    const { patchSddPhaseCommon } = await loadPluginModule()
-    const result = patchSddPhaseCommon()
-
-    expect(result).toBe(false)
+  test("must NOT contain readFileSync import (runtime patching)", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    expect(PLUGIN_SOURCE).not.toContain("readFileSync")
   })
 })
 

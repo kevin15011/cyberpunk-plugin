@@ -2,6 +2,7 @@
 
 import type { ComponentId, DoctorCheck, DoctorContext, DoctorFixResult, DoctorRunResult, DoctorResult } from "../components/types"
 import { getPluginComponent } from "../components/plugin"
+import { getSddIntegrationComponent } from "../components/sdd-integration"
 import { getThemeComponent } from "../components/theme"
 import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
@@ -9,8 +10,6 @@ import { getRtkComponent } from "../components/rtk"
 import { getTmuxComponent } from "../components/tmux"
 import { getTuiPluginsComponent } from "../components/tui-plugins"
 import { getCodebaseMemoryComponent } from "../components/codebase-memory"
-import { getOtelComponent } from "../components/otel"
-import { getOtelCollectorComponent } from "../components/otel-collector"
 import { COMPONENT_IDS } from "../config/schema"
 import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
@@ -28,6 +27,7 @@ import type { AgentDetectResult } from "../detection/types"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
+  "sdd-integration": getSddIntegrationComponent,
   theme: getThemeComponent,
   sounds: getSoundsComponent,
   "context-mode": getContextModeComponent,
@@ -35,8 +35,6 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   tmux: getTmuxComponent,
   "tui-plugins": getTuiPluginsComponent,
   "codebase-memory": getCodebaseMemoryComponent,
-  otel: getOtelComponent,
-  "otel-collector": getOtelCollectorComponent,
 }
 
 /**
@@ -207,26 +205,30 @@ export async function runDoctor(
   if (options.fix) {
     const fixable = allChecks.filter(c => c.status !== "pass" && c.fixable)
 
-    // Repair order per design: config → plugin patch → theme → context-mode → rtk
+    // Repair order per design: config → plugin registration → sdd-integration patching → theme → sounds → context-mode → rtk → tmux → tui-plugins → codebase-memory
     // 1. Config shape defaults
     for (const check of fixable.filter(c => c.id.startsWith("config:"))) {
       fixes.push(await applyConfigFix(check))
     }
 
-    // 2. Plugin patch drift → registration (spec order: patch → register)
+    // 2. Plugin fixes (file, source-drift, registration — NO patching)
     const pluginFixable = fixable.filter(c => c.id.startsWith("plugin:"))
-    // Explicit ordering: patching must run before registration
+    // Explicit ordering: source-drift before registration
     const PLUGIN_FIX_PRIORITY: Record<string, number> = {
-      "plugin:patching": 0,
-      "plugin:source-drift": 1,
-      "plugin:registration": 2,
+      "plugin:source-drift": 0,
+      "plugin:registration": 1,
     }
     pluginFixable.sort((a, b) => (PLUGIN_FIX_PRIORITY[a.id] ?? 99) - (PLUGIN_FIX_PRIORITY[b.id] ?? 99))
     for (const check of pluginFixable) {
       fixes.push(await applyPluginFix(check))
     }
 
-    // 3. Theme activation
+    // 3. SDD integration patching
+    for (const check of fixable.filter(c => c.id.startsWith("sdd-integration:"))) {
+      fixes.push(await applySddIntegrationFix(check))
+    }
+
+    // 4. Theme activation
     for (const check of fixable.filter(c => c.id.startsWith("theme:"))) {
       fixes.push(await applyThemeFix(check))
     }
@@ -270,16 +272,6 @@ export async function runDoctor(
     // 9. Codebase-memory routing + MCP repair
     for (const check of fixable.filter(c => c.id.startsWith("codebase-memory:"))) {
       fixes.push(await applyCodebaseMemoryFix(check))
-    }
-
-    // 10. OTEL plugin + env repair
-    for (const check of fixable.filter(c => c.id.startsWith("otel:"))) {
-      fixes.push(await applyOtelFix(check))
-    }
-
-    // 11. OTEL collector config + service repair
-    for (const check of fixable.filter(c => c.id.startsWith("otel-collector:"))) {
-      fixes.push(await applyOtelCollectorFix(check))
     }
 
     // Mark fixed checks
@@ -454,23 +446,6 @@ async function applyConfigFix(check: DoctorCheck): Promise<DoctorFixResult> {
 }
 
 async function applyPluginFix(check: DoctorCheck): Promise<DoctorFixResult> {
-  if (check.id === "plugin:patching") {
-    try {
-      const { patchSddPhaseCommon } = await import("../components/plugin")
-      const patched = patchSddPhaseCommon()
-      if (patched) {
-        return { checkId: check.id, status: "fixed", message: "Section E/F re-aplicada" }
-      }
-      return { checkId: check.id, status: "unchanged", message: "Patching sin cambios" }
-    } catch (err) {
-      return {
-        checkId: check.id,
-        status: "failed",
-        message: `Error aplicando patch: ${err instanceof Error ? err.message : String(err)}`,
-      }
-    }
-  }
-
   if (check.id === "plugin:registration") {
     try {
       const { registerCyberpunkPlugin } = await import("../opencode-config")
@@ -511,6 +486,26 @@ async function applyPluginDriftFix(check: DoctorCheck): Promise<DoctorFixResult>
       message: `Error reinstalando plugin gestionado: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
+}
+
+async function applySddIntegrationFix(check: DoctorCheck): Promise<DoctorFixResult> {
+  if (check.id === "sdd-integration:patching") {
+    try {
+      const { patchSddPhaseCommon } = await import("../components/sdd-integration")
+      const patched = patchSddPhaseCommon()
+      if (patched) {
+        return { checkId: check.id, status: "fixed", message: "Section E/F re-aplicada" }
+      }
+      return { checkId: check.id, status: "unchanged", message: "Patching sin cambios" }
+    } catch (err) {
+      return {
+        checkId: check.id,
+        status: "failed",
+        message: `Error aplicando patch SDD: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
+  }
+  return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
 }
 
 async function applyThemeFix(check: DoctorCheck): Promise<DoctorFixResult> {
@@ -937,46 +932,37 @@ async function applyCodebaseMemoryFix(check: DoctorCheck): Promise<DoctorFixResu
       const result = await mod.install()
       return { checkId: check.id, status: result.status === "success" ? "fixed" : "unchanged", message: result.message || "codebase-memory reparado" }
     }
+
+    if (check.id === "codebase-memory:mcp-path") {
+      const { resolveCodebaseMemoryExecutable } = await import("../components/codebase-memory")
+      const absolutePath = resolveCodebaseMemoryExecutable()
+      if (!absolutePath) {
+        return { checkId: check.id, status: "failed", message: "codebase-memory-mcp binary no encontrado — no se puede resolver path absoluto" }
+      }
+
+      const { readOpenCodeConfig, writeOpenCodeConfig } = await import("../opencode-config")
+      const config = readOpenCodeConfig()
+      if (!config) {
+        return { checkId: check.id, status: "failed", message: "opencode.json no encontrado o no parseable" }
+      }
+
+      const mcpObj = (config as Record<string, unknown>).mcp as Record<string, Record<string, unknown>> | undefined
+      if (!mcpObj?.["codebase-memory"]) {
+        return { checkId: check.id, status: "failed", message: "codebase-memory MCP entry no encontrado en opencode.json" }
+      }
+
+      mcpObj["codebase-memory"].command = [absolutePath]
+      delete mcpObj["codebase-memory-mcp"]
+      writeOpenCodeConfig(config)
+      return { checkId: check.id, status: "fixed", message: `MCP command actualizado a path absoluto: ${absolutePath}` }
+    }
+
     return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
   } catch (err) {
     return {
       checkId: check.id,
       status: "failed",
       message: `Error reparando codebase-memory: ${err instanceof Error ? err.message : String(err)}`,
-    }
-  }
-}
-
-async function applyOtelFix(check: DoctorCheck): Promise<DoctorFixResult> {
-  try {
-    if (check.id === "otel:plugin" || check.id === "otel:env") {
-      const mod = getOtelComponent()
-      const result = await mod.install()
-      return { checkId: check.id, status: result.status === "success" ? "fixed" : "unchanged", message: result.message || "OTEL reparado" }
-    }
-    return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
-  } catch (err) {
-    return {
-      checkId: check.id,
-      status: "failed",
-      message: `Error reparando OTEL: ${err instanceof Error ? err.message : String(err)}`,
-    }
-  }
-}
-
-async function applyOtelCollectorFix(check: DoctorCheck): Promise<DoctorFixResult> {
-  try {
-    if (check.id === "otel-collector:config" || check.id === "otel-collector:service") {
-      const mod = getOtelCollectorComponent()
-      const result = await mod.install()
-      return { checkId: check.id, status: result.status === "success" ? "fixed" : "unchanged", message: result.message || "OTEL collector reparado" }
-    }
-    return { checkId: check.id, status: "skipped", message: "No fix handler for this check" }
-  } catch (err) {
-    return {
-      checkId: check.id,
-      status: "failed",
-      message: `Error reparando OTEL collector: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
 }

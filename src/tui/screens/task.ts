@@ -33,7 +33,7 @@ export const taskScreen: ScreenModule = {
     if (!task) {
       lines.push(gray("  Sin tarea activa"))
       lines.push("")
-      lines.push(gray("  Esc volver"))
+      lines.push(gray("  Esc volver · H inicio"))
       return lines
     }
 
@@ -63,7 +63,7 @@ export const taskScreen: ScreenModule = {
     lines.push(separator())
 
     if (task.done) {
-      lines.push(gray("  Enter ver resultados · Esc volver"))
+      lines.push(gray("  Enter ver resultados · Esc volver · H inicio"))
     } else {
       lines.push(gray("  Esperando completitud..."))
     }

@@ -11,16 +11,15 @@ import { runDoctor } from "./commands/doctor"
 import { runTUI } from "./tui/index"
 import { ensureConfigExists } from "./config/load"
 import { resolvePreset } from "./presets"
-import { green, red, cyan, gray } from "./tui/theme"
-import { loadMetricsViewerData, formatMetricsText, formatMetricsJson } from "./components/metrics-viewer"
+import { red } from "./tui/theme"
 
 export async function main() {
   // Parse args first — doctor command must be read-only, so we skip config auto-creation
   const args = parseArgs()
 
-  // Ensure config directory and file exist on any command EXCEPT doctor/metrics
-  // Doctor and metrics need to observe the raw state without side effects
-  if (args.command !== "doctor" && args.command !== "metrics") {
+  // Ensure config directory and file exist on any command EXCEPT doctor
+  // Doctor needs to observe the raw state without side effects
+  if (args.command !== "doctor") {
     ensureConfigExists()
   }
 
@@ -43,6 +42,12 @@ export async function main() {
         break
 
       case "install": {
+        // Reject non-OpenCode targets: Claude and Codex are not implemented yet
+        if (args.target !== "opencode") {
+          console.error(red(`Error: "${args.target}" no está implementado. Solo "opencode" es soportado actualmente. Claude y Codex estarán disponibles próximamente.`))
+          process.exit(1)
+        }
+
         let componentIds = args.components
 
         if (args.preset) {
@@ -112,34 +117,6 @@ export async function main() {
         })
         console.log(formatConfigOutput(result, args.flags.json))
         process.exit(result.success ? 0 : 1)
-        break
-      }
-
-      case "metrics": {
-        const formatOutput = () => {
-          const data = loadMetricsViewerData()
-          return args.flags.json ? formatMetricsJson(data) : formatMetricsText(data)
-        }
-
-        if (args.flags.watch) {
-          const intervalMs = (args.flags.interval ?? 30) * 1000
-          console.log(formatOutput())
-          console.log(gray(`\nRefreshing every ${intervalMs / 1000}s. Press Ctrl+C to exit.`))
-          const timer = setInterval(() => {
-            console.clear()
-            console.log(formatOutput())
-            console.log(gray(`\nRefreshing every ${intervalMs / 1000}s. Press Ctrl+C to exit.`))
-          }, intervalMs)
-          process.on("SIGINT", () => {
-            clearInterval(timer)
-            process.exit(0)
-          })
-          // Keep process alive
-          await new Promise<void>(() => {})
-        } else {
-          console.log(formatOutput())
-          process.exit(0)
-        }
         break
       }
 

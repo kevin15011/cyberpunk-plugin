@@ -1,13 +1,14 @@
-# openspec/config.yaml — SDD project config for cyberpunk-plugin
 schema: spec-driven
 
 context: |
-  Tech stack: Bun 1.3.12 + TypeScript (strict mode), standalone CLI binary
-  Architecture: Command-dispatch CLI (install/upgrade/config/status/tui)
-  Components: plugin, theme, sounds, context-mode, rtk (independent install/uninstall)
-  Build: bun build --compile ./src/index.ts → standalone binary
-  Config: ~/.config/cyberpunk/config.json (JSON schema)
-  Specs: 7 domains — install, upgrade, config, tui, plugin-registration, sound-events, ctx-stats
+  Tech stack: Bun + TypeScript (strict), standalone TypeScript CLI
+  Architecture: modular command dispatch (install/upgrade/config/status/tui) with component adapters and plugin registration
+  Domain boundaries: installer/doctor/upgrade flows, tmux/sound/theme setup, OpenCode integration, telemetry, codebase-memory
+  Testing: `bun test` with `tests/` as the unit test suite (multiple test files) using `bun:test`
+  Build: `bun build --compile ./src/index.ts` (or `bun run build`) to produce `cyberpunk`
+  Quality: CI runs `bun test` and `bun run typecheck`
+  Style: strict TypeScript, compact command modules, marker-based file writes for idempotence
+  Config/assets: root `package.json`, `tsconfig.json`, `README.md` + install/binary scripts
 
 strict_tdd: false
 
@@ -35,7 +36,6 @@ rules:
     - Warn before merging destructive deltas (large removals)
 
 testing:
-  # Strict TDD Mode: disabled (no test script in package.json; enable by adding "test": "bun test")
   test_runner:
     command: bun test
     framework: bun:test
@@ -58,7 +58,7 @@ testing:
       command: null
     type_checker:
       available: true
-      command: bun run tsc --noEmit
+      command: bun run typecheck
     formatter:
       available: false
       command: null

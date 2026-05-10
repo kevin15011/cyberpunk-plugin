@@ -2,7 +2,26 @@
 
 import type { CyberpunkConfig } from "../config/schema"
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory" | "otel" | "otel-collector"
+export type ComponentId = "plugin" | "sdd-integration" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory"
+
+/**
+ * Alias map for backward compatibility.
+ * External names (like "opencode-event-sounds") resolve to the canonical internal ComponentId.
+ */
+export const COMPONENT_ID_ALIASES: Record<string, ComponentId> = {
+  "opencode-event-sounds": "plugin",
+}
+
+/**
+ * Normalize a component id string, resolving aliases to the canonical ComponentId.
+ * Returns the input as-is if it's already a valid ComponentId with no alias.
+ */
+export function normalizeComponentId(id: string): ComponentId {
+  if (COMPONENT_ID_ALIASES[id]) {
+    return COMPONENT_ID_ALIASES[id]
+  }
+  return id as ComponentId
+}
 
 export interface InstallResult {
   component: ComponentId

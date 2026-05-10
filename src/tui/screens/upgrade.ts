@@ -15,7 +15,7 @@ export const upgradeScreen: ScreenModule = {
     if (!upgrade || upgrade.loading) {
       lines.push(gray("  Verificando versión..."))
       lines.push("")
-      lines.push(gray("  Esc volver"))
+      lines.push(gray("  Esc volver · H inicio"))
       return lines
     }
 
@@ -23,7 +23,7 @@ export const upgradeScreen: ScreenModule = {
     if (!status) {
       lines.push(gray("  Sin información de versión"))
       lines.push("")
-      lines.push(gray("  Esc volver"))
+      lines.push(gray("  Esc volver · H inicio"))
       return lines
     }
 
@@ -51,7 +51,7 @@ export const upgradeScreen: ScreenModule = {
     lines.push("")
     lines.push(separator())
     lines.push("")
-    lines.push(gray("  Esc volver"))
+    lines.push(gray("  Esc volver · H inicio"))
 
     return lines
   },

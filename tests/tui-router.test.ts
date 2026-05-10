@@ -1,7 +1,7 @@
 // tests/tui-router.test.ts — unit tests for router push/pop/replace/back/quit
 
 import { describe, expect, test } from "bun:test"
-import { pushRoute, popRoute, replaceRoute, currentRoute, canGoBack, handleBackOrQuit, route, initialState } from "../src/tui/router"
+import { pushRoute, popRoute, replaceRoute, currentRoute, canGoBack, handleBackOrQuit, route, initialState, goHome } from "../src/tui/router"
 import type { TUIState } from "../src/tui/types"
 
 function makeState(overrides?: Partial<TUIState>): TUIState {
@@ -107,6 +107,38 @@ describe("router — replaceRoute", () => {
     let s = makeState({ cursor: 5 })
     s = replaceRoute(s, route("status"))
     expect(s.cursor).toBe(0)
+  })
+})
+
+describe("router — goHome", () => {
+  test("returns directly to home and clears nested flow state", () => {
+    const s = makeState({
+      route: route("result-detail", { resultIndex: 0 }),
+      history: [route("home"), route("install"), route("task", { action: "install" }), route("results")],
+      selectedComponents: ["plugin"],
+      selectedPreset: "minimal",
+      cursor: 4,
+      task: { kind: "install", title: "Instalando", step: undefined, log: [], done: true },
+      resultView: { kind: "install" },
+      message: "nested",
+      _installPhase: "confirm",
+      selectedOS: "darwin",
+      selectedTool: "opencode",
+    })
+
+    const result = goHome(s)
+
+    expect(result.route.id).toBe("home")
+    expect(result.history).toHaveLength(0)
+    expect(result.selectedComponents).toHaveLength(0)
+    expect(result.selectedPreset).toBeUndefined()
+    expect(result.task).toBeUndefined()
+    expect(result.resultView).toBeUndefined()
+    expect(result.message).toBeUndefined()
+    expect(result._installPhase).toBeUndefined()
+    expect(result.selectedOS).toBeUndefined()
+    expect(result.selectedTool).toBeUndefined()
+    expect(result.cursor).toBe(0)
   })
 })
 

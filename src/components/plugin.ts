@@ -17,7 +17,6 @@ function getPluginPaths() {
     home,
     opencodePluginsDir,
     targetPath: join(opencodePluginsDir, "cyberpunk.ts"),
-    sddPhaseCommonPath: join(home, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md"),
   }
 }
 
@@ -29,103 +28,23 @@ function isManagedPluginPath(targetPath: string): boolean {
   return targetPath === getPluginPaths().targetPath
 }
 
-// --- Patching constants for sdd-phase-common.md Section E ---
-const START_MARKER = "<!-- cyberpunk:start:section-e -->"
-const END_MARKER   = "<!-- cyberpunk:end:section-e -->"
-
-const SECTION_E_TEMPLATE = `
-## E. Session Stats — Always Report at the End
-
-Before returning to the orchestrator, call \`ctx_stats\` and include the result in your \`detailed_report\` or as a separate line in the envelope.
-
-\`\`\`
-ctx_stats
-\`\`\`
-
-**Why**: Every SDD phase processes files, runs commands, and indexes content. Reporting the session savings makes the token cost visible and encourages consistent use of \`ctx_*\` tools.
-
-**Format**: Add this at the end of your return:
-
-\`\`\`
--- Session Stats --
-$ ctx_stats output here
-\`\`\`
-
-If \`ctx_stats\` is unavailable (e.g., not installed), skip silently.
-`.trim()
-
-const SECTION_F_TEMPLATE = `
-## F. RTK Routing
-
-Prefer \`rtk\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
-
-- Keep using narrow file tools like \`Read\`, \`Grep\`, and \`Glob\` for targeted file/content inspection.
-- Use \`context-mode\` / \`ctx_*\` tools only when you need heavy sandboxed processing, indexed follow-up questions, or the output would otherwise be genuinely large.
-- If \`rtk\` is unavailable or a command is unsupported, fall back to the normal tool path.
-`.trim()
-
-const MANAGED_SDD_TEMPLATE = `${SECTION_E_TEMPLATE}\n\n${SECTION_F_TEMPLATE}`
-
-function extractBetweenMarkers(
-  content: string,
-  startMarker: string,
-  endMarker: string
-): { before: string; managed: string; after: string } | null {
-  const startIdx = content.indexOf(startMarker)
-  if (startIdx === -1) return null
-  const afterStart = startIdx + startMarker.length
-  const endIdx = content.indexOf(endMarker, afterStart)
-  if (endIdx === -1) return null
-  return {
-    before:  content.slice(0, startIdx),
-    managed: content.slice(afterStart, endIdx),
-    after:   content.slice(endIdx + endMarker.length),
-  }
-}
-
-function patchSddPhaseCommon(): boolean {
-  const { sddPhaseCommonPath } = getPluginPaths()
-
-  // Guard: file doesn't exist — skip silently
-  if (!existsSync(sddPhaseCommonPath)) return false
-
-  const content = readFileSync(sddPhaseCommonPath, "utf8")
-
-  // State 1: No markers → heading detection or append
-  if (!content.includes(START_MARKER)) {
-    const headingIndex = content.indexOf("\n## E.")
-    const markedSection = `\n${START_MARKER}\n${MANAGED_SDD_TEMPLATE}\n${END_MARKER}\n`
-    const newContent = headingIndex !== -1
-      ? content.slice(0, headingIndex) + markedSection
-      : content.trimEnd() + "\n\n" + markedSection
-    const tmpPath = sddPhaseCommonPath + ".tmp"
-    writeFileSync(tmpPath, newContent, "utf8")
-    renameSync(tmpPath, sddPhaseCommonPath)
-    return true
-  }
-
-  // State 2: Markers present, content matches → no-op
-  const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
-  if (!extracted) return false
-  if (extracted.managed.trim() === MANAGED_SDD_TEMPLATE) return false
-
-  // State 3: Markers present, content mismatched → replace
-  const newContent =
-    extracted.before +
-    START_MARKER + "\n" + MANAGED_SDD_TEMPLATE + "\n" +
-    END_MARKER +
-    extracted.after
-  const tmpPath = sddPhaseCommonPath + ".tmp"
-  writeFileSync(tmpPath, newContent, "utf8")
-  renameSync(tmpPath, sddPhaseCommonPath)
-  return true
-}
+// Re-export SDD patching constants and helpers from sdd-integration for backward compatibility.
+// The plugin component NO LONGER owns SDD patching — it delegates to sdd-integration.
+export {
+  START_MARKER,
+  END_MARKER,
+  SECTION_E_TEMPLATE,
+  SECTION_F_TEMPLATE,
+  MANAGED_SDD_TEMPLATE,
+  extractBetweenMarkers,
+  patchSddPhaseCommon,
+} from "./sdd-integration"
 
 // This is the slimmed plugin source that gets installed.
-// It handles sound playback on events and includes patching helpers for sdd-phase-common.md.
+// It handles sound playback on events only. SDD patching is NOT included.
 const PLUGIN_SOURCE = `// cyberpunk.ts — runtime plugin (installed by cyberpunk CLI)
 import type { Plugin } from "@opencode-ai/plugin"
-import { existsSync, readFileSync, writeFileSync } from "fs"
+import { existsSync } from "fs"
 import { join } from "path"
 
 const HOME = process.env.HOME!
@@ -133,87 +52,6 @@ const SOUNDS = join(HOME, ".config", "opencode", "sounds")
 const IS_MAC = process.platform === "darwin"
 const COMPLETION_THROTTLE_MS = 2000
 let lastCompletionTime = 0
-
-const SDD_PHASE_COMMON_PATH = join(HOME, ".config", "opencode", "skills", "_shared", "sdd-phase-common.md")
-const START_MARKER = "<!-- cyberpunk:start:section-e -->"
-const END_MARKER   = "<!-- cyberpunk:end:section-e -->"
-const SECTION_E_TEMPLATE = \`
-## E. Session Stats — Always Report at the End
-
-Before returning to the orchestrator, call \\\`ctx_stats\\\` and include the result in your \\\`detailed_report\\\` or as a separate line in the envelope.
-
-\\\`\\\`\\\`
-ctx_stats
-\\\`\\\`\\\`
-
-**Why**: Every SDD phase processes files, runs commands, and indexes content. Reporting the session savings makes the token cost visible and encourages consistent use of \\\`ctx_*\\\` tools.
-
-**Format**: Add this at the end of your return:
-
-\\\`\\\`\\\`
--- Session Stats --
-$ ctx_stats output here
-\\\`\\\`\\\`
-
-If \\\`ctx_stats\\\` is unavailable (e.g., not installed), skip silently.
-\`.trim()
-
-const SECTION_F_TEMPLATE = \`
-## F. RTK Routing
-
-Prefer \\\`rtk\\\` for broad shell inspection and verbose command output when a compact CLI proxy is enough (for example: directory listings, trees, long git/gh output, or noisy test output).
-
-- Keep using narrow file tools like \\\`Read\\\`, \\\`Grep\\\`, and \\\`Glob\\\` for targeted file/content inspection.
-- Use \\\`context-mode\\\` / \\\`ctx_*\\\` tools only when you need heavy sandboxed processing, indexed follow-up questions, or the output would otherwise be genuinely large.
-- If \\\`rtk\\\` is unavailable or a command is unsupported, fall back to the normal tool path.
-\`.trim()
-
-const MANAGED_SDD_TEMPLATE = SECTION_E_TEMPLATE + "\\n\\n" + SECTION_F_TEMPLATE
-
-function extractBetweenMarkers(
-  content: string,
-  startMarker: string,
-  endMarker: string
-): { before: string; managed: string; after: string } | null {
-  const startIdx = content.indexOf(startMarker)
-  if (startIdx === -1) return null
-  const afterStart = startIdx + startMarker.length
-  const endIdx = content.indexOf(endMarker, afterStart)
-  if (endIdx === -1) return null
-  return {
-    before:  content.slice(0, startIdx),
-    managed: content.slice(afterStart, endIdx),
-    after:   content.slice(endIdx + endMarker.length),
-  }
-}
-
-function patchSddPhaseCommon(): boolean {
-  if (!existsSync(SDD_PHASE_COMMON_PATH)) return false
-
-  const content = readFileSync(SDD_PHASE_COMMON_PATH, "utf8")
-
-  if (!content.includes(START_MARKER)) {
-    const headingIndex = content.indexOf("\\n## E.")
-    const markedSection = "\\n" + START_MARKER + "\\n" + MANAGED_SDD_TEMPLATE + "\\n" + END_MARKER + "\\n"
-    const newContent = headingIndex !== -1
-      ? content.slice(0, headingIndex) + markedSection
-      : content.trimEnd() + "\\n\\n" + markedSection
-    writeFileSync(SDD_PHASE_COMMON_PATH, newContent, "utf8")
-    return true
-  }
-
-  const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
-  if (!extracted) return false
-  if (extracted.managed.trim() === MANAGED_SDD_TEMPLATE) return false
-
-  const newContent =
-    extracted.before +
-    START_MARKER + "\\n" + MANAGED_SDD_TEMPLATE + "\\n" +
-    END_MARKER +
-    extracted.after
-  writeFileSync(SDD_PHASE_COMMON_PATH, newContent, "utf8")
-  return true
-}
 
 async function playSound($: any, file: string) {
   const path = join(SOUNDS, file)
@@ -267,19 +105,13 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
 // Export helpers for testing
 export {
   PLUGIN_SOURCE,
-  extractBetweenMarkers,
-  patchSddPhaseCommon,
   getPluginPaths,
   isManagedPluginPath,
-  SECTION_E_TEMPLATE,
-  SECTION_F_TEMPLATE,
-  MANAGED_SDD_TEMPLATE,
-  START_MARKER,
-  END_MARKER,
 }
 
-// Export patching helper for doctor repair
+// Export patching helper for backward compatibility — delegates to sdd-integration
 export function applyPatch(): boolean {
+  const { patchSddPhaseCommon } = require("./sdd-integration") as typeof import("./sdd-integration")
   return patchSddPhaseCommon()
 }
 
@@ -293,13 +125,13 @@ export function restoreBundledPluginSource(): boolean {
 }
 
 /**
- * Plugin doctor checks: (1) plugin file exists, (2) registered in OpenCode config,
- * (3) Section E/F patching applied in sdd-phase-common.md.
+ * Plugin doctor checks: (1) plugin file exists, (2) registered in OpenCode config.
+ * SDD patching checks are owned by sdd-integration component.
  */
 export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = []
   const verbose = ctx.verbose
-  const { targetPath, sddPhaseCommonPath } = getPluginPaths()
+  const { targetPath } = getPluginPaths()
   const configuredPluginPath = getConfiguredPluginPath(ctx)
 
   // Check 1: plugin file exists
@@ -375,47 +207,7 @@ export async function checkPluginDoctor(ctx: DoctorContext): Promise<DoctorCheck
     })
   }
 
-  // Check 3: Section E/F patching applied
-  if (!existsSync(sddPhaseCommonPath)) {
-    checks.push({
-      id: "plugin:patching",
-      label: "Patching sdd-phase-common.md",
-      status: "warn",
-      message: "sdd-phase-common.md no encontrado — patching no aplicable",
-      fixable: false,
-    })
-  } else {
-    const content = readFileSync(sddPhaseCommonPath, "utf8")
-    if (!content.includes(START_MARKER)) {
-      checks.push({
-        id: "plugin:patching",
-        label: "Patching sdd-phase-common.md",
-        status: "fail",
-        message: "Marcadores Section E/F ausentes en sdd-phase-common.md",
-        fixable: true,
-      })
-    } else {
-      // Check if content matches expected
-      const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
-      if (extracted && extracted.managed.trim() === MANAGED_SDD_TEMPLATE) {
-        checks.push({
-          id: "plugin:patching",
-          label: "Patching sdd-phase-common.md",
-          status: "pass",
-          message: "Section E/F correctamente aplicada",
-          fixable: false,
-        })
-      } else {
-        checks.push({
-          id: "plugin:patching",
-          label: "Patching sdd-phase-common.md",
-          status: "fail",
-          message: "Contenido de Section E/F no coincide con el esperado (drift detectado)",
-          fixable: true,
-        })
-      }
-    }
-  }
+  // Note: plugin:patching check is REMOVED — owned by sdd-integration component
 
   return checks
 }
@@ -463,16 +255,14 @@ export function getPluginComponent(): ComponentModule {
       regConfig.pluginRegistered = regResult.registered
       saveConfig(regConfig)
 
-      // Patch sdd-phase-common.md with Section E (idempotent)
-      const patched = patchSddPhaseCommon()
+      // NOTE: SDD patching is NO LONGER done by plugin install.
+      // Use sdd-integration component for that.
 
       return {
         component: "plugin",
         action: "install",
         status: existingPluginMatch ? "skipped" : "success",
-        message: patched
-          ? "Plugin instalado, Section E (ctx_stats) inyectada"
-          : existingPluginMatch ? "Plugin ya instalado y actualizado" : undefined,
+        message: existingPluginMatch ? "Plugin ya instalado y actualizado" : undefined,
         path: targetPath,
       }
     },

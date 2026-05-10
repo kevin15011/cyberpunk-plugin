@@ -22,6 +22,8 @@ export interface AgentDetectResult {
   status?: AgentDetectStatus
   /** Explanation for the detection status when non-trivial */
   rationale?: string
+  /** Whether this agent target has an implemented install/config surface. When false, TUI shows it as disabled. */
+  implemented?: boolean
 }
 
 /**

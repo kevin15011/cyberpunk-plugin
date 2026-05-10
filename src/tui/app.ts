@@ -1,7 +1,7 @@
 // src/tui/app.ts — App model: init, update, view. Dispatches key → screen → route/intent
 
 import type { KeyEvent, ScreenIntent, ScreenModule, TUIState } from "./types"
-import { pushRoute, popRoute, replaceRoute, route, initialState } from "./router"
+import { pushRoute, popRoute, replaceRoute, route, initialState, goHome } from "./router"
 import { homeScreen } from "./screens/home"
 import { installScreen } from "./screens/install"
 import { uninstallScreen } from "./screens/uninstall"
@@ -11,7 +11,6 @@ import { upgradeScreen } from "./screens/upgrade"
 import { taskScreen } from "./screens/task"
 import { resultsScreen } from "./screens/results"
 import { resultDetailScreen } from "./screens/result-detail"
-import { metricsScreen } from "./screens/metrics-viewer"
 import type { ComponentStatus } from "../components/types"
 
 /** Get the screen module for a given route */
@@ -26,7 +25,6 @@ export function getScreen(routeId: string): ScreenModule {
     case "task": return taskScreen
     case "results": return resultsScreen
     case "result-detail": return resultDetailScreen
-    case "metrics-viewer": return metricsScreen
     default: return homeScreen
   }
 }
@@ -44,6 +42,11 @@ export function view(state: TUIState): string[] {
 
 /** Process a key event through the current screen and return state + raw intent */
 export function updateWithIntent(state: TUIState, key: KeyEvent): { state: TUIState; intent: ScreenIntent } {
+  if (key.type === "char" && key.ch.toLowerCase() === "h" && state.route.id !== "home") {
+    const intent: ScreenIntent = { type: "home" }
+    return { state: applyIntent(state, intent), intent }
+  }
+
   const screen = getScreen(state.route.id)
   const result = screen.update(state, key)
 
@@ -62,6 +65,8 @@ function applyIntent(state: TUIState, intent: ScreenIntent): TUIState {
   switch (intent.type) {
     case "navigate":
       return pushRoute(state, intent.route)
+    case "home":
+      return goHome(state)
     case "back":
       return popRoute(state)
     case "quit":
@@ -70,7 +75,6 @@ function applyIntent(state: TUIState, intent: ScreenIntent): TUIState {
       return pushRoute(state, route("doctor"))
     case "run-doctor-fix":
     case "run-upgrade":
-    case "refresh-metrics":
       // These intents are handled by the task executor in index.ts,
       // not by the app router — return state unchanged
       return state

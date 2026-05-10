@@ -72,17 +72,10 @@ const CAPABILITY_MAP: ComponentCapability[] = [
     status: "supported",
   },
   {
-    component: "otel",
+    component: "sdd-integration",
     targets: ["opencode"],
     platforms: ["linux", "wsl", "darwin"],
     requires: [],
-    status: "supported",
-  },
-  {
-    component: "otel-collector",
-    targets: ["opencode"],
-    platforms: ["linux", "wsl", "darwin"],
-    requires: ["curl"],
     status: "supported",
   },
 ]
@@ -114,4 +107,23 @@ export function getCapabilitiesForPlatform(platform: PlatformInfo["kind"]): Comp
  */
 export function getCapabilityForComponent(id: ComponentId): ComponentCapability | undefined {
   return CAPABILITY_MAP.find(cap => cap.component === id)
+}
+
+/**
+ * Return the set of component IDs supported for the given agent target.
+ * Returns empty array for non-OpenCode targets (OpenCode-only scope enforcement).
+ */
+export function getSupportedComponentIds(target: AgentTarget): ComponentId[] {
+  return getCapabilitiesForTarget(target).map(cap => cap.component)
+}
+
+/**
+ * Check whether a component is supported for the given agent target.
+ * OpenCode-specific components (plugin, sdd-integration, context-mode, rtk, codebase-memory)
+ * return false for non-OpenCode targets.
+ */
+export function isComponentSupportedForTarget(id: ComponentId, target: AgentTarget): boolean {
+  const cap = getCapabilityForComponent(id)
+  if (!cap) return false
+  return cap.targets.includes(target)
 }

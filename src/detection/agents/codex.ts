@@ -24,6 +24,7 @@ export function createCodexDetector(): AgentDetector {
         installed: false,
         status: "unknown",
         rationale: CODEX_RATIONALE,
+        implemented: false,
       }
     },
   }

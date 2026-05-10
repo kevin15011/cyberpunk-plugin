@@ -67,7 +67,7 @@ describe("preset preflight", () => {
       curl: true,
     }
     mockedStatuses = [
-      { id: "plugin", label: "Plugin de OpenCode", status: "available" },
+      { id: "plugin", label: "OpenCode Event Sounds", status: "available" },
       { id: "theme", label: "Tema cyberpunk", status: "available" },
       { id: "sounds", label: "Sonidos", status: "available" },
       { id: "context-mode", label: "Context-Mode", status: "available" },
@@ -86,7 +86,7 @@ describe("preset preflight", () => {
     const { resolvePreset, buildPresetPreflight } = await importModules()
 
     mockedStatuses = [
-      { id: "plugin", label: "Plugin de OpenCode", status: "installed" },
+      { id: "plugin", label: "OpenCode Event Sounds", status: "installed" },
       { id: "theme", label: "Tema cyberpunk", status: "available" },
     ]
 
@@ -103,16 +103,6 @@ describe("preset preflight", () => {
         dependencyIds: [],
         fileTouches: ["~/.config/opencode/plugins/cyberpunk.ts"],
       },
-      {
-        id: "theme",
-        installed: false,
-        readiness: "ready",
-        dependencyIds: [],
-        fileTouches: [
-          "~/.config/opencode/themes/cyberpunk.json",
-          "~/.config/opencode/themes/tui.json",
-        ],
-      },
     ])
   })
 
@@ -126,7 +116,8 @@ describe("preset preflight", () => {
       curl: false,
     }
     mockedStatuses = [
-      { id: "plugin", label: "Plugin de OpenCode", status: "installed" },
+      { id: "plugin", label: "OpenCode Event Sounds", status: "installed" },
+      { id: "sdd-integration", label: "SDD Integration", status: "available" },
       { id: "theme", label: "Tema cyberpunk", status: "available" },
       { id: "sounds", label: "Sonidos", status: "available" },
       { id: "context-mode", label: "Context-Mode", status: "installed" },
@@ -134,11 +125,9 @@ describe("preset preflight", () => {
       { id: "tmux", label: "Tmux config", status: "available" },
       { id: "tui-plugins", label: "TUI Plugins", status: "available" },
       { id: "codebase-memory", label: "Codebase Memory MCP", status: "available" },
-      { id: "otel", label: "OpenTelemetry Plugin", status: "available" },
-      { id: "otel-collector", label: "OTEL Collector", status: "available" },
     ]
 
-    const summary = await buildPresetPreflight(resolvePreset("full"))
+    const summary = await buildPresetPreflight(resolvePreset("cyberpunk-full"))
 
     expect(summary.dependencies).toEqual([
       {
@@ -168,7 +157,7 @@ describe("preset preflight", () => {
       {
         id: "curl",
         label: "curl",
-        requiredBy: ["rtk", "codebase-memory", "otel-collector"],
+        requiredBy: ["rtk", "codebase-memory"],
         available: false,
         severity: "warn",
         message: "No disponible",
@@ -182,6 +171,23 @@ describe("preset preflight", () => {
         readiness: "ready",
         dependencyIds: [],
         fileTouches: ["~/.config/opencode/plugins/cyberpunk.ts"],
+      },
+      {
+        id: "sdd-integration",
+        installed: false,
+        readiness: "ready",
+        dependencyIds: [],
+        fileTouches: [
+          "~/.config/opencode/skills/_shared/sdd-phase-common.md",
+          "~/.config/opencode/skills/sdd-propose/SKILL.md",
+          "~/.config/opencode/skills/sdd-spec/SKILL.md",
+          "~/.config/opencode/skills/sdd-design/SKILL.md",
+          "~/.config/opencode/skills/sdd-tasks/SKILL.md",
+          "~/.config/opencode/skills/sdd-apply/SKILL.md",
+          "~/.config/opencode/skills/sdd-review/SKILL.md",
+          "~/.config/opencode/skills/sdd-verify/SKILL.md",
+          "~/.config/opencode/skills/sdd-archive/SKILL.md",
+        ],
       },
       {
         id: "theme",
@@ -244,33 +250,15 @@ describe("preset preflight", () => {
           "~/.config/opencode/instructions/codebase-memory-routing.md",
         ],
       },
-      {
-        id: "otel",
-        installed: false,
-        readiness: "ready",
-        dependencyIds: [],
-        fileTouches: [
-          "~/.config/opencode/opencode.json",
-          "~/.bashrc or ~/.zshrc",
-        ],
-      },
-      {
-        id: "otel-collector",
-        installed: false,
-        readiness: "degraded",
-        dependencyIds: ["curl"],
-        fileTouches: [
-          "~/.config/cyberpunk/otel-collector/config.yaml",
-          "~/.local/state/cyberpunk/otel/",
-        ],
-      },
     ])
+    expect(summary.components.map(component => component.id)).not.toContain("otel" as never)
+    expect(summary.components.map(component => component.id)).not.toContain("otel-collector" as never)
 
     expect(summary.warnings.some((warning: string) => warning.includes("ffmpeg"))).toBe(true)
     expect(summary.warnings.some((warning: string) => warning.includes("tmux.conf"))).toBe(true)
   })
 
-  test("buildPresetPreflight preserves mismatch warning for wsl preset while keeping install advisory", async () => {
+  test("buildPresetPreflight resolves old wsl alias to developer-toolkit with deprecation warning", async () => {
     const { resolvePreset, buildPresetPreflight } = await importModules()
 
     detectedEnvironment = "linux"
@@ -278,18 +266,11 @@ describe("preset preflight", () => {
 
     const summary = await buildPresetPreflight(resolvePreset("wsl"))
 
-    expect(summary.preset.components).toEqual(["plugin", "theme", "sounds", "tmux"])
-    expect(summary.components.find((component: any) => component.id === "sounds")).toEqual({
-      id: "sounds",
-      installed: false,
-      readiness: "degraded",
-      dependencyIds: ["ffmpeg"],
-      fileTouches: ["~/.config/opencode/sounds/*.wav"],
-    })
-    expect(summary.warnings.some((warning: string) => warning.includes("WSL"))).toBe(true)
+    expect(summary.preset.id).toBe("developer-toolkit")
+    expect(summary.warnings.some((warning: string) => warning.includes("deprecado"))).toBe(true)
   })
 
-  test("buildPresetPreflight maps mac preset dependency checks to context-mode and rtk", async () => {
+  test("buildPresetPreflight resolves old mac alias to developer-toolkit", async () => {
     const { resolvePreset, buildPresetPreflight } = await importModules()
 
     detectedEnvironment = "darwin"
@@ -302,41 +283,8 @@ describe("preset preflight", () => {
 
     const summary = await buildPresetPreflight(resolvePreset("mac"))
 
-    expect(summary.dependencies).toEqual([
-      {
-        id: "ffmpeg",
-        label: "ffmpeg",
-        requiredBy: ["sounds"],
-        available: true,
-        severity: "warn",
-        message: "Disponible",
-      },
-      {
-        id: "npm",
-        label: "npm",
-        requiredBy: ["context-mode"],
-        available: false,
-        severity: "info",
-        message: "No disponible",
-      },
-      {
-        id: "bun",
-        label: "bun",
-        requiredBy: ["context-mode"],
-        available: true,
-        severity: "info",
-        message: "Disponible",
-      },
-      {
-        id: "curl",
-        label: "curl",
-        requiredBy: ["rtk"],
-        available: false,
-        severity: "warn",
-        message: "No disponible",
-      },
-    ])
-    expect(summary.warnings.some((warning: string) => /macOS/i.test(warning))).toBe(true)
+    expect(summary.preset.id).toBe("developer-toolkit")
+    expect(summary.warnings.some((warning: string) => warning.includes("deprecado"))).toBe(true)
     expect(summary.components.find((component: any) => component.id === "context-mode")?.readiness).toBe("degraded")
     expect(summary.components.find((component: any) => component.id === "rtk")?.readiness).toBe("degraded")
   })
@@ -353,7 +301,7 @@ describe("preset preflight", () => {
     delete (FILE_TOUCH_MAP as Record<string, string[]>).theme
     delete (DEPENDENCY_MAP as Record<string, unknown>)["context-mode"]
 
-    const summary = await buildPresetPreflight(resolvePreset("full"))
+    const summary = await buildPresetPreflight(resolvePreset("cyberpunk-full"))
     const rendered = formatPresetPreflight(summary)
 
     expect(summary.components.find((component: any) => component.id === "theme")).toEqual({
@@ -386,8 +334,8 @@ describe("preset preflight", () => {
 
     const rendered = formatPresetPreflight({
       preset: {
-        id: "full",
-        label: "Completo",
+        id: "cyberpunk-full",
+        label: "Cyberpunk Full Experience",
         components: ["plugin", "sounds", "context-mode"],
         warnings: ["tmux solo modifica el bloque gestionado en ~/.tmux.conf"],
       },
@@ -439,9 +387,9 @@ describe("preset preflight", () => {
       notes: [],
     })
 
-    expect(rendered).toContain("Preset: Completo")
+    expect(rendered).toContain("Preset: Cyberpunk Full Experience")
     expect(rendered).toContain("Componentes")
-    expect(rendered).toContain("Plugin de OpenCode")
+    expect(rendered).toContain("OpenCode Event Sounds")
     expect(rendered).toContain("ya instalado")
     expect(rendered).toContain("degradado")
     expect(rendered).toContain("Dependencias")

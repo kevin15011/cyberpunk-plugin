@@ -11,7 +11,7 @@ const VALID_PROFILES = new Set<string>(["non-technical", "developer", "admin"])
 const VALID_MODES = new Set<string>(["guided", "advanced"])
 
 export interface ParsedArgs {
-  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "doctor" | "metrics" | "help"
+  command: "tui" | "install" | "uninstall" | "status" | "upgrade" | "config" | "doctor" | "help"
   components: ComponentId[]
   flags: {
     json: boolean
@@ -36,7 +36,7 @@ export interface ParsedArgs {
   configValue?: string
 }
 
-const VALID_COMPONENTS = new Set<string>(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
+const VALID_COMPONENTS = new Set<string>(["plugin", "opencode-event-sounds", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"])
 
 const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   i: "install",
@@ -45,7 +45,6 @@ const COMMAND_ALIASES: Record<string, ParsedArgs["command"]> = {
   up: "upgrade",
   c: "config",
   d: "doctor",
-  m: "metrics",
   h: "help",
 }
 
@@ -182,11 +181,14 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--doctor":
         if (result.command === "tui") result.command = "doctor"
         break
-      case "--metrics":
-        if (result.command === "tui") result.command = "metrics"
-        break
       // Component flags
       case "--plugin":
+      case "--opencode-event-sounds":
+        result.components.push("plugin" as ComponentId)
+        break
+      case "--sdd-integration":
+        result.components.push("sdd-integration" as ComponentId)
+        break
       case "--theme":
       case "--sounds":
       case "--context-mode":
@@ -204,11 +206,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       case "--codebase-memory":
         result.components.push("codebase-memory" as ComponentId)
         break
-      case "--otel":
-        result.components.push("otel" as ComponentId)
-        break
-      case "--otel-collector":
-        result.components.push("otel-collector" as ComponentId)
+      default:
+        result.parseErrors.push(`Unknown flag: ${flag}`)
         break
     }
   }
@@ -218,8 +217,10 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     const cmd = positionals[0]
     if (COMMAND_ALIASES[cmd]) {
       result.command = COMMAND_ALIASES[cmd]
-    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "doctor" || cmd === "metrics" || cmd === "help") {
+    } else if (cmd === "install" || cmd === "uninstall" || cmd === "status" || cmd === "upgrade" || cmd === "config" || cmd === "doctor" || cmd === "help") {
       result.command = cmd
+    } else {
+      result.parseErrors.push(`Unknown command: ${cmd}`)
     }
 
     // Config command takes key and optional value from remaining positionals
@@ -233,7 +234,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
 
   // If --all flag, include all components
   if (result.flags.all) {
-    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"]
+    result.components = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"]
   }
 
   // Validate: --preset is mutually exclusive with --all and component flags

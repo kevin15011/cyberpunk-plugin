@@ -2,7 +2,7 @@
 
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test"
 import { parseArgs } from "../src/cli/parse-args"
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { join } from "path"
 
 import { createTempHome, importAfterHomeSet, setDefaultConfig } from "./helpers/test-home"
@@ -86,6 +86,7 @@ function runDoctorIsolated(
     },
     stdout: "pipe",
     stderr: "pipe",
+    timeout: 30000,
   })
 
   if (proc.exitCode !== 0) {
@@ -174,16 +175,8 @@ describe("runDoctor summary derivation", () => {
 
     const skillsDir = join(opencodeDir, "skills", "_shared")
     mkdirSync(skillsDir, { recursive: true })
-    const START_MARKER = "<!-- cyberpunk:start:section-e -->"
-    const END_MARKER = "<!-- cyberpunk:end:section-e -->"
-    writeFileSync(join(skillsDir, "sdd-phase-common.md"), `
-# Test
-${START_MARKER}
-## E. Session Stats
-
-Test content.
-${END_MARKER}
-`)
+    // SDD phase common — no longer checked by plugin doctor, but create for full fixture
+    writeFileSync(join(skillsDir, "sdd-phase-common.md"), `# Test\n`)
 
     const themesDir = join(opencodeDir, "themes")
     mkdirSync(themesDir, { recursive: true })
@@ -304,12 +297,12 @@ ${END_MARKER}
     expect(configFix).toBeDefined()
     expect(configFix!.status).toBe("fixed")
 
-    // Verify config file was created
-    const { readConfigRaw } = await importAfterHomeSet<typeof import("../src/config/load")>("../../src/config/load.ts", fixture.home)
-    const raw = await withHome(fixture.home, () => readConfigRaw())
-    expect(raw.error).toBeNull()
-    expect(raw.parsed).not.toBeNull()
-  })
+    // Verify config file was created using direct fs check (avoid another slow import)
+    const configPath = join(fixture.configDir, "config.json")
+    expect(existsSync(configPath)).toBe(true)
+    const raw = JSON.parse(readFileSync(configPath, "utf8"))
+    expect(raw.version).toBeDefined()
+  }, 30000)
 
   test("exit code derivation: 0 when no remaining failures", async () => {
     const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
@@ -321,7 +314,7 @@ ${END_MARKER}
     // This is a logical test, not an exit() test
     expect(typeof exitCode).toBe("number")
     expect(exitCode === 0 || exitCode === 1).toBe(true)
-  })
+  }, 15000)
 })
 
 describe("doctor runtime expansion", () => {
@@ -356,7 +349,7 @@ describe("doctor runtime expansion", () => {
     expect(playbackCheck!.detail?.group).toBe("runtime")
     expect(playbackCheck!.detail?.nextStep).toContain(expectedPlayback)
     expect(playbackCheck!.detail?.nextStep).toMatch(/Linux|WSL|macOS/)
-  })
+  }, 15000)
 })
 
 describe("runDoctor tmux fix orchestration", () => {

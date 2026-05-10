@@ -262,6 +262,7 @@ describe("runUpgrade dispatch by installMode", () => {
         fetchChecksums: async () => MOCK_HASH,
         computeFileSha256: () => MOCK_HASH,
         smokeTestBinary: () => true,
+        prepareDarwinBinary: () => ({ attempted: true }),
       })
       const result = await withHome(home, () => mod.runUpgrade())
 
@@ -313,6 +314,7 @@ describe("runUpgrade dispatch by installMode", () => {
         fetchChecksums: async () => MOCK_HASH,
         computeFileSha256: () => MOCK_HASH,
         smokeTestBinary: () => true,
+        prepareDarwinBinary: () => ({ attempted: true }),
       })
       const result = await withHome(home, () => mod.runUpgrade())
 
@@ -551,7 +553,9 @@ describe("checkUpgrade dispatch", () => {
       expect(status.latestVersion).toBe("9.9.9")
       expect(status.changedFiles).toHaveLength(2)
       expect(status.changedFiles.some(path => path.endsWith("/cyberpunk"))).toBe(true)
-      expect(status.changedFiles).toContain("cyberpunk-linux-x64")
+      // Asset name is platform-dependent: cyberpunk-{os}-{arch}
+      const expectedAsset = `cyberpunk-${process.platform === "darwin" ? "darwin" : "linux"}-${process.arch === "arm64" ? "arm64" : "x64"}`
+      expect(status.changedFiles).toContain(expectedAsset)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -617,6 +621,7 @@ describe("binary upgrade stale-binary protection", () => {
         fetchChecksums: async () => MOCK_HASH,
         computeFileSha256: () => MOCK_HASH,
         smokeTestBinary: () => true,
+        prepareDarwinBinary: () => ({ attempted: true }),
       })
       const result = await withHome(home, () => mod.runUpgrade())
 
@@ -713,9 +718,10 @@ describe("upgrade verification: checksum mismatch", () => {
     try {
       const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
       mod.__setUpgradeTestOverrides({
-        fetchChecksums: async () => MOCK_HASH,
-        computeFileSha256: () => "b".repeat(64), // different hash → mismatch
+        fetchChecksums: async () => "b".repeat(64), // different from computeFileSha256 → triggers mismatch
+        computeFileSha256: () => MOCK_HASH,
         smokeTestBinary: () => true,
+        prepareDarwinBinary: () => ({ attempted: true }),
       })
       const result = await withHome(home, () => mod.runUpgrade())
 

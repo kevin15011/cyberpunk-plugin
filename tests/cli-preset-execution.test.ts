@@ -142,7 +142,7 @@ describe("CLI preset execution path", () => {
     expect(allOutput).toContain("Archivos")
 
     expect(runInstallCalls.length).toBe(1)
-    expect(runInstallCalls[0].ids).toEqual(["plugin", "theme"])
+    expect(runInstallCalls[0].ids).toEqual(["plugin"])
     expect(runInstallCalls[0].action).toBe("install")
   })
 
@@ -165,9 +165,11 @@ describe("CLI preset execution path", () => {
 
     expect(runInstallCalls.length).toBe(1)
     expect(runInstallCalls[0].ids).toEqual([
-      "plugin", "theme", "sounds", "context-mode", "rtk", "tmux",
-      "tui-plugins", "codebase-memory", "otel", "otel-collector",
+      "plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux",
+      "tui-plugins", "codebase-memory",
     ])
+    expect(runInstallCalls[0].ids).not.toContain("otel")
+    expect(runInstallCalls[0].ids).not.toContain("otel-collector")
   })
 
   test("install --preset unknown: prints error and exits without installing", async () => {
@@ -187,7 +189,7 @@ describe("CLI preset execution path", () => {
     expect(runInstallCalls.length).toBe(0)
   })
 
-  test("install --preset wsl: prints preflight, mismatch warning, and forwards wsl components", async () => {
+  test("install --preset wsl: resolves alias to developer-toolkit with deprecation warning", async () => {
     detectedEnvironment = "linux"
     setupMocks(["bun", "src/index.ts", "install", "--preset", "wsl"])
 
@@ -200,11 +202,11 @@ describe("CLI preset execution path", () => {
     restoreMocks()
 
     const allOutput = capturedLogs.join("\n")
-    expect(allOutput).toContain("WSL")
+    expect(allOutput).toContain("deprecado")
     expect(allOutput).toContain("Avisos")
-    expect(allOutput).toContain("Dependencias")
     expect(runInstallCalls.length).toBe(1)
-    expect(runInstallCalls[0].ids).toEqual(["plugin", "theme", "sounds", "tmux"])
+    // WSL alias resolves to developer-toolkit
+    expect(runInstallCalls[0].ids).toEqual(["plugin", "context-mode", "rtk", "codebase-memory", "sdd-integration"])
   })
 
   test("install --preset minimal --theme: prints parse error and exits", async () => {

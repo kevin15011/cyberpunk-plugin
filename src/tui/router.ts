@@ -21,8 +21,6 @@ export function pushRoute(state: TUIState, next: AppRoute): TUIState {
     ...(next.id !== "doctor" ? { doctor: undefined } : {}),
     // Reset upgrade state when navigating away from upgrade screen
     ...(next.id !== "upgrade" ? { upgrade: undefined } : {}),
-    // Reset metrics state when navigating away from metrics screen
-    ...(next.id !== "metrics-viewer" ? { metrics: undefined } : {}),
   }
 }
 
@@ -48,6 +46,26 @@ export function replaceRoute(state: TUIState, next: AppRoute): TUIState {
     route: next,
     cursor: 0,
     message: undefined,
+  }
+}
+
+/** Return directly to the root home route and clear nested flow state */
+export function goHome(state: TUIState): TUIState {
+  return {
+    ...state,
+    route: route("home"),
+    history: [],
+    selectedComponents: [],
+    selectedPreset: undefined,
+    cursor: 0,
+    task: undefined,
+    doctor: undefined,
+    upgrade: undefined,
+    resultView: undefined,
+    message: undefined,
+    _installPhase: undefined,
+    selectedOS: undefined,
+    selectedTool: undefined,
   }
 }
 

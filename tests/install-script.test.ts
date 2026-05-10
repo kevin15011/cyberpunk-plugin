@@ -4,6 +4,7 @@ import { tmpdir } from "os"
 import { join } from "path"
 
 type Fixture = ReturnType<typeof createInstallerFixture>
+const INSTALL_SCRIPT_TEST_TIMEOUT_MS = 30000
 
 function createInstallerFixture(prefix: string) {
   const root = mkdtempSync(join(tmpdir(), `${prefix}-`))
@@ -152,7 +153,7 @@ fi
     expect(result.stdout).toContain("Verify install now: " + join(currentFixture.home, ".local", "bin", "cyberpunk") + " help")
     expect(result.stdout).toContain("Verify after PATH reload: cyberpunk help")
     expect(readFileSync(join(currentFixture.home, ".zshrc"), "utf8")).toBe('export PATH="$HOME/.local/bin:$PATH"\n')
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("surfaces ffmpeg follow-up guidance and macOS quarantine fallback in the install summary", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-macos")
@@ -180,7 +181,7 @@ fi
     expect(result.stdout).toContain("Remaining action: install ffmpeg")
     expect(result.stdout).toContain("Verify install now: " + join(currentFixture.home, ".local", "bin", "cyberpunk") + " help")
     expect(readFileSync(join(fishConfigDir, "config.fish"), "utf8")).toContain("fish_add_path ~/.local/bin")
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("adds PATH export to zsh profile when ~/.local/bin is missing", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-zsh-path")
@@ -201,7 +202,7 @@ fi
     expect(result.stdout).toContain("Verify install now: " + join(currentFixture.home, ".local", "bin", "cyberpunk") + " help")
     expect(result.stdout).toContain("Verify after PATH reload: cyberpunk help")
     expect(readFileSync(join(currentFixture.home, ".zshrc"), "utf8")).toContain('export PATH="$HOME/.local/bin:$PATH"')
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("fails early on unsupported macOS Intel with source-build guidance", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-macos-intel")
@@ -219,7 +220,7 @@ fi
     expect(result.stdout).toContain("macOS Intel is no longer provided as a pre-built binary target")
     expect(result.stdout).toContain("Please build Cyberpunk from source on this machine")
     expect(result.stdout).toContain("bun install && bun run build")
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("appends PATH on its own line when profile has no trailing newline", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-no-newline")
@@ -246,7 +247,7 @@ fi
     // Exactly one PATH export line should be present
     const pathLines = contents.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
     expect(pathLines.length).toBe(1)
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("does not duplicate PATH when unquoted variant already exists in profile", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-unquoted")
@@ -272,7 +273,7 @@ fi
       line.includes('export PATH=') && line.includes('.local/bin')
     )
     expect(pathLines.length).toBe(1)
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("maps bash shell to ~/.bashrc and appends PATH there", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-bash")
@@ -295,7 +296,7 @@ fi
     // Exactly one PATH export line
     const pathLines = bashrc.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
     expect(pathLines.length).toBe(1)
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 
   test("appends exactly one PATH line to a new profile", () => {
     currentFixture = createInstallerFixture("cyberpunk-install-single-append")
@@ -316,5 +317,5 @@ fi
     const contents = readFileSync(join(currentFixture.home, ".zshrc"), "utf8")
     const pathLines = contents.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
     expect(pathLines.length).toBe(1)
-  })
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 })

@@ -2,7 +2,7 @@
 
 import type { AgentTarget, UserProfile } from "../domain/environment"
 
-export type ComponentId = "plugin" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory" | "otel" | "otel-collector"
+export type ComponentId = "plugin" | "sdd-integration" | "theme" | "sounds" | "context-mode" | "rtk" | "tmux" | "tui-plugins" | "codebase-memory"
 export type InstallMode = "repo" | "binary"
 
 export interface ComponentState {
@@ -37,10 +37,11 @@ export interface CyberpunkConfig {
   agentState?: Record<string, AgentStateEntry>
 }
 
-export const COMPONENT_IDS: ComponentId[] = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"]
+export const COMPONENT_IDS: ComponentId[] = ["plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"]
 
 export const COMPONENT_LABELS: Record<ComponentId, string> = {
-  plugin: "Plugin de OpenCode",
+  plugin: "OpenCode Event Sounds",
+  "sdd-integration": "SDD Integration",
   theme: "Tema cyberpunk",
   sounds: "Sonidos",
   "context-mode": "Context-Mode",
@@ -48,14 +49,13 @@ export const COMPONENT_LABELS: Record<ComponentId, string> = {
   tmux: "Tmux config",
   "tui-plugins": "TUI Plugins (SDD Engram + Statusline)",
   "codebase-memory": "Codebase Memory MCP",
-  otel: "OpenTelemetry Plugin",
-  "otel-collector": "OTEL Collector",
 }
 
 export const DEFAULT_REPO_URL = "https://github.com/kevin15011/cyberpunk-plugin"
 
 const DEFAULT_COMPONENTS: Record<ComponentId, ComponentState> = {
   plugin: { installed: false },
+  "sdd-integration": { installed: false },
   theme: { installed: false },
   sounds: { installed: false },
   "context-mode": { installed: false },
@@ -63,8 +63,6 @@ const DEFAULT_COMPONENTS: Record<ComponentId, ComponentState> = {
   tmux: { installed: false },
   "tui-plugins": { installed: false },
   "codebase-memory": { installed: false },
-  otel: { installed: false },
-  "otel-collector": { installed: false },
 }
 
 export function createDefaultConfig(): CyberpunkConfig {

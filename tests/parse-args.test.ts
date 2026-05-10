@@ -24,7 +24,9 @@ describe("parseArgs", () => {
   test("install command with --all", () => {
     const result = parseArgs(["install", "--all"])
     expect(result.command).toBe("install")
-    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
+    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"])
+    expect(result.components).not.toContain("otel" as never)
+    expect(result.components).not.toContain("otel-collector" as never)
   })
 
   test("--install --plugin bypasses TUI (non-interactive)", () => {
@@ -36,7 +38,24 @@ describe("parseArgs", () => {
   test("--install --all bypasses TUI", () => {
     const result = parseArgs(["--install", "--all"])
     expect(result.command).toBe("install")
-    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"])
+    expect(result.components).toEqual(["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"])
+    expect(result.components).not.toContain("otel" as never)
+    expect(result.components).not.toContain("otel-collector" as never)
+  })
+
+  test("removed telemetry flags are rejected", () => {
+    const result = parseArgs(["install", "--otel", "--otel-collector"])
+    expect(result.components).toEqual([])
+    expect(result.parseErrors).toEqual([
+      "Unknown flag: --otel",
+      "Unknown flag: --otel-collector",
+    ])
+  })
+
+  test("removed metrics command is rejected", () => {
+    const result = parseArgs(["metrics"])
+    expect(result.command).toBe("tui")
+    expect(result.parseErrors).toEqual(["Unknown command: metrics"])
   })
 
   test("--status --json", () => {

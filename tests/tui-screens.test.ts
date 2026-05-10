@@ -15,7 +15,7 @@ import { route } from "../src/tui/router"
 import type { ComponentStatus, InstallResult } from "../src/components/types"
 
 const fakeStatuses: ComponentStatus[] = [
-  { id: "plugin", label: "Plugin de OpenCode", status: "installed" },
+  { id: "plugin", label: "OpenCode Event Sounds", status: "installed" },
   { id: "theme", label: "Tema cyberpunk", status: "available" },
   { id: "sounds", label: "Sonidos", status: "error", error: "missing ffmpeg" },
 ]
@@ -36,7 +36,7 @@ describe("home screen render", () => {
   test("renders status summary and menu items", () => {
     const lines = homeScreen.render(makeState())
     const output = lines.join("\n")
-    expect(output).toContain("Plugin de OpenCode")
+    expect(output).toContain("OpenCode Event Sounds")
     expect(output).toContain("Tema cyberpunk")
     expect(output).toContain("Sonidos")
     expect(output).toContain("Instalar componentes")
@@ -96,17 +96,8 @@ describe("home screen update", () => {
     }
   })
 
-  test("enter on metrics navigates to metrics-viewer route", () => {
-    const state = makeState({ cursor: 5 }) // metrics is 6th item (index 5)
-    const result = homeScreen.update(state, { type: "enter" })
-    expect(result.intent.type).toBe("navigate")
-    if (result.intent.type === "navigate") {
-      expect(result.intent.route.id).toBe("metrics-viewer")
-    }
-  })
-
   test("enter on quit emits quit intent", () => {
-    const state = makeState({ cursor: 6 }) // quit is 7th item (index 6)
+    const state = makeState({ cursor: 5 }) // quit is 6th item (index 5)
     const result = homeScreen.update(state, { type: "enter" })
     expect(result.intent.type).toBe("quit")
     expect(result.state.quit).toBe(true)
@@ -123,7 +114,7 @@ describe("status screen render", () => {
     const state = makeState({ route: route("status") })
     const lines = statusScreen.render(state)
     const output = lines.join("\n")
-    expect(output).toContain("Plugin de OpenCode")
+    expect(output).toContain("OpenCode Event Sounds")
     expect(output).toContain("instalado")
     expect(output).toContain("Tema cyberpunk")
     expect(output).toContain("disponible")
@@ -187,7 +178,7 @@ describe("results screen render", () => {
     })
     const lines = resultsScreen.render(state)
     const output = lines.join("\n")
-    expect(output).toContain("Plugin de OpenCode")
+    expect(output).toContain("OpenCode Event Sounds")
     expect(output).toContain("Tema cyberpunk")
     expect(output).toContain("file not found")
   })
@@ -219,7 +210,7 @@ describe("result-detail screen render", () => {
     })
     const lines = resultDetailScreen.render(state)
     const output = lines.join("\n")
-    expect(output).toContain("Plugin de OpenCode")
+    expect(output).toContain("OpenCode Event Sounds")
     expect(output).toContain("Successful")
     expect(output).toContain("OK")
     expect(output).toContain("/some/path")
@@ -237,13 +228,16 @@ describe("result-detail screen render", () => {
 })
 
 describe("install screen render", () => {
-  test("renders preset picker by default", () => {
+  test("renders OS selection by default (Paso 1/3)", () => {
     const state = makeState({ route: route("install") })
     const lines = installScreen.render(state)
     const output = lines.join("\n")
     expect(output).toContain("INSTALAR COMPONENTES")
-    // Should show preset options
-    expect(output).toContain("Selección manual")
+    // New flow starts with OS selection, not preset picker
+    expect(output).toContain("Paso 1/3")
+    expect(output).toContain("macOS")
+    expect(output).toContain("Linux")
+    expect(output).toContain("WSL")
   })
 })
 
@@ -256,7 +250,7 @@ describe("uninstall screen render", () => {
     const lines = uninstallScreen.render(state)
     const output = lines.join("\n")
     // Only "plugin" is installed in fakeStatuses
-    expect(output).toContain("Plugin de OpenCode")
+    expect(output).toContain("OpenCode Event Sounds")
     // Theme is "available", shouldn't appear in uninstall list
     expect(output).not.toContain("Tema cyberpunk")
   })
@@ -279,6 +273,22 @@ describe("uninstall screen render", () => {
     const result = uninstallScreen.update(state, { type: "space" })
     expect(result.state.selectedComponents).toContain("plugin")
   })
+
+  test("Esc/back from uninstall components returns to previous route", () => {
+    const state = makeState({
+      route: route("uninstall"),
+      history: [route("home")],
+      statuses: fakeStatuses,
+      selectedComponents: ["plugin"],
+      message: "Seleccioná al menos un componente",
+    })
+
+    const result = uninstallScreen.update(state, { type: "back" })
+
+    expect(result.intent.type).toBe("back")
+    expect(result.state.selectedComponents).toHaveLength(0)
+    expect(result.state.message).toBeUndefined()
+  })
 })
 
 // ─── Behavioral tests for spec scenario coverage ───
@@ -289,20 +299,40 @@ describe("install screen manual component selection flow", () => {
   // WHEN the user selects sounds and confirms the install action
   // THEN the shell starts an install task for the selected components only
 
-  test("manual selection: preset → manual → toggle sounds → confirm → task intent", () => {
-    // Start on install screen (preset phase by default)
+  test("manual selection: os → tool → preset → manual → toggle sounds → confirm → task intent", () => {
+    // Start on install screen (os-select phase by default)
     let state = makeState({ route: route("install") })
 
-    // Render should show preset picker
+    // Phase 1: OS select — render should show OS selection
     let lines = installScreen.render(state)
     let output = lines.join("\n")
+    expect(output).toContain("macOS")
+
+    // Select macOS (cursor=0 by default, macOS is first)
+    const osResult = installScreen.update(state, { type: "enter" })
+    expect(osResult.state._installPhase).toBe("tool-select")
+    state = osResult.state
+
+    // Phase 2: Tool select — should show tool options
+    lines = installScreen.render(state)
+    output = lines.join("\n")
+    expect(output).toContain("OpenCode")
+    expect(output).toContain("Paso 2/3")
+
+    // Select OpenCode (cursor=0, OpenCode is first and implemented)
+    const toolResult = installScreen.update(state, { type: "enter" })
+    expect(toolResult.state._installPhase).toBe("preset")
+    state = toolResult.state
+
+    // Phase 3: Preset select — should show presets + "Selección manual"
+    lines = installScreen.render(state)
+    output = lines.join("\n")
     expect(output).toContain("Selección manual")
+    expect(output).toContain("Paso 3/3")
 
     // Find the "manual" option index — it's the last option in getPresetOptions()
-    // Navigate down to "Selección manual" and select it
-    // First, figure out how many preset options there are
     const { PRESET_NAMES } = require("../src/presets")
-    const manualIndex = PRESET_NAMES.length // last option
+    const manualIndex = PRESET_NAMES.length
 
     // Move cursor to manual option
     for (let i = 0; i < manualIndex; i++) {
@@ -320,7 +350,7 @@ describe("install screen manual component selection flow", () => {
     // Now in manual phase — should render component list
     lines = installScreen.render(state)
     output = lines.join("\n")
-    expect(output).toContain("Plugin de OpenCode")
+    expect(output).toContain("OpenCode Event Sounds")
     expect(output).toContain("Tema cyberpunk")
     expect(output).toContain("Sonidos")
 
@@ -373,6 +403,8 @@ describe("install screen manual component selection flow", () => {
       route: route("install"),
       _installPhase: "manual",
       selectedComponents: ["sounds"],
+      selectedOS: "darwin",
+      selectedTool: "opencode",
     })
 
     const result = installScreen.update(state, { type: "back" })
@@ -385,6 +417,8 @@ describe("install screen manual component selection flow", () => {
       route: route("install"),
       _installPhase: "confirm",
       selectedComponents: ["sounds"],
+      selectedOS: "darwin",
+      selectedTool: "opencode",
       // No selectedPreset means we came from manual
     })
 
@@ -400,6 +434,8 @@ describe("install screen manual component selection flow", () => {
       _installPhase: "confirm",
       selectedPreset: "full",
       selectedComponents: [],
+      selectedOS: "darwin",
+      selectedTool: "opencode",
     })
 
     const result = installScreen.update(state, { type: "back" })
@@ -455,8 +491,22 @@ describe("results screen back navigation", () => {
   })
 })
 
-describe("install screen Esc from preset phase navigates back", () => {
-  test("back from preset phase emits back intent", () => {
+describe("install screen Esc from preset phase navigates back to tool-select", () => {
+  test("back from preset phase goes to tool-select", () => {
+    const state = makeState({
+      route: route("install"),
+      history: [route("home")],
+      _installPhase: "preset",
+      selectedOS: "darwin",
+      selectedTool: "opencode",
+    })
+
+    const result = installScreen.update(state, { type: "back" })
+    expect(result.state._installPhase).toBe("tool-select")
+    expect(result.state.selectedTool).toBeUndefined()
+  })
+
+  test("back from os-select phase emits back intent (to home)", () => {
     const state = makeState({
       route: route("install"),
       history: [route("home")],
@@ -488,9 +538,17 @@ describe("app update: manual install → confirm → results → detail → home
     // Home → install
     state = update(state, { type: "enter" }) // cursor=0 = install
     expect(state.route.id).toBe("install")
-    expect(state._installPhase).toBeUndefined() // preset phase
+    expect(state._installPhase).toBeUndefined() // os-select phase (undefined means auto-detected)
 
-    // Navigate to "Selección manual" (last option)
+    // Phase 1: OS select — select macOS (cursor=0)
+    state = update(state, { type: "enter" }) // select macOS
+    expect(state._installPhase).toBe("tool-select")
+
+    // Phase 2: Tool select — select OpenCode (cursor=0)
+    state = update(state, { type: "enter" }) // select OpenCode
+    expect(state._installPhase).toBe("preset")
+
+    // Phase 3: Navigate to "Selección manual" (last option)
     const manualIndex = PRESET_NAMES.length
     for (let i = 0; i < manualIndex; i++) {
       state = update(state, { type: "down" })
@@ -571,7 +629,7 @@ describe("app update: manual install → confirm → results → detail → home
 
     // Detail view shows the result
     const detailLines = view(state)
-    expect(detailLines.join("\n")).toContain("Plugin de OpenCode")
+    expect(detailLines.join("\n")).toContain("OpenCode Event Sounds")
 
     // Back from detail → results
     state = update(state, { type: "back" })
@@ -580,6 +638,44 @@ describe("app update: manual install → confirm → results → detail → home
     // Back from results → home
     state = update(state, { type: "back" })
     expect(state.route.id).toBe("home")
+  })
+
+  test("H returns directly home from nested completed operation flows", () => {
+    let state = makeState({
+      route: route("result-detail", { resultIndex: 0 }),
+      history: [route("home"), route("uninstall"), route("task", { action: "uninstall" }), route("results")],
+      selectedComponents: ["plugin"],
+      lastResults: [{ component: "plugin", action: "uninstall", status: "success" }],
+      task: { kind: "uninstall", title: "Desinstalando", step: undefined, log: [], done: true },
+      resultView: { kind: "uninstall" },
+      cursor: 2,
+    })
+
+    state = update(state, { type: "char", ch: "H" })
+
+    expect(state.route.id).toBe("home")
+    expect(state.history).toHaveLength(0)
+    expect(state.selectedComponents).toHaveLength(0)
+    expect(state.task).toBeUndefined()
+    expect(state.resultView).toBeUndefined()
+    expect(state.cursor).toBe(0)
+  })
+
+  test("h returns directly home from install, doctor, and upgrade nested screens", () => {
+    const flows = [
+      makeState({ route: route("install"), history: [route("home")], _installPhase: "confirm", selectedOS: "darwin", selectedTool: "opencode", selectedPreset: "minimal" }),
+      makeState({ route: route("doctor"), history: [route("home")], doctor: { loading: false, confirmFix: true } }),
+      makeState({ route: route("upgrade"), history: [route("home")], upgrade: { loading: false } }),
+    ]
+
+    for (const flow of flows) {
+      const result = update(flow, { type: "char", ch: "h" })
+      expect(result.route.id).toBe("home")
+      expect(result.history).toHaveLength(0)
+      expect(result._installPhase).toBeUndefined()
+      expect(result.doctor).toBeUndefined()
+      expect(result.upgrade).toBeUndefined()
+    }
   })
 })
 
@@ -647,7 +743,7 @@ describe("doctor screen", () => {
     })
     const result = doctorScreen.update(state, { type: "back" })
     expect(result.state.doctor?.confirmFix).toBe(false)
-    expect(result.intent.type).toBe("back")
+    expect(result.intent.type).toBe("none")
   })
 
   test("5.1d: renders grouped checks and summary", () => {

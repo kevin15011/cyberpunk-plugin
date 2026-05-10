@@ -26,10 +26,10 @@ export function createOpenCodeDetector(
         const output = execFn("opencode --version")
         const version = output.trim()
         const configPath = findOpenCodeConfig(platform, existsFn)
-        return { installed: true, version, configPath }
+        return { installed: true, version, configPath, implemented: true }
       } catch {
         // opencode binary not found or not executable — safe fallback
-        return { installed: false }
+        return { installed: false, implemented: true }
       }
     },
   }

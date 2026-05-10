@@ -67,7 +67,7 @@ export const resultsScreen: ScreenModule = {
     lines.push("")
     lines.push(separator())
     lines.push("")
-    lines.push(gray("  ↑/↓ navegar · Enter ver detalle · Esc volver al inicio"))
+    lines.push(gray("  ↑/↓ navegar · Enter ver detalle · Esc volver · H inicio"))
 
     return lines
   },

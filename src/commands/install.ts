@@ -2,6 +2,7 @@
 
 import type { ComponentId, InstallResult } from "../components/types"
 import { getPluginComponent } from "../components/plugin"
+import { getSddIntegrationComponent } from "../components/sdd-integration"
 import { getThemeComponent } from "../components/theme"
 import { getSoundsComponent } from "../components/sounds"
 import { getContextModeComponent } from "../components/context-mode"
@@ -9,8 +10,6 @@ import { getRtkComponent } from "../components/rtk"
 import { getTmuxComponent } from "../components/tmux"
 import { getTuiPluginsComponent } from "../components/tui-plugins"
 import { getCodebaseMemoryComponent } from "../components/codebase-memory"
-import { getOtelComponent } from "../components/otel"
-import { getOtelCollectorComponent } from "../components/otel-collector"
 import type { ComponentModule } from "../components/types"
 import { COMPONENT_IDS } from "../config/schema"
 import { loadConfig } from "../config/load"
@@ -18,9 +17,11 @@ import { saveConfig } from "../config/save"
 import type { TaskHooks } from "../tui/types"
 import type { AgentTarget, PlatformInfo } from "../domain/environment"
 import { filterComponentsForTarget } from "./install-routing"
+import { normalizeComponentId } from "../components/types"
 
 const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   plugin: getPluginComponent,
+  "sdd-integration": getSddIntegrationComponent,
   theme: getThemeComponent,
   sounds: getSoundsComponent,
   "context-mode": getContextModeComponent,
@@ -28,8 +29,6 @@ const COMPONENT_FACTORIES: Record<ComponentId, () => ComponentModule> = {
   tmux: getTmuxComponent,
   "tui-plugins": getTuiPluginsComponent,
   "codebase-memory": getCodebaseMemoryComponent,
-  otel: getOtelComponent,
-  "otel-collector": getOtelCollectorComponent,
 }
 
 export interface InstallOptions {

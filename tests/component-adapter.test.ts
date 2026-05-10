@@ -10,14 +10,16 @@ import type { ComponentId } from "../src/components/types"
 // ============================================================================
 
 describe("getCapabilities()", () => {
-  test("returns capabilities for all 10 components", async () => {
+  test("returns capabilities for all supported components", async () => {
     const { getCapabilities } = await import(`../src/components/registry.ts?t=${Date.now()}`)
 
     const caps = getCapabilities()
-    expect(caps).toHaveLength(10)
+    expect(caps).toHaveLength(9)
 
     const ids = caps.map(c => c.component).sort()
-    expect(ids).toEqual(["codebase-memory", "context-mode", "otel", "otel-collector", "plugin", "rtk", "sounds", "theme", "tmux", "tui-plugins"])
+    expect(ids).toEqual(["codebase-memory", "context-mode", "plugin", "rtk", "sdd-integration", "sounds", "theme", "tmux", "tui-plugins"])
+    expect(ids).not.toContain("otel")
+    expect(ids).not.toContain("otel-collector")
   })
 
   test("plugin targets only opencode", async () => {
@@ -111,7 +113,7 @@ describe("getCapabilities()", () => {
 
   test("every capability has valid ComponentId and required fields", async () => {
     const { getCapabilities } = await import(`../src/components/registry.ts?t=${Date.now()}`)
-    const validIds: ComponentId[] = ["plugin", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory", "otel", "otel-collector"]
+    const validIds: ComponentId[] = ["plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"]
 
     const caps = getCapabilities()
     for (const cap of caps) {

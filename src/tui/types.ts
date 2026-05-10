@@ -2,10 +2,11 @@
 
 import type { ComponentId, ComponentStatus, DoctorRunResult, InstallResult } from "../components/types"
 import type { UpgradeStatus } from "../commands/upgrade"
-import type { MetricsScreenState } from "../components/metrics-viewer"
+import type { AgentTarget } from "../domain/environment"
+import type { DetectedEnvironment } from "../platform/detect"
 
 /** Valid screen identifiers in the navigation shell */
-export type RouteId = "home" | "install" | "uninstall" | "status" | "doctor" | "upgrade" | "task" | "results" | "result-detail" | "metrics-viewer"
+export type RouteId = "home" | "install" | "uninstall" | "status" | "doctor" | "upgrade" | "task" | "results" | "result-detail"
 
 /** Generic task kind for the shared task/results pipeline */
 export type TaskKind = "install" | "uninstall" | "doctor-fix" | "upgrade"
@@ -32,7 +33,7 @@ export type KeyEvent =
   | { type: "unknown" }
 
 /** Internal phase tracking for multi-phase screens */
-export type InstallPhase = "preset" | "manual" | "confirm"
+export type InstallPhase = "os-select" | "tool-select" | "preset" | "manual" | "confirm"
 
 /** Current state of the TUI shell */
 export interface TUIState {
@@ -54,14 +55,16 @@ export interface TUIState {
   doctor?: { loading: boolean; report?: DoctorRunResult; confirmFix: boolean }
   /** Upgrade screen state: loading indicator, cached check status */
   upgrade?: { loading: boolean; status?: UpgradeStatus }
-  /** Metrics viewer screen state: auto-refresh, data, pause controls */
-  metrics?: MetricsScreenState
   /** Result view metadata: which task kind produced the results */
   resultView?: { kind: TaskKind; detailIndex?: number }
   quit: boolean
   message?: string
   /** Tracks which sub-phase the install screen is in */
   _installPhase?: InstallPhase
+  /** OS selected by user in install flow (set after os-select phase) */
+  selectedOS?: DetectedEnvironment
+  /** Tool/environment selected by user in install flow (set after tool-select phase) */
+  selectedTool?: AgentTarget
 }
 
 /** Optional hooks for task progress events */
@@ -73,6 +76,7 @@ export interface TaskHooks {
 /** Intent emitted by screens to the app dispatcher */
 export type ScreenIntent =
   | { type: "navigate"; route: AppRoute }
+  | { type: "home" }
   | { type: "back" }
   | { type: "quit" }
   | { type: "select-component"; id: ComponentId }
@@ -81,7 +85,6 @@ export type ScreenIntent =
   | { type: "run-doctor" }
   | { type: "run-doctor-fix" }
   | { type: "run-upgrade" }
-  | { type: "refresh-metrics" }
   | { type: "none" }
 
 /** Result of a screen's update function */

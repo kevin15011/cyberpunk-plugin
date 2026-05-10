@@ -33,7 +33,7 @@ export function createClaudeDetector(
         const output = execFn("claude --version")
         const version = output.trim()
         const configPath = findClaudeConfig(platform, existsFn)
-        return { installed: true, version, configPath, status: "installed" }
+        return { installed: true, version, configPath, status: "installed", implemented: false }
       } catch (err) {
         // Distinguish between "not found" (unsupported) and unexpected errors (unknown)
         const message = err instanceof Error ? err.message : String(err)
@@ -47,12 +47,14 @@ export function createClaudeDetector(
             installed: false,
             status: "unsupported",
             rationale: "Claude CLI binary not found on PATH",
+            implemented: false,
           }
         }
         return {
           installed: false,
           status: "unknown",
           rationale: `Claude detection failed: ${message}`,
+          implemented: false,
         }
       }
     },

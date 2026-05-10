@@ -1,17 +1,45 @@
-// src/tui/screens/install.ts — Install screen: component list with toggle, preset picker, confirmation
+// src/tui/screens/install.ts — Install screen: OS → Tool → Preset/Manual → Confirm flow
 
 import type { KeyEvent, ScreenModule, ScreenResult, TUIState, InstallPhase } from "../types"
-import { route } from "../router"
 import { cyan, green, red, yellow, bold, gray, separator, pink } from "../theme"
 import { PRESET_NAMES } from "../../presets"
 import type { ComponentId } from "../../components/types"
+import { detectEnvironment, getPlatformLabel, type DetectedEnvironment } from "../../platform/detect"
+import type { AgentTarget } from "../../domain/environment"
+import { AGENT_TARGETS } from "../../domain/environment"
+
+/** OS options shown in os-select phase */
+const OS_OPTIONS: { value: DetectedEnvironment; label: string }[] = [
+  { value: "darwin", label: "macOS" },
+  { value: "linux", label: "Linux" },
+  { value: "wsl", label: "WSL (Windows Subsystem for Linux)" },
+]
+
+/** Tool options shown in tool-select phase */
+const TOOL_OPTIONS: { value: AgentTarget; label: string; implemented: boolean; hint: string }[] = [
+  { value: "opencode", label: "OpenCode", implemented: true, hint: "Soporte completo" },
+  { value: "claude", label: "Claude Code", implemented: false, hint: "Próximamente / No implementado" },
+  { value: "codex", label: "Codex", implemented: false, hint: "Próximamente / No implementado" },
+]
+
+/** Auto-detected OS — used as default in os-select */
+const AUTO_DETECTED_OS = detectEnvironment()
 
 /** Determine the current install phase from explicit state tracking */
 function getPhase(state: TUIState): InstallPhase {
-  if (state.route.id !== "install") return "preset"
-  if (state._installPhase === "manual") return "manual"
+  if (state.route.id !== "install") return "os-select"
+
+  // Check explicit phase tracking
   if (state._installPhase === "confirm") return "confirm"
-  // Default: if a preset was chosen, go to confirm; otherwise show preset picker
+  if (state._installPhase === "manual") return "manual"
+  if (state._installPhase === "preset") return "preset"
+  if (state._installPhase === "tool-select") return "tool-select"
+  if (state._installPhase === "os-select") return "os-select"
+
+  // Default flow: OS not selected → os-select; tool not selected → tool-select;
+  // preset chosen or components selected → confirm; otherwise → preset
+  if (!state.selectedOS) return "os-select"
+  if (!state.selectedTool) return "tool-select"
   if (state.selectedPreset) return "confirm"
   if (state.selectedComponents.length > 0) return "confirm"
   return "preset"
@@ -33,8 +61,47 @@ export const installScreen: ScreenModule = {
     lines.push(separator())
     lines.push("")
 
-    if (phase === "preset") {
-      lines.push(gray("  Elegí un preset o selección manual:"))
+    if (phase === "os-select") {
+      lines.push(gray("  Paso 1/3: Seleccioná tu sistema operativo:"))
+      lines.push("")
+      const autoLabel = getPlatformLabel(AUTO_DETECTED_OS)
+      for (let i = 0; i < OS_OPTIONS.length; i++) {
+        const opt = OS_OPTIONS[i]
+        const cursor = state.cursor === i ? cyan(">") : " "
+        const label = state.cursor === i ? bold(opt.label) : opt.label
+        const autoHint = opt.value === AUTO_DETECTED_OS ? green(` (detectado: ${autoLabel})`) : ""
+        lines.push(`  ${cursor} ${label}${autoHint}`)
+      }
+      lines.push("")
+      lines.push(gray("  ↑/↓ navegar · Enter seleccionar · Esc volver · H inicio"))
+    } else if (phase === "tool-select") {
+      const osLabel = state.selectedOS ? getPlatformLabel(state.selectedOS) : "?"
+      lines.push(gray(`  OS: ${green(osLabel)}`))
+      lines.push("")
+      lines.push(gray("  Paso 2/3: Seleccioná el entorno/agente:"))
+      lines.push("")
+      for (let i = 0; i < TOOL_OPTIONS.length; i++) {
+        const opt = TOOL_OPTIONS[i]
+        const cursor = state.cursor === i ? cyan(">") : " "
+        if (opt.implemented) {
+          const label = state.cursor === i ? bold(opt.label) : opt.label
+          lines.push(`  ${cursor} ${label}  ${gray(opt.hint)}`)
+        } else {
+          lines.push(`  ${cursor} ${gray(opt.label)}  ${yellow(opt.hint)}`)
+        }
+      }
+      lines.push("")
+      if (state.message) {
+        lines.push(yellow(`  ⓘ ${state.message}`))
+        lines.push("")
+      }
+      lines.push(gray("  ↑/↓ navegar · Enter seleccionar · Esc volver · H inicio"))
+    } else if (phase === "preset") {
+      const osLabel = state.selectedOS ? getPlatformLabel(state.selectedOS) : "?"
+      const toolLabel = state.selectedTool ?? "?"
+      lines.push(gray(`  OS: ${green(osLabel)} · Tool: ${green(toolLabel)}`))
+      lines.push("")
+      lines.push(gray("  Paso 3/3: Elegí un preset o selección manual:"))
       lines.push("")
       const options = getPresetOptions()
       for (let i = 0; i < options.length; i++) {
@@ -45,8 +112,12 @@ export const installScreen: ScreenModule = {
         lines.push(`  ${cursor} ${label}${hint}`)
       }
       lines.push("")
-      lines.push(gray("  ↑/↓ navegar · Enter seleccionar · Esc volver"))
+      lines.push(gray("  ↑/↓ navegar · Enter seleccionar · Esc volver · H inicio"))
     } else if (phase === "manual") {
+      const osLabel = state.selectedOS ? getPlatformLabel(state.selectedOS) : "?"
+      const toolLabel = state.selectedTool ?? "?"
+      lines.push(gray(`  OS: ${green(osLabel)} · Tool: ${green(toolLabel)}`))
+      lines.push("")
       lines.push(gray("  Seleccioná componentes (space para toggle):"))
       lines.push("")
       for (let i = 0; i < state.statuses.length; i++) {
@@ -67,7 +138,7 @@ export const installScreen: ScreenModule = {
       } else {
         lines.push(gray(`  ${state.selectedComponents.length} seleccionado(s) · Enter confirmar`))
       }
-      lines.push(gray("  Space toggle · Esc volver"))
+      lines.push(gray("  Space toggle · Esc volver · H inicio"))
     } else {
       // Confirm phase
       const components = state.selectedComponents
@@ -82,10 +153,10 @@ export const installScreen: ScreenModule = {
       if (components.length === 0) {
         lines.push(yellow("  Warning: No components selected"))
       }
-      lines.push(gray("  Enter confirmar · Esc volver"))
+      lines.push(gray("  Enter confirmar · Esc volver · H inicio"))
     }
 
-    if (state.message) {
+    if (state.message && phase !== "tool-select") {
       lines.push("")
       lines.push(yellow(`  ${state.message}`))
     }
@@ -98,7 +169,17 @@ export const installScreen: ScreenModule = {
 
     switch (key.type) {
       case "up":
-        if (phase === "preset") {
+        if (phase === "os-select") {
+          return {
+            state: { ...state, cursor: Math.max(0, state.cursor - 1) },
+            intent: { type: "none" },
+          }
+        } else if (phase === "tool-select") {
+          return {
+            state: { ...state, cursor: Math.max(0, state.cursor - 1) },
+            intent: { type: "none" },
+          }
+        } else if (phase === "preset") {
           return {
             state: { ...state, cursor: Math.max(0, state.cursor - 1) },
             intent: { type: "none" },
@@ -112,7 +193,17 @@ export const installScreen: ScreenModule = {
         return { state, intent: { type: "none" } }
 
       case "down":
-        if (phase === "preset") {
+        if (phase === "os-select") {
+          return {
+            state: { ...state, cursor: Math.min(OS_OPTIONS.length - 1, state.cursor + 1) },
+            intent: { type: "none" },
+          }
+        } else if (phase === "tool-select") {
+          return {
+            state: { ...state, cursor: Math.min(TOOL_OPTIONS.length - 1, state.cursor + 1) },
+            intent: { type: "none" },
+          }
+        } else if (phase === "preset") {
           const options = getPresetOptions()
           return {
             state: { ...state, cursor: Math.min(options.length - 1, state.cursor + 1) },
@@ -127,7 +218,47 @@ export const installScreen: ScreenModule = {
         return { state, intent: { type: "none" } }
 
       case "enter":
-        if (phase === "preset") {
+        if (phase === "os-select") {
+          const chosen = OS_OPTIONS[state.cursor]
+          if (!chosen) return { state, intent: { type: "none" } }
+          // OS selected — move to tool-select, set cursor to OpenCode (index 0)
+          return {
+            state: {
+              ...state,
+              selectedOS: chosen.value,
+              cursor: 0,
+              _installPhase: "tool-select",
+              message: undefined,
+            },
+            intent: { type: "none" },
+          }
+        } else if (phase === "tool-select") {
+          const chosen = TOOL_OPTIONS[state.cursor]
+          if (!chosen) return { state, intent: { type: "none" } }
+
+          // If tool is not implemented, show info message and stay on phase
+          if (!chosen.implemented) {
+            return {
+              state: {
+                ...state,
+                message: `${chosen.label} aún no está implementado. Seleccioná OpenCode para continuar.`,
+              },
+              intent: { type: "none" },
+            }
+          }
+
+          // Tool selected — move to preset phase
+          return {
+            state: {
+              ...state,
+              selectedTool: chosen.value,
+              cursor: 0,
+              _installPhase: "preset",
+              message: undefined,
+            },
+            intent: { type: "none" },
+          }
+        } else if (phase === "preset") {
           const options = getPresetOptions()
           const chosen = options[state.cursor]
           if (!chosen) return { state, intent: { type: "none" } }
@@ -141,6 +272,7 @@ export const installScreen: ScreenModule = {
                 selectedComponents: [],
                 selectedPreset: undefined,
                 _installPhase: "manual",
+                message: undefined,
               },
               intent: { type: "none" },
             }
@@ -154,6 +286,7 @@ export const installScreen: ScreenModule = {
               selectedComponents: [],
               cursor: 0,
               _installPhase: "confirm",
+              message: undefined,
             },
             intent: { type: "select-preset", preset: chosen.value },
           }
@@ -166,7 +299,7 @@ export const installScreen: ScreenModule = {
           }
           // Move to confirm phase
           return {
-            state: { ...state, cursor: 0, _installPhase: "confirm" },
+            state: { ...state, cursor: 0, _installPhase: "confirm", message: undefined },
             intent: { type: "none" },
           }
         } else {
@@ -202,7 +335,6 @@ export const installScreen: ScreenModule = {
         if (phase === "confirm") {
           // If we came from manual, go back to manual; otherwise back to preset
           if (state.selectedPreset) {
-            // Came from preset selection — go back to preset
             return {
               state: {
                 ...state,
@@ -237,12 +369,39 @@ export const installScreen: ScreenModule = {
             },
             intent: { type: "none" },
           }
+        } else if (phase === "preset") {
+          // Go back to tool-select
+          return {
+            state: {
+              ...state,
+              cursor: 0,
+              selectedTool: undefined,
+              selectedPreset: undefined,
+              _installPhase: "tool-select",
+              message: undefined,
+            },
+            intent: { type: "none" },
+          }
+        } else if (phase === "tool-select") {
+          // Go back to os-select
+          return {
+            state: {
+              ...state,
+              cursor: 0,
+              selectedOS: undefined,
+              message: undefined,
+              _installPhase: "os-select",
+            },
+            intent: { type: "none" },
+          }
+        } else if (phase === "os-select") {
+          // In os-select phase, Esc navigates back to home
+          return {
+            state: { ...state, message: undefined },
+            intent: { type: "back" },
+          }
         }
-        // In preset phase, Esc navigates back to home
-        return {
-          state: { ...state, message: undefined },
-          intent: { type: "back" },
-        }
+        return { state, intent: { type: "none" } }
 
       case "ctrl-c":
         return { state: { ...state, quit: true }, intent: { type: "quit" } }

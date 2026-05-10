@@ -15,7 +15,7 @@ export const doctorScreen: ScreenModule = {
     if (!doctor || doctor.loading) {
       lines.push(gray("  Cargando diagnóstico..."))
       lines.push("")
-      lines.push(gray("  Esc volver"))
+      lines.push(gray("  Esc volver · H inicio"))
       return lines
     }
 
@@ -23,7 +23,7 @@ export const doctorScreen: ScreenModule = {
     if (!report) {
       lines.push(gray("  Sin datos de doctor"))
       lines.push("")
-      lines.push(gray("  Esc volver"))
+      lines.push(gray("  Esc volver · H inicio"))
       return lines
     }
 
@@ -57,7 +57,7 @@ export const doctorScreen: ScreenModule = {
 
     if (hasFixable) {
       if (doctor.confirmFix) {
-        lines.push(yellow(`  > Apply repairs? Enter=confirm / Esc=cancel`))
+        lines.push(yellow(`  > Apply repairs? Enter=confirm / Esc=cancel / H=inicio`))
       } else {
         const cursor = state.cursor === 0 ? cyan(">") : " "
         lines.push(`  ${cursor} Reparar problemas detectados`)
@@ -67,7 +67,7 @@ export const doctorScreen: ScreenModule = {
     lines.push("")
     lines.push(separator())
     lines.push("")
-    lines.push(gray("  Esc volver"))
+    lines.push(gray("  Esc volver · H inicio"))
 
     return lines
   },
@@ -106,14 +106,14 @@ export const doctorScreen: ScreenModule = {
         return { state, intent: { type: "none" } }
       }
       case "back": {
-        // Clear confirm state on back
+        // Clear confirm state on back without leaving the doctor screen.
         if (doctor?.confirmFix) {
           return {
             state: {
               ...state,
               doctor: { ...doctor, confirmFix: false },
             },
-            intent: { type: "back" },
+            intent: { type: "none" },
           }
         }
         return { state, intent: { type: "back" } }

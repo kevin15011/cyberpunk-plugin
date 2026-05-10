@@ -1,7 +1,7 @@
 // src/components/codebase-memory.ts — install codebase-memory-mcp binary, add MCP config, write routing instructions
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs"
-import { join } from "path"
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs"
+import { delimiter, join } from "path"
 import { execSync } from "child_process"
 import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
@@ -13,6 +13,7 @@ import { isCommandOnPath } from "../platform/shell"
 const ROUTING_MARKER = "<!-- cyberpunk-managed:codebase-memory-routing -->"
 const BINARY_NAME = "codebase-memory-mcp"
 const MCP_NAME = "codebase-memory"
+const LEGACY_MCP_NAME = "codebase-memory-mcp"
 const INSTALL_URL = "https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh"
 
 function getPaths() {
@@ -25,6 +26,37 @@ function getPaths() {
     instructionsDir,
     routingPath: join(instructionsDir, "codebase-memory-routing.md"),
     localBinPath: join(home, ".local", "bin", BINARY_NAME),
+  }
+}
+
+/**
+ * Resolve bare "codebase-memory-mcp" command name to an absolute executable path.
+ * Returns the absolute path if found, or null if not resolvable.
+ */
+export function resolveCodebaseMemoryExecutable(): string | null {
+  // First check ~/.local/bin which is the default install location
+  const { localBinPath } = getPaths()
+  if (isExecutableFile(localBinPath)) {
+    return localBinPath
+  }
+
+  const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean)
+  for (const pathEntry of pathEntries) {
+    const candidate = join(pathEntry, BINARY_NAME)
+    if (isExecutableFile(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function isExecutableFile(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -96,9 +128,7 @@ Commits confirm that changes are final — ensure the graph reflects reality aro
 `
 
 function isBinaryAvailable(): boolean {
-  if (isCommandOnPath(BINARY_NAME)) return true
-  const { localBinPath } = getPaths()
-  return existsSync(localBinPath)
+  return resolveCodebaseMemoryExecutable() !== null
 }
 
 function isCurlAvailable(): boolean {
@@ -165,15 +195,31 @@ function patchOpencodeJsonMcp(): boolean {
   }
 
   const mcpObj = config.mcp as Record<string, Record<string, unknown>>
+  const legacyEntry = mcpObj[LEGACY_MCP_NAME]
+
   if (mcpObj[MCP_NAME]?.type === "local") {
+    if (legacyEntry) {
+      delete mcpObj[LEGACY_MCP_NAME]
+      const tmpPath = opencodeJsonPath + ".tmp"
+      writeFileSync(tmpPath, JSON.stringify(config, null, 2) + "\n", "utf8")
+      const { renameSync } = require("fs") as typeof import("fs")
+      renameSync(tmpPath, opencodeJsonPath)
+      return true
+    }
     return false
   }
 
+  // Resolve to absolute path
+  const absolutePath = resolveCodebaseMemoryExecutable()
+
   mcpObj[MCP_NAME] = {
-    command: [BINARY_NAME],
+    command: Array.isArray(legacyEntry?.command)
+      ? legacyEntry.command
+      : absolutePath ? [absolutePath] : [BINARY_NAME],
     type: "local",
-    enabled: true,
+    enabled: legacyEntry?.enabled === false ? false : true,
   }
+  delete mcpObj[LEGACY_MCP_NAME]
 
   const tmpPath = opencodeJsonPath + ".tmp"
   writeFileSync(tmpPath, JSON.stringify(config, null, 2) + "\n", "utf8")
@@ -378,15 +424,34 @@ export function getCodebaseMemoryComponent(): ComponentModule {
 
       // Check 3: MCP config
       let mcpConfigured = false
+      let mcpBareName = false
       if (existsSync(opencodeJsonPath)) {
         try {
           const config = JSON.parse(readFileSync(opencodeJsonPath, "utf8"))
           const mcp = config.mcp as Record<string, Record<string, unknown>> | undefined
           mcpConfigured = mcp?.[MCP_NAME]?.type === "local"
+          if (mcpConfigured) {
+            const command = mcp![MCP_NAME].command as string[] | undefined
+            if (command && command.length === 1 && command[0] === BINARY_NAME) {
+              mcpBareName = true
+            }
+          }
         } catch { /* ignore */ }
       }
 
-      if (!mcpConfigured) {
+      // Check 3a: Bare command name → fail with fixable:true
+      if (mcpBareName) {
+        const absolutePath = resolveCodebaseMemoryExecutable()
+        checks.push({
+          id: "codebase-memory:mcp-path",
+          label: "MCP path absoluto",
+          status: "fail",
+          message: absolutePath
+            ? `MCP usa nombre bare "${BINARY_NAME}" — necesita path absoluto: ${absolutePath}`
+            : `MCP usa nombre bare "${BINARY_NAME}" — binary no encontrado en PATH`,
+          fixable: !!absolutePath,
+        })
+      } else if (!mcpConfigured) {
         checks.push({
           id: "codebase-memory:mcp",
           label: "MCP en opencode.json",
@@ -399,7 +464,7 @@ export function getCodebaseMemoryComponent(): ComponentModule {
           id: "codebase-memory:mcp",
           label: "MCP en opencode.json",
           status: "pass",
-          message: "codebase-memory MCP configurado",
+          message: "codebase-memory MCP configurado con path absoluto",
           fixable: false,
         })
       }

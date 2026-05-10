@@ -11,8 +11,10 @@ const CYBERPUNK_CONFIG_PATH = join(CYBERPUNK_CONFIG_DIR, "config.json")
 const OPENCODE_DIR = join(TEMP_HOME, ".config", "opencode")
 const OPENCODE_CONFIG_PATH = join(OPENCODE_DIR, "opencode.json")
 const LOCAL_BIN_DIR = join(TEMP_HOME, ".local", "bin")
+const EMPTY_PATH_DIR = join(TEMP_HOME, "empty-path")
 const BINARY_PATH = join(LOCAL_BIN_DIR, "codebase-memory-mcp")
 const ORIGINAL_HOME = process.env.HOME
+const ORIGINAL_PATH = process.env.PATH
 
 function writeCyberpunkConfig() {
   mkdirSync(CYBERPUNK_CONFIG_DIR, { recursive: true })
@@ -29,8 +31,6 @@ function writeCyberpunkConfig() {
         tmux: { installed: false },
         "tui-plugins": { installed: false },
         "codebase-memory": { installed: false },
-        otel: { installed: false },
-        "otel-collector": { installed: false },
       },
     }, null, 2) + "\n",
     "utf8"
@@ -56,11 +56,14 @@ describe("codebase-memory component", () => {
   beforeEach(() => {
     if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
     mkdirSync(TEMP_HOME, { recursive: true })
+    mkdirSync(EMPTY_PATH_DIR, { recursive: true })
     process.env.HOME = TEMP_HOME
+    process.env.PATH = EMPTY_PATH_DIR
   })
 
   afterEach(() => {
     process.env.HOME = ORIGINAL_HOME
+    process.env.PATH = ORIGINAL_PATH
     if (existsSync(TEMP_HOME)) rmSync(TEMP_HOME, { recursive: true, force: true })
   })
 
@@ -75,10 +78,11 @@ describe("codebase-memory component", () => {
 
     expect(["success", "skipped"]).toContain(result.status)
 
-    // MCP config
+    // MCP config — command should be resolved to absolute path
     const cfg = readOpenCodeConfig()
     expect(cfg.mcp["codebase-memory"]).toBeDefined()
-    expect(cfg.mcp["codebase-memory"].command).toEqual(["codebase-memory-mcp"])
+    // When binary is found at ~/.local/bin, command should be absolute path
+    expect(cfg.mcp["codebase-memory"].command[0]).toContain("codebase-memory-mcp")
     expect(cfg.mcp["codebase-memory"].type).toBe("local")
     expect(cfg.mcp["codebase-memory"].enabled).toBe(true)
 
@@ -98,7 +102,7 @@ describe("codebase-memory component", () => {
     const component = getCodebaseMemoryComponent()
     const status = await component.status()
 
-    // Should be available (curl exists on this system) or error (if no curl)
+    // PATH is isolated from the host, so curl is intentionally unavailable here.
     expect(["available", "error"]).toContain(status.status)
   })
 
@@ -142,6 +146,26 @@ describe("codebase-memory component", () => {
     expect(cfg.mcp["codebase-memory"]).toBeUndefined()
   })
 
+  test("install removes legacy duplicate MCP key and keeps canonical absolute command", async () => {
+    installFakeBinary()
+    writeCyberpunkConfig()
+    writeOpenCodeConfig({
+      mcp: {
+        "codebase-memory": { command: [BINARY_PATH], type: "local", enabled: true },
+        "codebase-memory-mcp": { command: [BINARY_PATH], type: "local", enabled: true },
+      },
+    })
+
+    const { getCodebaseMemoryComponent } = await import("../src/components/codebase-memory.ts?" + Date.now())
+    const component = getCodebaseMemoryComponent()
+    await component.install()
+
+    const cfg = readOpenCodeConfig()
+    expect(cfg.mcp["codebase-memory"]).toBeDefined()
+    expect(cfg.mcp["codebase-memory"].command).toEqual([BINARY_PATH])
+    expect(cfg.mcp["codebase-memory-mcp"]).toBeUndefined()
+  })
+
   test("status returns installed when binary, routing, and MCP all present", async () => {
     installFakeBinary()
     writeCyberpunkConfig()
@@ -167,8 +191,9 @@ describe("codebase-memory component", () => {
   test("doctor reports pass when everything configured", async () => {
     installFakeBinary()
     writeCyberpunkConfig()
+    // Use absolute path for MCP command to pass the path check
     writeOpenCodeConfig({
-      mcp: { "codebase-memory": { command: ["codebase-memory-mcp"], type: "local", enabled: true } },
+      mcp: { "codebase-memory": { command: [BINARY_PATH], type: "local", enabled: true } },
     })
     const instructionsDir = join(OPENCODE_DIR, "instructions")
     mkdirSync(instructionsDir, { recursive: true })
@@ -318,5 +343,67 @@ describe("codebase-memory component", () => {
     const content = readFileSync(routingPath, "utf8")
     expect(content).toContain("read actual files")
     expect(content).toContain("before editing")
+  })
+
+  test("doctor --fix repairs bare command name to absolute path", async () => {
+    installFakeBinary()
+    writeCyberpunkConfig()
+    // MCP configured with bare command name (not absolute path)
+    writeOpenCodeConfig({
+      mcp: {
+        "codebase-memory": { command: ["codebase-memory-mcp"], type: "local", enabled: true },
+      },
+    })
+    // Create routing file so routing check passes
+    const instructionsDir = join(OPENCODE_DIR, "instructions")
+    mkdirSync(instructionsDir, { recursive: true })
+    writeFileSync(
+      join(instructionsDir, "codebase-memory-routing.md"),
+      "<!-- cyberpunk-managed:codebase-memory-routing -->\n# test\n",
+      "utf8"
+    )
+
+    const { runDoctor } = await import("../src/commands/doctor.ts?" + Date.now())
+    const result = await runDoctor({ fix: true, verbose: false, components: ["codebase-memory"] })
+
+    // Should find the mcp-path check and report it as fixable
+    const mcpPathCheck = result.checks.find(c => c.id === "codebase-memory:mcp-path")
+    expect(mcpPathCheck).toBeDefined()
+    expect(mcpPathCheck!.status).toBe("fail")
+    expect(mcpPathCheck!.fixable).toBe(true)
+
+    // The fix should have been applied
+    const mcpPathFix = result.fixes.find(f => f.checkId === "codebase-memory:mcp-path")
+    expect(mcpPathFix).toBeDefined()
+    expect(mcpPathFix!.status).toBe("fixed")
+
+    // Verify opencode.json was updated to use absolute path
+    const cfg = readOpenCodeConfig()
+    const command = cfg.mcp["codebase-memory"].command as string[]
+    expect(command[0]).not.toBe("codebase-memory-mcp")
+    expect(command[0]).toContain("/")  // absolute path contains separator
+    expect(command[0]).toContain("codebase-memory-mcp")
+  })
+
+  test("doctor reports mcp-path not fixable when binary missing", async () => {
+    // No binary installed
+    const emptyBinDir = join(TEMP_HOME, "empty-bin")
+    mkdirSync(emptyBinDir, { recursive: true })
+    process.env.PATH = emptyBinDir
+
+    writeCyberpunkConfig()
+    writeOpenCodeConfig({
+      mcp: {
+        "codebase-memory": { command: ["codebase-memory-mcp"], type: "local", enabled: true },
+      },
+    })
+
+    const { getCodebaseMemoryComponent } = await import("../src/components/codebase-memory.ts?" + Date.now())
+    const component = getCodebaseMemoryComponent()
+    const result = await component.doctor({ cyberpunkConfig: null, verbose: false, prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false } })
+
+    const mcpPathCheck = result.checks.find(c => c.id === "codebase-memory:mcp-path")
+    expect(mcpPathCheck).toBeDefined()
+    expect(mcpPathCheck!.fixable).toBe(false)
   })
 })

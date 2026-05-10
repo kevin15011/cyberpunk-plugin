@@ -278,46 +278,37 @@ ${bold("COMANDOS")}
   status   (s)  Ver estado de componentes
   upgrade (up)  Actualizar a la última versión
   doctor   (d)  Diagnóstico y reparación
-  metrics  (m)  Ver métricas de uso LLM (local OTEL)
   config   (c)  Leer/escribir configuración
   help     (h)  Mostrar esta ayuda
 
  ${bold("FLAGS")}
-   --plugin            Componente: plugin
-   --theme             Componente: tema
-   --sounds            Componente: sonidos
-   --context-mode      Componente: context-mode
-   --rtk               Componente: RTK (token proxy)
-   --tmux              Componente: tmux config
-   --tui-plugins       Componente: TUI plugins (SDD Engram + Statusline)
-   --codebase-memory   Componente: Codebase Memory MCP
-   --otel              Componente: OpenTelemetry plugin
-   --otel-collector    Componente: OTEL Collector
-   --all               Todos los componentes
-  --preset <name> Instalar desde preset (minimal, full, wsl, mac)
-  --json          Salida en JSON
-  --verbose       Log detallado
-   --fix           Aplicar reparaciones (doctor)
-   --check         Solo verificar (upgrade)
-   --watch         Auto-refresh metrics
-   --interval <s>  Refresh interval in seconds (default: 30)
-   --list          Listar config
-  --init          Crear config por defecto
+    --plugin            Componente: OpenCode Event Sounds
+    --sdd-integration   Componente: SDD Integration
+    --theme             Componente: tema
+    --sounds            Componente: sonidos
+    --context-mode      Componente: context-mode
+    --rtk               Componente: RTK (token proxy)
+    --tmux              Componente: tmux config
+    --tui-plugins       Componente: TUI plugins (SDD Engram + Statusline)
+    --codebase-memory   Componente: Codebase Memory MCP
+    --all               Todos los componentes
+   --preset <name> Instalar desde preset (minimal, token-saver-general, token-saver-dev, developer-toolkit, cyberpunk-full, custom)
+   --json          Salida en JSON
+   --verbose       Log detallado
+    --fix           Aplicar reparaciones (doctor)
+    --check         Solo verificar (upgrade)
+    --list          Listar config
+   --init          Crear config por defecto
 
- ${bold("EJEMPLOS")}
-  cyberpunk                         # Abre TUI interactivo
-  cyberpunk install --all           # Instalar todo
-  cyberpunk install --preset minimal  # Instalar preset mínimo
-  cyberpunk install --preset full   # Instalar preset completo
-  cyberpunk install --preset wsl    # Instalar preset WSL
-  cyberpunk install --preset mac    # Instalar preset macOS
-   cyberpunk status --json           # Estado en JSON
-   cyberpunk metrics                 # Ver métricas de uso LLM
-   cyberpunk metrics --json          # Métricas en JSON
-   cyberpunk metrics --watch         # Auto-refresh métricas
-   cyberpunk metrics --watch --interval 10  # Refresh cada 10s
-   cyberpunk upgrade --check         # Verificar actualizaciones
-  cyberpunk config --list           # Ver configuración
-  cyberpunk config repoUrl "https://github.com/user/repo"
+  ${bold("EJEMPLOS")}
+   cyberpunk                         # Abre TUI interactivo
+   cyberpunk install --all           # Instalar todo
+   cyberpunk install --preset minimal  # Instalar preset mínimo
+   cyberpunk install --preset cyberpunk-full   # Instalar preset completo
+   cyberpunk install --preset developer-toolkit  # Instalar preset developer
+    cyberpunk status --json           # Estado en JSON
+     cyberpunk upgrade --check         # Verificar actualizaciones
+   cyberpunk config --list           # Ver configuración
+   cyberpunk config repoUrl "https://github.com/user/repo"
 `.trim()
 }
