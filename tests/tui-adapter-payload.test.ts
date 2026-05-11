@@ -123,17 +123,29 @@ describe("adapter payload: startDoctorFixTask", () => {
 })
 
 describe("adapter payload: loadUpgradeStatus", () => {
+  let forceArg: boolean | undefined
 
   beforeEach(() => {
+    forceArg = undefined
     mock.module("../src/updates/manager", () => ({
-      createUpdateManager: () => ({
-        checkAll: async () => [{ tool: "cyberpunk", current: "1.0.0", latest: "2.0.0", available: true, checkedAt: "now" }],
+      createUpdateManager: (force?: boolean) => ({
+        checkAll: async () => {
+          forceArg = force
+          return [{ tool: "cyberpunk", current: "1.0.0", latest: "2.0.0", available: true, checkedAt: "now" }]
+        },
       }),
     }))
   })
 
   afterEach(() => {
     mock.restore()
+  })
+
+  test("forces a fresh update check instead of using stale cache", async () => {
+    const { loadUpgradeStatus } = await import("../src/tui/adapters")
+    await loadUpgradeStatus()
+
+    expect(forceArg).toBe(true)
   })
 
   test("calls update manager and returns multi-tool payload", async () => {

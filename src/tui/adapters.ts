@@ -62,7 +62,7 @@ export async function startDoctorFixTask(): Promise<DoctorRunResult> {
 
 /** Load upgrade check status */
 export async function loadUpgradeStatus(): Promise<ToolUpdateStatus[]> {
-  return createUpdateManager(false).checkAll()
+  return createUpdateManager(true).checkAll()
 }
 
 /** Start an upgrade task */
