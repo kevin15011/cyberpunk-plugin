@@ -1,3 +1,5 @@
+import { JOHNNY_CYBERPUNK_BRAILLE } from "./logos"
+
 // src/tui/theme.ts — Cyberpunk ANSI color constants
 
 // ANSI escape helpers
@@ -56,9 +58,7 @@ export function bright(text: string): string { return styled(text, grayBright) }
 
 // Banner
 export const BANNER = `
-${neonCyan}  ╔══════════════════════════════════════════╗
-${neonCyan}  ║${neonPink}     CYBERPUNK ENVIRONMENT MANAGER      ${neonCyan}║
-${neonCyan}  ╚══════════════════════════════════════════╝${RESET}
+${neonCyan}${JOHNNY_CYBERPUNK_BRAILLE}${RESET}
 `
 
 export function separator(): string {
