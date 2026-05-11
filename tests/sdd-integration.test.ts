@@ -25,6 +25,9 @@ function writeRequiredSddAssets(home: string) {
     mkdirSync(join(filePath, ".."), { recursive: true })
     writeFileSync(filePath, parts.includes("sdd-phase-common.md") ? "# SDD Phase Common\n" : "---\nname: test\n---\n", "utf8")
   }
+  const judgmentPath = join(home, ".config", "opencode", "skills", "judgment-day", "SKILL.md")
+  mkdirSync(join(judgmentPath, ".."), { recursive: true })
+  writeFileSync(judgmentPath, "---\nname: judgment-day\n---\n", "utf8")
 }
 
 function writeMinimalOpenCodeConfig(home: string) {
@@ -261,10 +264,11 @@ describe("sdd-integration: OpenCode SDD readiness", () => {
   test("status is installed only when all managed SDD patches are applied", async () => {
     writeRequiredSddAssets(tempHome)
     writeMinimalOpenCodeConfig(tempHome)
-    const { getSddIntegrationComponent, patchSddPhaseCommon, patchSddReviewSkill, patchOpenCodeSddOrchestrator } = await loadSddModule()
+    const { getSddIntegrationComponent, patchSddPhaseCommon, patchSddReviewSkill, patchJudgmentDaySkill, patchOpenCodeSddOrchestrator } = await loadSddModule()
 
     expect(patchSddPhaseCommon()).toBe(true)
     expect(patchSddReviewSkill()).toBe(true)
+    expect(patchJudgmentDaySkill()).toBe(true)
     expect(patchOpenCodeSddOrchestrator()).toBe(true)
     const status = await getSddIntegrationComponent().status()
 
@@ -273,14 +277,27 @@ describe("sdd-integration: OpenCode SDD readiness", () => {
 
   test("orchestrator patch allows sdd-review and removes primary claude review", async () => {
     writeMinimalOpenCodeConfig(tempHome)
-    const { patchOpenCodeSddOrchestrator, ORCHESTRATOR_REVIEW_GATE_START_MARKER } = await loadSddModule()
+    const { patchOpenCodeSddOrchestrator, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_JUDGMENT_DAY_START_MARKER } = await loadSddModule()
 
     expect(patchOpenCodeSddOrchestrator()).toBe(true)
     const opencodeJson = JSON.parse(readFileSync(join(tempHome, ".config", "opencode", "opencode.json"), "utf8"))
 
     expect(opencodeJson.agent["gentle-orchestrator"].prompt).toContain(ORCHESTRATOR_REVIEW_GATE_START_MARKER)
+    expect(opencodeJson.agent["gentle-orchestrator"].prompt).toContain(ORCHESTRATOR_JUDGMENT_DAY_START_MARKER)
+    expect(opencodeJson.agent["gentle-orchestrator"].prompt).toContain("Judge B MUST use `sdd-review-adversary`")
     expect(opencodeJson.agent["gentle-orchestrator"].permission.task["sdd-review"]).toBe("allow")
     expect(opencodeJson.agent["sdd-claude-review"]).toBeUndefined()
+  })
+
+  test("patches judgment-day to prefer review and adversary agents", async () => {
+    writeRequiredSddAssets(tempHome)
+    const { patchJudgmentDaySkill, JUDGMENT_DAY_START_MARKER } = await loadSddModule()
+
+    expect(patchJudgmentDaySkill()).toBe(true)
+    const content = readFileSync(join(tempHome, ".config", "opencode", "skills", "judgment-day", "SKILL.md"), "utf8")
+
+    expect(content).toContain(JUDGMENT_DAY_START_MARKER)
+    expect(content).toContain("Judge B: launch `sdd-review-adversary`")
   })
 })
 

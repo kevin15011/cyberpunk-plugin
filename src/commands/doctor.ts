@@ -575,11 +575,12 @@ async function applyPluginDriftFix(check: DoctorCheck): Promise<DoctorFixResult>
 async function applySddIntegrationFix(check: DoctorCheck): Promise<DoctorFixResult> {
   if (check.id === "sdd-integration:patching") {
     try {
-      const { patchSddPhaseCommon, patchSddReviewSkill, patchOpenCodeSddOrchestrator } = await import("../components/sdd-integration")
+      const { patchSddPhaseCommon, patchSddReviewSkill, patchJudgmentDaySkill, patchOpenCodeSddOrchestrator } = await import("../components/sdd-integration")
       const phasePatched = patchSddPhaseCommon()
       const reviewPatched = patchSddReviewSkill()
+      const judgmentDayPatched = patchJudgmentDaySkill()
       const orchestratorPatched = patchOpenCodeSddOrchestrator()
-      const patched = phasePatched || reviewPatched || orchestratorPatched
+      const patched = phasePatched || reviewPatched || judgmentDayPatched || orchestratorPatched
       if (patched) {
         return { checkId: check.id, status: "fixed", message: "SDD Integration re-aplicada" }
       }

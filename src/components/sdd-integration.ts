@@ -14,6 +14,10 @@ export const START_MARKER = "<!-- cyberpunk:start:section-e -->"
 export const END_MARKER   = "<!-- cyberpunk:end:section-e -->"
 export const SDD_REVIEW_START_MARKER = "<!-- cyberpunk:start:sdd-review-definition -->"
 export const SDD_REVIEW_END_MARKER = "<!-- cyberpunk:end:sdd-review-definition -->"
+export const JUDGMENT_DAY_START_MARKER = "<!-- cyberpunk:start:judgment-day-opencode-reviewers -->"
+export const JUDGMENT_DAY_END_MARKER = "<!-- cyberpunk:end:judgment-day-opencode-reviewers -->"
+export const ORCHESTRATOR_JUDGMENT_DAY_START_MARKER = "<!-- cyberpunk:start:orchestrator-judgment-day-selection -->"
+export const ORCHESTRATOR_JUDGMENT_DAY_END_MARKER = "<!-- cyberpunk:end:orchestrator-judgment-day-selection -->"
 export const ORCHESTRATOR_REVIEW_GATE_START_MARKER = "<!-- cyberpunk:start:sdd-review-gate -->"
 export const ORCHESTRATOR_REVIEW_GATE_END_MARKER = "<!-- cyberpunk:end:sdd-review-gate -->"
 
@@ -96,24 +100,54 @@ Approved criteria: zero CRITICAL findings and zero WARNING (real) findings.
 `.trim()
 
 export const ORCHESTRATOR_REVIEW_GATE_TEMPLATE = `
-### SDD Review Gate — Judgment Day Before Verify
+### SDD Quality Phase — Verify + Judgment Day
 
-After \`sdd-apply\` completes, do NOT launch \`sdd-verify\` directly, even if \`sdd-apply.next_recommended\` says \`sdd-verify\`.
+After \`sdd-apply\` completes, do NOT treat \`sdd-apply.next_recommended: sdd-verify\` as permission to run a standalone verify step.
 
 \`sdd-apply.next_recommended\` is advisory only. The orchestrator owns the phase order.
 
-First run the SDD Review Gate:
+When the next phase is \`sdd-verify\`, run a composite Quality Phase:
 
-1. Load \`judgment-day\` if available.
-2. Launch Judgment Day using two blind reviewers in parallel: Judge A with \`sdd-review\`, Judge B with \`sdd-review-adversary\`.
+1. Launch \`sdd-verify\` and Judgment Day in parallel.
+2. For Judgment Day, launch two blind reviewers in parallel: Judge A with \`sdd-review\`, Judge B with \`sdd-review-adversary\`.
    If \`sdd-review-adversary\` is unavailable, fall back to two \`sdd-review\` judges.
 3. Pass both judges the same target, changed files, apply-progress reference, and SDD Review criteria.
-4. Synthesize results using Judgment Day rules.
-5. If Judgment Day returns \`JUDGMENT: APPROVED\`, then launch \`sdd-verify\`.
-6. If Judgment Day returns \`JUDGMENT: ESCALATED\` or confirmed CRITICAL / WARNING (real) findings, do not run verify.
-7. If fixes are applied, re-run Judgment Day before verify.
+4. Wait for all three sub-agents: \`sdd-verify\`, Judge A, and Judge B.
+5. Synthesize one Quality Phase result from:
+   - verify CRITICAL/WARNING/SUGGESTION findings and final verdict;
+   - Judgment Day confirmed/suspect/contradiction/INFO buckets;
+   - confirmed CRITICAL or WARNING (real) review findings.
+6. If verify passes and Judgment Day returns \`JUDGMENT: APPROVED\`, continue to archive/next phase.
+7. If verify fails, Judgment Day escalates, or confirmed CRITICAL / WARNING (real) findings exist, do not archive. Send one consolidated fix packet to \`sdd-apply\`, then re-run the composite Quality Phase.
 
-\`sdd-verify\` is allowed only after Judgment Day approval.
+When no \`sdd-verify\` phase applies, Judgment Day may still run normally as an independent review workflow.
+`.trim()
+
+export const JUDGMENT_DAY_REVIEWER_SELECTION_TEMPLATE = `
+## Cyberpunk OpenCode Reviewer Selection
+
+When Judgment Day is invoked for code review in OpenCode, prefer model-diverse SDD reviewers:
+
+- Judge A: launch \`sdd-review\`.
+- Judge B: launch \`sdd-review-adversary\`.
+- Pass both judges the same target, changed files, standards, and review criteria.
+- Do not launch two identical \`sdd-review\` judges when \`sdd-review-adversary\` exists and is allowed.
+- If \`sdd-review-adversary\` is unavailable, fall back to two \`sdd-review\` judges and report the fallback in Skill Resolution.
+
+This rule applies to standalone Judgment Day reviews and to SDD composite quality phases.
+`.trim()
+
+export const ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE = `
+### Judgment Day Agent Selection
+
+Whenever Judgment Day is invoked for code review, including standalone Judgment Day and SDD Quality Phase:
+
+- Judge A MUST use \`sdd-review\`.
+- Judge B MUST use \`sdd-review-adversary\`.
+- Do not launch two \`sdd-review\` judges when \`sdd-review-adversary\` exists and is allowed.
+- Before fallback, check \`opencode.json\` agent definitions and task permissions.
+- Fall back to two \`sdd-review\` judges only if \`sdd-review-adversary\` is missing or not allowed.
+- Report the selected judge agents in the Judgment Day summary.
 `.trim()
 
 const REQUIRED_OPENCODE_SDD_ASSETS = [
@@ -152,6 +186,11 @@ function getSddReviewSkillPath(): string {
   return join(home, ".config", "opencode", "skills", "sdd-review", "SKILL.md")
 }
 
+function getJudgmentDaySkillPath(): string {
+  const home = getHomeDirAuto()
+  return join(home, ".config", "opencode", "skills", "judgment-day", "SKILL.md")
+}
+
 function getOpenCodeSddAssetPath(parts: readonly string[]): string {
   const home = getHomeDirAuto()
   return join(home, ".config", "opencode", ...parts)
@@ -182,12 +221,28 @@ function isSddReviewPatched(): boolean {
   return extracted?.managed.trim() === SDD_REVIEW_DEFINITION_TEMPLATE
 }
 
+function isJudgmentDayPatched(): boolean {
+  const path = getJudgmentDaySkillPath()
+  if (!existsSync(path)) return false
+  const content = readFileSync(path, "utf8")
+  const extracted = extractBetweenMarkers(content, JUDGMENT_DAY_START_MARKER, JUDGMENT_DAY_END_MARKER)
+  return extracted?.managed.trim() === JUDGMENT_DAY_REVIEWER_SELECTION_TEMPLATE
+}
+
 function isOrchestratorReviewGatePatched(): boolean {
   const config = readOpenCodeConfig()
   const prompt = config?.agent?.["gentle-orchestrator"]?.prompt
   if (typeof prompt !== "string") return false
   const extracted = extractBetweenMarkers(prompt, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_END_MARKER)
   return extracted?.managed.trim() === ORCHESTRATOR_REVIEW_GATE_TEMPLATE
+}
+
+function isOrchestratorJudgmentDaySelectionPatched(): boolean {
+  const config = readOpenCodeConfig()
+  const prompt = config?.agent?.["gentle-orchestrator"]?.prompt
+  if (typeof prompt !== "string") return false
+  const extracted = extractBetweenMarkers(prompt, ORCHESTRATOR_JUDGMENT_DAY_START_MARKER, ORCHESTRATOR_JUDGMENT_DAY_END_MARKER)
+  return extracted?.managed.trim() === ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE
 }
 
 export function detectOpenCodeSddReadiness(): OpenCodeSddReadiness {
@@ -298,25 +353,46 @@ export function patchSddReviewSkill(): boolean {
   return patchMarkdownFile(getSddReviewSkillPath(), SDD_REVIEW_START_MARKER, SDD_REVIEW_END_MARKER, SDD_REVIEW_DEFINITION_TEMPLATE)
 }
 
+export function patchJudgmentDaySkill(): boolean {
+  return patchMarkdownFile(getJudgmentDaySkillPath(), JUDGMENT_DAY_START_MARKER, JUDGMENT_DAY_END_MARKER, JUDGMENT_DAY_REVIEWER_SELECTION_TEMPLATE)
+}
+
 export function patchOpenCodeSddOrchestrator(): boolean {
   const config = readOpenCodeConfig()
   if (!config?.agent || typeof config.agent !== "object") return false
   const orchestrator = config.agent["gentle-orchestrator"]
   if (!orchestrator || typeof orchestrator.prompt !== "string") return false
 
-  const prompt = orchestrator.prompt
-  const markedSection = `\n${ORCHESTRATOR_REVIEW_GATE_START_MARKER}\n${ORCHESTRATOR_REVIEW_GATE_TEMPLATE}\n${ORCHESTRATOR_REVIEW_GATE_END_MARKER}\n`
-  let nextPrompt = prompt
+  let nextPrompt = orchestrator.prompt
   let promptChanged = false
-  if (!prompt.includes(ORCHESTRATOR_REVIEW_GATE_START_MARKER)) {
-    const insertAfter = "### Review Workload Guard (MANDATORY)"
-    const idx = prompt.indexOf(insertAfter)
+
+  const selectionMarkedSection = `\n${ORCHESTRATOR_JUDGMENT_DAY_START_MARKER}\n${ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE}\n${ORCHESTRATOR_JUDGMENT_DAY_END_MARKER}\n`
+  if (!nextPrompt.includes(ORCHESTRATOR_JUDGMENT_DAY_START_MARKER)) {
+    const insertAfter = "### Dependency Graph"
+    const idx = nextPrompt.indexOf(insertAfter)
     nextPrompt = idx === -1
-      ? prompt.trimEnd() + "\n\n" + markedSection
-      : prompt.slice(0, idx) + markedSection + "\n" + prompt.slice(idx)
+      ? nextPrompt.trimEnd() + "\n\n" + selectionMarkedSection
+      : nextPrompt.slice(0, idx) + selectionMarkedSection + "\n" + nextPrompt.slice(idx)
     promptChanged = true
   } else {
-    const extracted = extractBetweenMarkers(prompt, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_END_MARKER)
+    const extracted = extractBetweenMarkers(nextPrompt, ORCHESTRATOR_JUDGMENT_DAY_START_MARKER, ORCHESTRATOR_JUDGMENT_DAY_END_MARKER)
+    if (!extracted) return false
+    if (extracted.managed.trim() !== ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE) {
+      nextPrompt = extracted.before + ORCHESTRATOR_JUDGMENT_DAY_START_MARKER + "\n" + ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE + "\n" + ORCHESTRATOR_JUDGMENT_DAY_END_MARKER + extracted.after
+      promptChanged = true
+    }
+  }
+
+  const markedSection = `\n${ORCHESTRATOR_REVIEW_GATE_START_MARKER}\n${ORCHESTRATOR_REVIEW_GATE_TEMPLATE}\n${ORCHESTRATOR_REVIEW_GATE_END_MARKER}\n`
+  if (!nextPrompt.includes(ORCHESTRATOR_REVIEW_GATE_START_MARKER)) {
+    const insertAfter = "### Review Workload Guard (MANDATORY)"
+    const idx = nextPrompt.indexOf(insertAfter)
+    nextPrompt = idx === -1
+      ? nextPrompt.trimEnd() + "\n\n" + markedSection
+      : nextPrompt.slice(0, idx) + markedSection + "\n" + nextPrompt.slice(idx)
+    promptChanged = true
+  } else {
+    const extracted = extractBetweenMarkers(nextPrompt, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_END_MARKER)
     if (!extracted) return false
     if (extracted.managed.trim() !== ORCHESTRATOR_REVIEW_GATE_TEMPLATE) {
       nextPrompt = extracted.before + ORCHESTRATOR_REVIEW_GATE_START_MARKER + "\n" + ORCHESTRATOR_REVIEW_GATE_TEMPLATE + "\n" + ORCHESTRATOR_REVIEW_GATE_END_MARKER + extracted.after
@@ -373,14 +449,29 @@ export function unpatchSddReviewSkill(): boolean {
   return unpatchMarkdownFile(getSddReviewSkillPath(), SDD_REVIEW_START_MARKER, SDD_REVIEW_END_MARKER)
 }
 
+export function unpatchJudgmentDaySkill(): boolean {
+  return unpatchMarkdownFile(getJudgmentDaySkillPath(), JUDGMENT_DAY_START_MARKER, JUDGMENT_DAY_END_MARKER)
+}
+
 export function unpatchOpenCodeSddOrchestrator(): boolean {
   const config = readOpenCodeConfig()
   if (!config?.agent || typeof config.agent !== "object") return false
   const orchestrator = config.agent["gentle-orchestrator"]
   if (!orchestrator || typeof orchestrator.prompt !== "string") return false
-  const extracted = extractBetweenMarkers(orchestrator.prompt, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_END_MARKER)
-  if (!extracted) return false
-  config.agent["gentle-orchestrator"] = { ...orchestrator, prompt: extracted.before + extracted.after }
+  let nextPrompt = orchestrator.prompt
+  let changed = false
+  const gateExtracted = extractBetweenMarkers(nextPrompt, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_END_MARKER)
+  if (gateExtracted) {
+    nextPrompt = gateExtracted.before + gateExtracted.after
+    changed = true
+  }
+  const selectionExtracted = extractBetweenMarkers(nextPrompt, ORCHESTRATOR_JUDGMENT_DAY_START_MARKER, ORCHESTRATOR_JUDGMENT_DAY_END_MARKER)
+  if (selectionExtracted) {
+    nextPrompt = selectionExtracted.before + selectionExtracted.after
+    changed = true
+  }
+  if (!changed) return false
+  config.agent["gentle-orchestrator"] = { ...orchestrator, prompt: nextPrompt }
   writeOpenCodeConfig(config)
   return true
 }
@@ -443,12 +534,13 @@ export function checkSddIntegrationDoctor(ctx: DoctorContext): DoctorCheck[] {
     } else {
       // Check if content matches expected
       const extracted = extractBetweenMarkers(content, START_MARKER, END_MARKER)
-      if (extracted && extracted.managed.trim() === MANAGED_SDD_TEMPLATE && isSddReviewPatched() && isOrchestratorReviewGatePatched()) {
+      const judgmentDayOk = !existsSync(getJudgmentDaySkillPath()) || isJudgmentDayPatched()
+      if (extracted && extracted.managed.trim() === MANAGED_SDD_TEMPLATE && isSddReviewPatched() && isOrchestratorReviewGatePatched() && isOrchestratorJudgmentDaySelectionPatched() && judgmentDayOk) {
         checks.push({
           id: "sdd-integration:patching",
           label: "Patching sdd-phase-common.md",
           status: "pass",
-          message: "Section E/F, sdd-review y orchestrator review gate correctamente aplicados",
+          message: "Section E/F, sdd-review, Judgment Day y orchestrator review gate correctamente aplicados",
           fixable: false,
         })
       } else {
@@ -488,6 +580,7 @@ export function getSddIntegrationComponent(): ComponentModule {
 
       const patched = patchSddPhaseCommon()
       const reviewPatched = patchSddReviewSkill()
+      const judgmentDayPatched = patchJudgmentDaySkill()
       const orchestratorPatched = patchOpenCodeSddOrchestrator()
 
       // Update config
@@ -502,9 +595,9 @@ export function getSddIntegrationComponent(): ComponentModule {
       return {
         component: "sdd-integration",
         action: "install",
-        status: patched || reviewPatched || orchestratorPatched ? "success" : "skipped",
-        message: patched || reviewPatched || orchestratorPatched
-          ? "SDD Integration instalada, review gate y definición sdd-review actualizados"
+        status: patched || reviewPatched || judgmentDayPatched || orchestratorPatched ? "success" : "skipped",
+        message: patched || reviewPatched || judgmentDayPatched || orchestratorPatched
+          ? "SDD Integration instalada, review gate, Judgment Day y sdd-review actualizados"
           : "SDD Integration ya instalada y actualizada",
       }
     },
@@ -512,6 +605,7 @@ export function getSddIntegrationComponent(): ComponentModule {
     async uninstall(): Promise<InstallResult> {
       const removed = unpatchSddPhaseCommon()
       const reviewRemoved = unpatchSddReviewSkill()
+      const judgmentDayRemoved = unpatchJudgmentDaySkill()
       const orchestratorRemoved = unpatchOpenCodeSddOrchestrator()
 
       // Update config
@@ -523,7 +617,7 @@ export function getSddIntegrationComponent(): ComponentModule {
         component: "sdd-integration",
         action: "uninstall",
         status: "success",
-        message: removed || reviewRemoved || orchestratorRemoved
+        message: removed || reviewRemoved || judgmentDayRemoved || orchestratorRemoved
           ? "SDD Integration desinstalada, marcadores removidos"
           : "SDD Integration desinstalada (sin marcadores para remover)",
       }
@@ -540,7 +634,8 @@ export function getSddIntegrationComponent(): ComponentModule {
         }
       }
 
-      const patched = isSddPatched() && isSddReviewPatched() && isOrchestratorReviewGatePatched()
+      const judgmentDayOk = !existsSync(getJudgmentDaySkillPath()) || isJudgmentDayPatched()
+      const patched = isSddPatched() && isSddReviewPatched() && isOrchestratorReviewGatePatched() && isOrchestratorJudgmentDaySelectionPatched() && judgmentDayOk
       return {
         id: "sdd-integration",
         label: COMPONENT_LABELS["sdd-integration"],

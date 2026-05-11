@@ -11,7 +11,7 @@ import { chmodSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, 
 import { join } from "path"
 
 import { createTempHome } from "./helpers/test-home"
-import { ORCHESTRATOR_REVIEW_GATE_END_MARKER, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_TEMPLATE, SDD_REVIEW_DEFINITION_TEMPLATE, SDD_REVIEW_END_MARKER, SDD_REVIEW_START_MARKER } from "../src/components/sdd-integration"
+import { JUDGMENT_DAY_END_MARKER, JUDGMENT_DAY_REVIEWER_SELECTION_TEMPLATE, JUDGMENT_DAY_START_MARKER, ORCHESTRATOR_JUDGMENT_DAY_END_MARKER, ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE, ORCHESTRATOR_JUDGMENT_DAY_START_MARKER, ORCHESTRATOR_REVIEW_GATE_END_MARKER, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_TEMPLATE, SDD_REVIEW_DEFINITION_TEMPLATE, SDD_REVIEW_END_MARKER, SDD_REVIEW_START_MARKER } from "../src/components/sdd-integration"
 
 async function withHome<T>(home: string, run: () => Promise<T> | T): Promise<T> {
   const originalHome = process.env.HOME
@@ -138,7 +138,7 @@ function createHealthyOpenCode() {
   writeFileSync(OPENCODE_JSON, JSON.stringify({
     agent: {
       "gentle-orchestrator": {
-        prompt: `# Orchestrator\n\n${ORCHESTRATOR_REVIEW_GATE_START_MARKER}\n${ORCHESTRATOR_REVIEW_GATE_TEMPLATE}\n${ORCHESTRATOR_REVIEW_GATE_END_MARKER}\n`,
+        prompt: `# Orchestrator\n\n${ORCHESTRATOR_JUDGMENT_DAY_START_MARKER}\n${ORCHESTRATOR_JUDGMENT_DAY_SELECTION_TEMPLATE}\n${ORCHESTRATOR_JUDGMENT_DAY_END_MARKER}\n\n${ORCHESTRATOR_REVIEW_GATE_START_MARKER}\n${ORCHESTRATOR_REVIEW_GATE_TEMPLATE}\n${ORCHESTRATOR_REVIEW_GATE_END_MARKER}\n`,
         permission: { task: { "sdd-review": "allow" } },
       },
       "sdd-review": { model: "openai/gpt-5.5" },
@@ -179,6 +179,9 @@ function createHealthySddAssets() {
       : `# ${skill}\n`
     writeFileSync(join(skillDir, "SKILL.md"), content)
   }
+  const judgmentDir = join(SKILLS_ROOT_DIR, "judgment-day")
+  mkdirSync(judgmentDir, { recursive: true })
+  writeFileSync(join(judgmentDir, "SKILL.md"), `# judgment-day\n\n${JUDGMENT_DAY_START_MARKER}\n${JUDGMENT_DAY_REVIEWER_SELECTION_TEMPLATE}\n${JUDGMENT_DAY_END_MARKER}\n`)
 }
 
 function createHealthyTheme() {
