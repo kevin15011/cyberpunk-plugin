@@ -13,7 +13,7 @@ import type { UpgradeResult } from "../commands/upgrade"
 import type { ToolUpdateResult, ToolUpdateStatus, UpdateTool } from "../updates/types"
 import { createUpdateManager } from "../updates/manager"
 import type { AgentTarget } from "../domain/environment"
-import { configureSddReviewModel, getConfiguredSddReviewModel, listAvailableOpenCodeModels } from "../opencode-config"
+import { configureSddReviewModel, getConfiguredSddReviewModel, listAvailableOpenCodeModels, type SddReviewAgentName } from "../opencode-config"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 
@@ -78,17 +78,23 @@ export async function loadOpenCodeModelProviders() {
   return listAvailableOpenCodeModels()
 }
 
-export async function loadConfiguredSddReviewModel() {
-  return getConfiguredSddReviewModel()
+export async function loadConfiguredSddReviewModels() {
+  return {
+    review: getConfiguredSddReviewModel(undefined, "sdd-review"),
+    adversary: getConfiguredSddReviewModel(undefined, "sdd-review-adversary"),
+  }
 }
 
-export async function configureOpenCodeSddReviewModel(modelRef: string): Promise<void> {
-  const result = configureSddReviewModel(modelRef)
+export async function configureOpenCodeSddReviewModel(modelRef: string, agentName: SddReviewAgentName = "sdd-review"): Promise<void> {
+  const result = configureSddReviewModel(modelRef, agentName)
   if (result.warning) throw new Error(result.warning)
   const config = loadConfig()
+  const review = { ...(config.sdd?.review ?? {}) }
+  if (agentName === "sdd-review-adversary") review.adversaryModel = modelRef
+  else review.model = modelRef
   config.sdd = {
     ...(config.sdd ?? {}),
-    review: { ...(config.sdd?.review ?? {}), model: modelRef },
+    review,
     judgmentDay: { mode: config.sdd?.judgmentDay?.mode ?? "ask" },
   }
   saveConfig(config)

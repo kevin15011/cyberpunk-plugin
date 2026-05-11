@@ -44,6 +44,8 @@ export interface OpenCodeModelProviderGroup {
   models: OpenCodeModelChoice[]
 }
 
+export type SddReviewAgentName = "sdd-review" | "sdd-review-adversary"
+
 export function getOpenCodeConfigDir(): string {
   const home = getHomeDirAuto()
   return join(home, ".config", "opencode")
@@ -231,25 +233,43 @@ export function listAvailableOpenCodeModels(): OpenCodeModelProviderGroup[] {
   }
 }
 
-export function configureSddReviewModel(modelRef: string): { changed: boolean; warning?: string } {
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function getSddReviewBaseAgent(config: OpenCodeConfig): Record<string, unknown> {
+  const existing = isPlainRecord(config.agent?.["sdd-review"]) ? config.agent!["sdd-review"] : {}
+  return {
+    ...existing,
+    description: existing.description ?? "Code review using assigned model against specs and design decisions",
+    hidden: existing.hidden ?? true,
+    mode: existing.mode ?? "subagent",
+    prompt: existing.prompt ?? "{file:~/.config/opencode/prompts/sdd/sdd-review.md}",
+    tools: existing.tools ?? { bash: true, read: true, write: true },
+  }
+}
+
+export function configureSddReviewModel(modelRef: string, agentName: SddReviewAgentName = "sdd-review"): { changed: boolean; warning?: string } {
   if (!splitModelRef(modelRef)) return { changed: false, warning: `Invalid OpenCode model ref: ${modelRef}` }
   const readResult = readOpenCodeConfigDetailed()
   if (!readResult.ok && readResult.exists) {
     return { changed: false, warning: `OpenCode config is invalid JSON — refusing to overwrite: ${readResult.error}` }
   }
   const config = readResult.ok ? readResult.config : {}
-  config.agent = config.agent && typeof config.agent === "object" ? config.agent : {}
-  const previous = config.agent["sdd-review"]?.model
-  config.agent["sdd-review"] = {
-    ...(config.agent["sdd-review"] ?? {}),
+  config.agent = isPlainRecord(config.agent) ? config.agent as Record<string, Record<string, unknown>> : {}
+  const previous = config.agent[agentName]?.model
+  const base = agentName === "sdd-review-adversary" ? getSddReviewBaseAgent(config) : {}
+  config.agent[agentName] = {
+    ...base,
+    ...(isPlainRecord(config.agent[agentName]) ? config.agent[agentName] : {}),
     model: modelRef,
   }
   writeOpenCodeConfig(config)
   return { changed: previous !== modelRef }
 }
 
-export function getConfiguredSddReviewModel(config: OpenCodeConfig | null = readOpenCodeConfig()): string | undefined {
-  const model = config?.agent?.["sdd-review"]?.model
+export function getConfiguredSddReviewModel(config: OpenCodeConfig | null = readOpenCodeConfig(), agentName: SddReviewAgentName = "sdd-review"): string | undefined {
+  const model = config?.agent?.[agentName]?.model
   return typeof model === "string" && splitModelRef(model) ? model : undefined
 }
 
@@ -268,10 +288,30 @@ export function ensureSddReviewTaskPermission(config: OpenCodeConfig): boolean {
   const taskPermission = permission.task && typeof permission.task === "object"
     ? permission.task as Record<string, unknown>
     : {}
-  if (taskPermission["sdd-review"] === "allow") return false
-  taskPermission["sdd-review"] = "allow"
+  let changed = false
+  if (taskPermission["sdd-review"] !== "allow") {
+    taskPermission["sdd-review"] = "allow"
+    changed = true
+  }
+  if (taskPermission["sdd-review-adversary"] !== "allow") {
+    taskPermission["sdd-review-adversary"] = "allow"
+    changed = true
+  }
   permission.task = taskPermission
   config.agent["gentle-orchestrator"] = { ...orchestrator, permission }
+  return changed
+}
+
+export function ensureSddReviewAdversaryAgent(config: OpenCodeConfig): boolean {
+  config.agent = isPlainRecord(config.agent) ? config.agent as Record<string, Record<string, unknown>> : {}
+  const review = config.agent["sdd-review"]
+  const adversary = config.agent["sdd-review-adversary"]
+  if (!isPlainRecord(review) || typeof review.model !== "string") return false
+  if (isPlainRecord(adversary)) return false
+  config.agent["sdd-review-adversary"] = {
+    ...getSddReviewBaseAgent(config),
+    model: review.model,
+  }
   return true
 }
 

@@ -7,7 +7,7 @@ import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
-import { ensureSddReviewTaskPermission, readOpenCodeConfig, removePrimaryClaudeReviewAgent, writeOpenCodeConfig } from "../opencode-config"
+import { ensureSddReviewAdversaryAgent, ensureSddReviewTaskPermission, readOpenCodeConfig, removePrimaryClaudeReviewAgent, writeOpenCodeConfig } from "../opencode-config"
 
 // --- Patching constants for sdd-phase-common.md Section E ---
 export const START_MARKER = "<!-- cyberpunk:start:section-e -->"
@@ -105,7 +105,8 @@ After \`sdd-apply\` completes, do NOT launch \`sdd-verify\` directly, even if \`
 First run the SDD Review Gate:
 
 1. Load \`judgment-day\` if available.
-2. Launch Judgment Day using two blind \`sdd-review\` agents in parallel.
+2. Launch Judgment Day using two blind reviewers in parallel: Judge A with \`sdd-review\`, Judge B with \`sdd-review-adversary\`.
+   If \`sdd-review-adversary\` is unavailable, fall back to two \`sdd-review\` judges.
 3. Pass both judges the same target, changed files, apply-progress reference, and SDD Review criteria.
 4. Synthesize results using Judgment Day rules.
 5. If Judgment Day returns \`JUDGMENT: APPROVED\`, then launch \`sdd-verify\`.
@@ -326,6 +327,7 @@ export function patchOpenCodeSddOrchestrator(): boolean {
   config.agent["gentle-orchestrator"] = { ...orchestrator, prompt: nextPrompt }
   let changed = promptChanged
   changed = ensureSddReviewTaskPermission(config) || changed
+  changed = ensureSddReviewAdversaryAgent(config) || changed
   changed = removePrimaryClaudeReviewAgent(config) || changed
   if (!changed) return false
   writeOpenCodeConfig(config)

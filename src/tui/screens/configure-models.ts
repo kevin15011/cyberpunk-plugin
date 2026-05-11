@@ -8,7 +8,7 @@ export const configureModelsScreen: ScreenModule = {
     const modelConfig = state.modelConfig
     const lines: string[] = []
     lines.push(bold(cyan("Configure models")))
-    lines.push(gray("Seleccioná el provider y modelo para agent.sdd-review.model"))
+    lines.push(gray("Seleccioná qué reviewer configurar y luego provider/modelo"))
     lines.push("")
 
     if (!modelConfig || modelConfig.loading) {
@@ -22,7 +22,12 @@ export const configureModelsScreen: ScreenModule = {
     }
 
     if (modelConfig.currentModel) {
-      lines.push(gray(`  Modelo actual: ${modelConfig.currentModel}`))
+      lines.push(gray(`  SDD Review: ${modelConfig.currentModel}`))
+    }
+    if (modelConfig.currentAdversaryModel) {
+      lines.push(gray(`  SDD Review Adversary: ${modelConfig.currentAdversaryModel}`))
+    }
+    if (modelConfig.currentModel || modelConfig.currentAdversaryModel) {
       lines.push("")
     }
 
@@ -31,6 +36,24 @@ export const configureModelsScreen: ScreenModule = {
       lines.push(gray("  Ejecutá `opencode models` para verificar providers/modelos disponibles."))
       lines.push("")
       lines.push(gray("  Esc volver · h home"))
+      return lines
+    }
+
+    if (!modelConfig.targetAgent) {
+      const items = [
+        { agent: "sdd-review" as const, label: "SDD Review", current: modelConfig.currentModel },
+        { agent: "sdd-review-adversary" as const, label: "SDD Review Adversary", current: modelConfig.currentAdversaryModel },
+      ]
+      lines.push(gray("  Reviewers:"))
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        const cursor = state.cursor === i ? cyan(">") : " "
+        const label = state.cursor === i ? bold(item.label) : item.label
+        const current = item.current ? gray(`  ${item.current}`) : yellow("  sin configurar")
+        lines.push(`  ${cursor} ${label}${current}`)
+      }
+      lines.push("")
+      lines.push(gray("  ↑/↓ navegar · Enter seleccionar · Esc volver · h home"))
       return lines
     }
 
@@ -51,7 +74,8 @@ export const configureModelsScreen: ScreenModule = {
       for (let i = 0; i < selectedProvider.models.length; i++) {
         const model = selectedProvider.models[i]
         const cursor = state.cursor === i ? cyan(">") : " "
-        const selected = model.modelRef === modelConfig.currentModel ? ` ${green("[selected]")}` : ""
+        const currentForTarget = modelConfig.targetAgent === "sdd-review-adversary" ? modelConfig.currentAdversaryModel : modelConfig.currentModel
+        const selected = model.modelRef === currentForTarget ? ` ${green("[selected]")}` : ""
         const label = state.cursor === i ? bold(model.modelName) : model.modelName
         lines.push(`  ${cursor} ${label}${selected}${gray(`  ${model.modelRef}`)}`)
       }
@@ -67,7 +91,7 @@ export const configureModelsScreen: ScreenModule = {
     if (!modelConfig || modelConfig.loading) return { state, intent: { type: "none" } }
 
     const selectedProvider = modelConfig.providers.find(provider => provider.providerId === modelConfig.selectedProviderId)
-    const itemCount = selectedProvider ? selectedProvider.models.length : modelConfig.providers.length
+    const itemCount = !modelConfig.targetAgent ? 2 : selectedProvider ? selectedProvider.models.length : modelConfig.providers.length
 
     switch (key.type) {
       case "up":
@@ -78,17 +102,23 @@ export const configureModelsScreen: ScreenModule = {
         if (selectedProvider) {
           return { state: { ...state, cursor: 0, modelConfig: { ...modelConfig, selectedProviderId: undefined } }, intent: { type: "none" } }
         }
+        if (modelConfig.targetAgent) {
+          return { state: { ...state, cursor: 0, modelConfig: { ...modelConfig, targetAgent: undefined } }, intent: { type: "none" } }
+        }
         return { state, intent: { type: "back" } }
       case "enter":
-        if (!selectedProvider) {
+        if (!modelConfig.targetAgent) {
+          const targetAgent = state.cursor === 1 ? "sdd-review-adversary" : "sdd-review"
+          return { state: { ...state, cursor: 0, modelConfig: { ...modelConfig, targetAgent } }, intent: { type: "none" } }
+        }
+        if (selectedProvider) {
+          const model = selectedProvider.models[state.cursor]
+          if (!model) return { state, intent: { type: "none" } }
+          return { state, intent: { type: "configure-sdd-review-model", modelRef: model.modelRef, agentName: modelConfig.targetAgent } }
+        } else {
           const provider = modelConfig.providers[state.cursor]
           if (!provider) return { state, intent: { type: "none" } }
           return { state: { ...state, cursor: 0, modelConfig: { ...modelConfig, selectedProviderId: provider.providerId } }, intent: { type: "none" } }
-        }
-        {
-          const model = selectedProvider.models[state.cursor]
-          if (!model) return { state, intent: { type: "none" } }
-          return { state, intent: { type: "configure-sdd-review-model", modelRef: model.modelRef } }
         }
       default:
         return { state, intent: { type: "none" } }

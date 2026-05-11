@@ -2,7 +2,7 @@
 
 import { createApp, updateWithIntent, view } from "./app"
 import { enableRawMode, disableRawMode, clearScreen, writeLines, hideCursor, showCursor, readKey } from "./terminal"
-import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startToolUpdateTask, loadOpenCodeModelProviders, configureOpenCodeSddReviewModel, loadConfiguredSddReviewModel } from "./adapters"
+import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startToolUpdateTask, loadOpenCodeModelProviders, configureOpenCodeSddReviewModel, loadConfiguredSddReviewModels } from "./adapters"
 import { route, pushRoute } from "./router"
 import { pink, bold, green, red, yellow } from "./theme"
 import type { TUIState, TaskKind } from "./types"
@@ -94,8 +94,8 @@ export async function runTUI(): Promise<void> {
           clearScreen()
           writeLines(view(state))
           try {
-            const [providers, currentModel] = await Promise.all([loadOpenCodeModelProviders(), loadConfiguredSddReviewModel()])
-            state = { ...state, modelConfig: { loading: false, providers, currentModel } }
+            const [providers, models] = await Promise.all([loadOpenCodeModelProviders(), loadConfiguredSddReviewModels()])
+            state = { ...state, modelConfig: { loading: false, providers, currentModel: models.review, currentAdversaryModel: models.adversary } }
           } catch (err) {
             state = { ...state, modelConfig: { loading: false, providers: [] } }
             state = { ...state, message: err instanceof Error ? err.message : String(err) }
@@ -108,15 +108,15 @@ export async function runTUI(): Promise<void> {
         } else if (intent.type === "run-upgrade") {
           state = await executeUpgradeTask(state)
         } else if (intent.type === "configure-sdd-review-model") {
-          state = await executeConfigureModel(state, intent.modelRef)
+          state = await executeConfigureModel(state, intent.modelRef, intent.agentName)
         } else if (needsModelConfigurationBeforeInstall(state, key)) {
           state = pushRoute(state, route("configure-models"))
           state = { ...state, modelConfig: { loading: true, providers: [], returnToInstall: true } }
           clearScreen()
           writeLines(view(state))
           try {
-            const [providers, currentModel] = await Promise.all([loadOpenCodeModelProviders(), loadConfiguredSddReviewModel()])
-            state = { ...state, modelConfig: { loading: false, providers, returnToInstall: true, currentModel } }
+            const [providers, models] = await Promise.all([loadOpenCodeModelProviders(), loadConfiguredSddReviewModels()])
+            state = { ...state, modelConfig: { loading: false, providers, returnToInstall: true, currentModel: models.review, currentAdversaryModel: models.adversary } }
           } catch (err) {
             state = { ...state, modelConfig: { loading: false, providers: [], returnToInstall: true } }
             state = { ...state, message: err instanceof Error ? err.message : String(err) }
@@ -159,17 +159,23 @@ function selectionIncludesSddIntegration(state: TUIState): boolean {
 function needsModelConfigurationBeforeInstall(state: TUIState, key: import("./types").KeyEvent): boolean {
   if (key.type !== "enter") return false
   if (state.route.id !== "install" || state._installPhase !== "confirm") return false
-  return selectionIncludesSddIntegration(state) && !getConfiguredSddReviewModel()
+  return selectionIncludesSddIntegration(state) && (!getConfiguredSddReviewModel() || !getConfiguredSddReviewModel(undefined, "sdd-review-adversary"))
 }
 
-async function executeConfigureModel(state: TUIState, modelRef: string): Promise<TUIState> {
+async function executeConfigureModel(state: TUIState, modelRef: string, agentName: "sdd-review" | "sdd-review-adversary"): Promise<TUIState> {
   const returnToInstall = state.modelConfig?.returnToInstall === true
   try {
-    await configureOpenCodeSddReviewModel(modelRef)
+    await configureOpenCodeSddReviewModel(modelRef, agentName)
+    const isAdversary = agentName === "sdd-review-adversary"
+    const label = isAdversary ? "SDD Review Adversary" : "SDD Review"
     state = {
       ...state,
-      message: `sdd-review model configurado: ${modelRef}`,
-      modelConfig: state.modelConfig ? { ...state.modelConfig, currentModel: modelRef } : state.modelConfig,
+      message: `${label} model configurado: ${modelRef}`,
+      modelConfig: state.modelConfig ? {
+        ...state.modelConfig,
+        currentModel: isAdversary ? state.modelConfig.currentModel : modelRef,
+        currentAdversaryModel: isAdversary ? modelRef : state.modelConfig.currentAdversaryModel,
+      } : state.modelConfig,
     }
   } catch (err) {
     return { ...state, message: err instanceof Error ? err.message : String(err) }

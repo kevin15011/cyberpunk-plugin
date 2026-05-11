@@ -43,6 +43,7 @@ export interface CyberpunkConfig {
   sdd?: {
     review?: {
       model?: string
+      adversaryModel?: string
     }
     judgmentDay?: {
       mode: "ask" | "auto" | "off"

@@ -1,7 +1,7 @@
 // tests/opencode-config-models.test.ts — OpenCode model catalog/config helpers
 
 import { describe, expect, test } from "bun:test"
-import { configureSddReviewModel, ensureSddReviewTaskPermission, getConfiguredSddReviewModel, getOpenCodeConfigPath, listConfiguredOpenCodeModels, parseOpenCodeModelListOutput, readOpenCodeConfig, removePrimaryClaudeReviewAgent } from "../src/opencode-config"
+import { configureSddReviewModel, ensureSddReviewAdversaryAgent, ensureSddReviewTaskPermission, getConfiguredSddReviewModel, getOpenCodeConfigPath, listConfiguredOpenCodeModels, parseOpenCodeModelListOutput, readOpenCodeConfig, removePrimaryClaudeReviewAgent } from "../src/opencode-config"
 import { afterEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs"
 import { dirname, join } from "path"
@@ -70,6 +70,15 @@ noise line with spaces
 
     expect(ensureSddReviewTaskPermission(config)).toBe(true)
     expect(config.agent["gentle-orchestrator"].permission.task["sdd-review"]).toBe("allow")
+    expect(config.agent["gentle-orchestrator"].permission.task["sdd-review-adversary"]).toBe("allow")
+  })
+
+  test("creates sdd-review-adversary from primary review agent", () => {
+    const config = { agent: { "sdd-review": { model: "openai/gpt-5.5", prompt: "{file:test}", tools: { read: true } } } }
+
+    expect(ensureSddReviewAdversaryAgent(config)).toBe(true)
+    expect(config.agent["sdd-review-adversary"].model).toBe("openai/gpt-5.5")
+    expect(config.agent["sdd-review-adversary"].prompt).toBe("{file:test}")
   })
 
   test("rejects invalid sdd-review model refs", () => {
@@ -108,5 +117,6 @@ noise line with spaces
   test("configured sdd-review model must be a valid provider/model ref", () => {
     expect(getConfiguredSddReviewModel({ agent: { "sdd-review": { model: "missing-provider-prefix" } } })).toBeUndefined()
     expect(getConfiguredSddReviewModel({ agent: { "sdd-review": { model: "openai/gpt-5.5" } } })).toBe("openai/gpt-5.5")
+    expect(getConfiguredSddReviewModel({ agent: { "sdd-review-adversary": { model: "opencode-go/kimi-k2.6" } } }, "sdd-review-adversary")).toBe("opencode-go/kimi-k2.6")
   })
 })

@@ -62,6 +62,8 @@ export interface TUIState {
     selectedProviderId?: string
     returnToInstall?: boolean
     currentModel?: string
+    currentAdversaryModel?: string
+    targetAgent?: "sdd-review" | "sdd-review-adversary"
   }
   /** Result view metadata: which task kind produced the results */
   resultView?: { kind: TaskKind; detailIndex?: number }
@@ -93,7 +95,7 @@ export type ScreenIntent =
   | { type: "run-doctor" }
   | { type: "run-doctor-fix" }
   | { type: "run-upgrade" }
-  | { type: "configure-sdd-review-model"; modelRef: string }
+  | { type: "configure-sdd-review-model"; modelRef: string; agentName: "sdd-review" | "sdd-review-adversary" }
   | { type: "none" }
 
 /** Result of a screen's update function */
