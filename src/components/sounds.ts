@@ -9,6 +9,7 @@ import { saveConfig } from "../config/save"
 import { COMPONENT_LABELS } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
+import { detectEnvironment } from "../platform/detect"
 
 function getSoundsDir(): string {
   const home = getHomeDirAuto()
@@ -80,6 +81,60 @@ function isFfmpegAvailable(): boolean {
   return isCommandOnPath("ffmpeg")
 }
 
+function getCommandError(error: unknown): string {
+  const output = error as { stderr?: Buffer | string; stdout?: Buffer | string }
+  const stderr = output?.stderr?.toString?.().trim()
+  const stdout = output?.stdout?.toString?.().trim()
+  if (stderr) return stderr
+  if (stdout) return stdout
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function addToProcessPath(path: string): void {
+  const separator = process.platform === "win32" ? ";" : ":"
+  const currentPath = process.env.PATH ?? ""
+  const entries = currentPath.split(separator).filter(Boolean)
+  if (!entries.includes(path)) {
+    process.env.PATH = [path, ...entries].join(separator)
+  }
+}
+
+function ensureHomebrewAvailable(): { ok: boolean; error?: string } {
+  addToProcessPath("/opt/homebrew/bin")
+  addToProcessPath("/usr/local/bin")
+
+  if (isCommandOnPath("brew")) return { ok: true }
+
+  try {
+    execSync('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', { stdio: "inherit", timeout: 600000 })
+    addToProcessPath("/opt/homebrew/bin")
+    addToProcessPath("/usr/local/bin")
+    return { ok: isCommandOnPath("brew"), error: isCommandOnPath("brew") ? undefined : "Homebrew se instaló pero brew no quedó disponible en PATH" }
+  } catch (error) {
+    return { ok: false, error: getCommandError(error) }
+  }
+}
+
+function installFfmpegAutomatically(): { ok: boolean; error?: string } {
+  const environment = detectEnvironment()
+  if (environment !== "darwin") {
+    return { ok: false, error: "instalación automática de ffmpeg sólo soportada en macOS por ahora" }
+  }
+
+  const homebrew = ensureHomebrewAvailable()
+  if (!homebrew.ok) {
+    return { ok: false, error: `Homebrew no disponible y no se pudo instalar automáticamente: ${homebrew.error}` }
+  }
+
+  try {
+    execSync("brew install ffmpeg", { stdio: "inherit", timeout: 300000 })
+    return { ok: isFfmpegAvailable(), error: isFfmpegAvailable() ? undefined : "brew terminó pero ffmpeg no quedó disponible en PATH" }
+  } catch (error) {
+    return { ok: false, error: getCommandError(error) }
+  }
+}
+
 function generateSound(file: string, args: string, outputDir: string): boolean {
   const outputPath = join(outputDir, file)
   const command = `ffmpeg -loglevel error -nostats ${args} ${JSON.stringify(outputPath)} >/dev/null 2>&1`
@@ -100,11 +155,14 @@ export function getSoundsComponent(): ComponentModule {
       const soundsDir = getSoundsDir()
 
       if (!isFfmpegAvailable()) {
-        return {
-          component: "sounds",
-          action: "install",
-          status: "error",
-          message: "ffmpeg no encontrado — instalá ffmpeg para generar sonidos",
+        const installed = installFfmpegAutomatically()
+        if (!installed.ok) {
+          return {
+            component: "sounds",
+            action: "install",
+            status: "error",
+            message: `ffmpeg no encontrado y no se pudo instalar automáticamente: ${installed.error}`,
+          }
         }
       }
 

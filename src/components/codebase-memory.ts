@@ -151,17 +151,32 @@ function isCurlAvailable(): boolean {
   return isCommandOnPath("curl")
 }
 
-function downloadBinary(): boolean {
+function isWgetAvailable(): boolean {
+  return isCommandOnPath("wget")
+}
+
+function getCommandError(error: unknown): string {
+  const output = error as { stderr?: Buffer | string; stdout?: Buffer | string }
+  const stderr = output?.stderr?.toString?.().trim()
+  const stdout = output?.stdout?.toString?.().trim()
+  if (stderr) return stderr
+  if (stdout) return stdout
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function downloadBinary(): { ok: boolean; error?: string } {
   try {
     const home = getHomeDirAuto()
     mkdirSync(join(home, ".local", "bin"), { recursive: true })
-    execSync(
-      `sh -c "curl -fsSL ${INSTALL_URL} | bash"`,
-      { stdio: "pipe", timeout: 30000 }
-    )
-    return isBinaryAvailable()
-  } catch {
-    return false
+    const command = isCurlAvailable()
+      ? `sh -c "curl -fsSL ${INSTALL_URL} | bash"`
+      : `sh -c "wget -qO- ${INSTALL_URL} | bash"`
+    execSync(command, { stdio: "pipe", timeout: 120000 })
+    const ok = isBinaryAvailable()
+    return { ok, error: ok ? undefined : "installer terminó pero codebase-memory-mcp no quedó ejecutable en ~/.local/bin ni PATH" }
+  } catch (error) {
+    return { ok: false, error: getCommandError(error) }
   }
 }
 
@@ -288,21 +303,21 @@ export function getCodebaseMemoryComponent(): ComponentModule {
       // Auto-download if missing
       let alreadyInstalled = isBinaryAvailable()
       if (!alreadyInstalled) {
-        if (!isCurlAvailable()) {
+        if (!isCurlAvailable() && !isWgetAvailable()) {
           return {
             component: "codebase-memory",
             action: "install",
             status: "error",
-            message: "curl no encontrado — necesitás curl para instalar codebase-memory-mcp",
+            message: "curl/wget no encontrados — necesitás uno para instalar codebase-memory-mcp automáticamente",
           }
         }
         const downloaded = downloadBinary()
-        if (!downloaded) {
+        if (!downloaded.ok) {
           return {
             component: "codebase-memory",
             action: "install",
             status: "error",
-            message: "Error al descargar codebase-memory-mcp — descargá manualmente de https://github.com/DeusData/codebase-memory-mcp",
+            message: `Error al descargar codebase-memory-mcp automáticamente: ${downloaded.error}`,
           }
         }
       }

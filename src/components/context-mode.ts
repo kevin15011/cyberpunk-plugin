@@ -87,12 +87,42 @@ function isContextModeInstalled(): boolean {
   return isCommandOnPath("context-mode")
 }
 
-function installContextModeGlobally(): boolean {
+function getCommandError(error: unknown): string {
+  const output = error as { stderr?: Buffer | string; stdout?: Buffer | string }
+  const stderr = output?.stderr?.toString?.().trim()
+  const stdout = output?.stdout?.toString?.().trim()
+  if (stderr) return stderr
+  if (stdout) return stdout
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+function addToProcessPath(path: string): void {
+  const currentPath = process.env.PATH ?? ""
+  const entries = currentPath.split(process.platform === "win32" ? ";" : ":").filter(Boolean)
+  if (!entries.includes(path)) {
+    process.env.PATH = [path, ...entries].join(process.platform === "win32" ? ";" : ":")
+  }
+}
+
+function installContextModeGlobally(): { ok: boolean; error?: string } {
+  let globalError: string | undefined
   try {
-    execSync("npm install -g context-mode", { stdio: "pipe" })
-    return true
-  } catch {
-    return false
+    execSync("npm install -g context-mode", { stdio: "pipe", timeout: 120000 })
+    return { ok: true }
+  } catch (error) {
+    globalError = getCommandError(error)
+  }
+
+  const userPrefix = join(getHomeDirAuto(), ".local", "npm-global")
+  const userBin = join(userPrefix, "bin")
+  try {
+    mkdirSync(userBin, { recursive: true })
+    execSync(`npm install -g context-mode --prefix ${JSON.stringify(userPrefix)}`, { stdio: "pipe", timeout: 120000 })
+    addToProcessPath(userBin)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: `global: ${globalError}; user-prefix: ${getCommandError(error)}` }
   }
 }
 
@@ -215,13 +245,13 @@ export function getContextModeComponent(): ComponentModule {
       // Install context-mode globally if not installed
       let alreadyInstalled = isContextModeInstalled()
       if (!alreadyInstalled) {
-        const ok = installContextModeGlobally()
-        if (!ok) {
+        const installed = installContextModeGlobally()
+        if (!installed.ok) {
           return {
             component: "context-mode",
             action: "install",
             status: "error",
-            message: "Error al instalar context-mode via npm",
+            message: `Error al instalar context-mode via npm: ${installed.error}`,
           }
         }
       }
