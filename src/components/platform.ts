@@ -18,7 +18,7 @@ export function getPlaybackInstallHint(environment = detectEnvironment()): strin
   }
 
   if (environment === "wsl") {
-    return "Install PulseAudio/PipeWire tools inside WSL (for example: sudo apt install pulseaudio-utils) and ensure Windows audio bridging is available"
+    return "Install PulseAudio/PipeWire playback tools that provide paplay inside WSL (for example: sudo apt install pulseaudio-utils) and ensure Windows audio bridging is available"
   }
 
   if (environment === "linux") {

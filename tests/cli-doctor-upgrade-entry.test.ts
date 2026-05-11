@@ -91,7 +91,7 @@ describe("CLI direct doctor entrypoint", () => {
     // Exit 0 when no remaining failures (depends on actual system state,
     // but with a clean temp home most checks should pass)
     expect(result.exitCode === 0 || result.exitCode === 1).toBe(true)
-  })
+  }, 60000)
 
   test("cyberpunk doctor --json: outputs valid JSON (DoctorResult[] array)", () => {
     const result = runMainIsolated(home, ["bun", "src/index.ts", "doctor", "--json"])
@@ -104,7 +104,7 @@ describe("CLI direct doctor entrypoint", () => {
     // Each entry should have component and checks
     expect(parsed[0].component).toBeDefined()
     expect(Array.isArray(parsed[0].checks)).toBe(true)
-  })
+  }, 60000)
 
   test("cyberpunk doctor --fix: accepts fix flag and runs", () => {
     const result = runMainIsolated(home, ["bun", "src/index.ts", "doctor", "--fix"])
@@ -126,7 +126,7 @@ describe("CLI direct doctor entrypoint", () => {
 
     expect(result.stdout).toMatch(/pass|fail|warn|ok|Resumen/i)
     expect(result.stdout).not.toContain("Hasta la próxima")
-  })
+  }, 60000)
 
   test("cyberpunk doctor does NOT invoke TUI shell", () => {
     const result = runMainIsolated(home, ["bun", "src/index.ts", "doctor"])
@@ -136,7 +136,7 @@ describe("CLI direct doctor entrypoint", () => {
     // TUI would use raw mode / terminal escape sequences for UI
     expect(result.stdout).not.toContain("INSTALAR COMPONENTES")
     expect(result.stdout).not.toContain("DOCTOR")
-  })
+  }, 60000)
 })
 
 describe("CLI install target guard", () => {

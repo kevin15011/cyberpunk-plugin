@@ -7,7 +7,7 @@
 // so they also resolve to tempDir.
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from "bun:test"
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync as ensureDirSync } from "fs"
+import { chmodSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync as ensureDirSync } from "fs"
 import { join } from "path"
 
 import { createTempHome, setDefaultConfig } from "./helpers/test-home"
@@ -21,6 +21,7 @@ let bootstrapTpmFn: typeof import("../src/components/tmux").bootstrapTpm
 
 let tempDir: string
 let originalHome: string | undefined
+let originalPath: string | undefined
 let fixture: ReturnType<typeof createTempHome>
 let TMUX_CONF_PATH: string
 let CONFIG_DIR: string
@@ -33,6 +34,7 @@ beforeAll(async () => {
   fixture = createTempHome("cyberpunk-tmux")
   tempDir = fixture.home
   originalHome = process.env.HOME
+  originalPath = process.env.PATH
   process.env.HOME = tempDir
 
   TMUX_CONF_PATH = join(tempDir, ".tmux.conf")
@@ -50,6 +52,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   process.env.HOME = originalHome
+  process.env.PATH = originalPath
   fixture.cleanup()
 })
 
@@ -62,6 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore()
+  process.env.PATH = originalPath
 })
 
 // --- Fixture helpers ---
@@ -511,11 +515,13 @@ describe("TPM bootstrap advisories", () => {
   test("install keeps managed config and reports advisory when git is missing", async () => {
     seedCyberpunkConfig()
     createUserTmuxConf("# user\n")
+    const binDir = join(tempDir, "tmux-no-git-bin")
+    ensureDirSync(binDir, { recursive: true })
+    writeFileSync(join(binDir, "tmux"), "#!/bin/sh\nexit 0\n", "utf8")
+    chmodSync(join(binDir, "tmux"), 0o755)
+    process.env.PATH = binDir
 
     const mod = await importTmuxWithExec((command) => {
-      if (command.includes("which tmux")) return "/usr/bin/tmux\n"
-      if (command.includes("which git")) throw new Error("git missing")
-      if (command.includes("which gitmux")) throw new Error("gitmux missing")
       return ""
     })
 

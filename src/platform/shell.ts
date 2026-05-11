@@ -1,6 +1,8 @@
 // src/platform/shell.ts — ShellInfo detection and command execution descriptors
 
 import { execSync } from "child_process"
+import { accessSync, constants } from "fs"
+import { delimiter, isAbsolute, join } from "path"
 import type { PlatformInfo, ShellInfo } from "../domain/environment"
 import { detectEnvironment } from "./detect"
 
@@ -10,6 +12,10 @@ import { detectEnvironment } from "./detect"
  */
 export function isCommandOnPath(command: string): boolean {
   const env = detectEnvironment()
+  if (env !== "windows") {
+    return isPosixCommandOnPath(command)
+  }
+
   const lookupCmd = env === "windows"
     ? `where ${command}`
     : `which ${command} 2>/dev/null`
@@ -19,6 +25,26 @@ export function isCommandOnPath(command: string): boolean {
   } catch {
     return false
   }
+}
+
+function isPosixCommandOnPath(command: string): boolean {
+  const candidates = isAbsolute(command) || command.includes("/")
+    ? [command]
+    : (process.env.PATH ?? "")
+      .split(delimiter)
+      .filter(Boolean)
+      .map(dir => join(dir, command))
+
+  for (const candidate of candidates) {
+    try {
+      accessSync(candidate, constants.X_OK)
+      return true
+    } catch {
+      // Keep searching PATH entries.
+    }
+  }
+
+  return false
 }
 
 /**

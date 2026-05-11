@@ -17,6 +17,7 @@ function getTmuxConfPath(): string {
 
 const MANAGED_START = "# cyberpunk-managed:start"
 const MANAGED_END = "# cyberpunk-managed:end"
+const TMUX_REPAIR_COMMAND_TIMEOUT_MS = 1500
 
 // Bundled tmux.conf content (read at build time, inlined for compiled binary)
 export const BUNDLED_TMUX_CONF = `# =============================================
@@ -206,6 +207,7 @@ export function cloneTpm(home: string): boolean {
     execSync(`git clone https://github.com/tmux-plugins/tpm ${JSON.stringify(getTpmDir(home))} >/dev/null 2>&1`, {
       stdio: "pipe",
       env: { ...process.env, HOME: home },
+      timeout: TMUX_REPAIR_COMMAND_TIMEOUT_MS,
     })
     return true
   } catch {
@@ -229,6 +231,7 @@ export function runTpmScript(
     execSync(`${JSON.stringify(scriptPath)} all >/dev/null 2>&1`, {
       stdio: "pipe",
       env: { ...process.env, HOME: home },
+      timeout: TMUX_REPAIR_COMMAND_TIMEOUT_MS,
     })
     return "ok"
   } catch {

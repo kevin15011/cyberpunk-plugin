@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs"
 import { basename, join } from "path"
 import { execSync } from "child_process"
 import { createHash } from "node:crypto"
-import { loadConfig } from "../config/load"
+import { loadConfig, readConfigRaw } from "../config/load"
 import { saveConfig } from "../config/save"
 import type { InstallMode } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
@@ -24,6 +24,8 @@ type UpgradeTestOverrides = {
   prepareDarwinBinary?: (path: string) => { attempted: boolean; guidance?: string }
 }
 
+const UPGRADE_TEST_OVERRIDES_KEY = Symbol.for("cyberpunk.upgrade.testOverrides")
+
 export type BinaryVerification = {
   expectedSha256: string
   actualSha256: string
@@ -31,7 +33,15 @@ export type BinaryVerification = {
   quarantineAttempted: boolean
 }
 
-let upgradeTestOverrides: UpgradeTestOverrides = {}
+function getUpgradeTestOverrides(): UpgradeTestOverrides {
+  const globalWithOverrides = globalThis as typeof globalThis & { [UPGRADE_TEST_OVERRIDES_KEY]?: UpgradeTestOverrides }
+  return globalWithOverrides[UPGRADE_TEST_OVERRIDES_KEY] ?? {}
+}
+
+function setUpgradeTestOverrides(overrides: UpgradeTestOverrides): void {
+  const globalWithOverrides = globalThis as typeof globalThis & { [UPGRADE_TEST_OVERRIDES_KEY]?: UpgradeTestOverrides }
+  globalWithOverrides[UPGRADE_TEST_OVERRIDES_KEY] = overrides
+}
 
 function getBinaryPath(): string {
   return join(
@@ -59,6 +69,7 @@ export interface UpgradeResult {
 // ── Helpers ───────────────────────────────────────────────────────
 
 function getRepoDir(): string {
+  const upgradeTestOverrides = getUpgradeTestOverrides()
   if (upgradeTestOverrides.getRepoDir) {
     return upgradeTestOverrides.getRepoDir()
   }
@@ -73,7 +84,20 @@ function getRepoDir(): string {
   return ""
 }
 
+function resolveUpgradeInstallMode(): InstallMode {
+  const raw = readConfigRaw().parsed
+  const rawMode = raw?.installMode
+  if (rawMode === "binary" || rawMode === "repo") return rawMode
+
+  if (existsSync(getBinaryPath()) && !existsSync(join(process.cwd(), ".git"))) {
+    return "binary"
+  }
+
+  return "repo"
+}
+
 function gitCommand(args: string, cwd?: string): string {
+  const upgradeTestOverrides = getUpgradeTestOverrides()
   if (upgradeTestOverrides.gitCommand) {
     return upgradeTestOverrides.gitCommand(args, cwd)
   }
@@ -90,11 +114,11 @@ function gitCommand(args: string, cwd?: string): string {
 }
 
 export function __setUpgradeTestOverrides(overrides: UpgradeTestOverrides): void {
-  upgradeTestOverrides = overrides
+  setUpgradeTestOverrides(overrides)
 }
 
 export function __resetUpgradeTestOverrides(): void {
-  upgradeTestOverrides = {}
+  setUpgradeTestOverrides({})
 }
 
 /**
@@ -211,6 +235,7 @@ export function getPlatformAsset(): string {
  * Fetch and parse SHA256 checksum from release checksums.txt for a given asset.
  */
 export async function fetchChecksums(tag: string, assetName: string, timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<string> {
+  const upgradeTestOverrides = getUpgradeTestOverrides()
   if (upgradeTestOverrides.fetchChecksums) {
     return upgradeTestOverrides.fetchChecksums(tag, assetName)
   }
@@ -235,6 +260,7 @@ export async function fetchChecksums(tag: string, assetName: string, timeoutMs =
  * Compute SHA256 hex digest of a file.
  */
 export async function computeFileSha256(filePath: string): Promise<string> {
+  const upgradeTestOverrides = getUpgradeTestOverrides()
   if (upgradeTestOverrides.computeFileSha256) {
     return await upgradeTestOverrides.computeFileSha256(filePath)
   }
@@ -274,6 +300,7 @@ async function writeResponseBodyToFile(resp: Response, filePath: string, timeout
  * Returns true if the binary can execute --help (or help subcommand).
  */
 export function smokeTestBinary(tmpPath: string): boolean {
+  const upgradeTestOverrides = getUpgradeTestOverrides()
   if (upgradeTestOverrides.smokeTestBinary) {
     return upgradeTestOverrides.smokeTestBinary(tmpPath)
   }
@@ -294,6 +321,7 @@ export function smokeTestBinary(tmpPath: string): boolean {
  * Returns { attempted: true } on success, or guidance string on failure.
  */
 export function prepareDarwinBinary(tmpPath: string): { attempted: boolean; guidance?: string } {
+  const upgradeTestOverrides = getUpgradeTestOverrides()
   if (upgradeTestOverrides.prepareDarwinBinary) {
     return upgradeTestOverrides.prepareDarwinBinary(tmpPath)
   }
@@ -632,8 +660,7 @@ export async function runBinaryUpgrade(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): 
 // ── Public API — dispatch by installMode ──────────────────────────
 
 export async function checkUpgrade(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<UpgradeStatus> {
-  const config = loadConfig()
-  const mode: InstallMode = config.installMode || "repo"
+  const mode = resolveUpgradeInstallMode()
 
   if (mode === "binary") {
     return checkBinaryUpgrade(timeoutMs)
@@ -644,7 +671,7 @@ export async function checkUpgrade(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Prom
 
 export async function runUpgrade(timeoutMs?: number): Promise<UpgradeResult> {
   const config = loadConfig()
-  const mode: InstallMode = config.installMode || "repo"
+  const mode = resolveUpgradeInstallMode()
   const resolvedTimeoutMs = timeoutMs ?? config.updates?.timeoutMs ?? DEFAULT_UPGRADE_TIMEOUT_MS
 
   if (mode === "binary") {

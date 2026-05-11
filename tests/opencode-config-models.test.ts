@@ -1,7 +1,7 @@
 // tests/opencode-config-models.test.ts — OpenCode model catalog/config helpers
 
 import { describe, expect, test } from "bun:test"
-import { configureSddReviewModel, ensureSddReviewAdversaryAgent, ensureSddReviewTaskPermission, getConfiguredSddReviewModel, getOpenCodeConfigPath, listConfiguredOpenCodeModels, parseOpenCodeModelListOutput, readOpenCodeConfig, removePrimaryClaudeReviewAgent } from "../src/opencode-config"
+import { configureSddReviewModel, ensureSddReviewAdversaryAgent, ensureSddReviewTaskPermission, getConfiguredSddReviewModel, getOpenCodeConfigPath, listAvailableOpenCodeModels, listConfiguredOpenCodeModels, parseOpenCodeModelListOutput, readOpenCodeConfig, removePrimaryClaudeReviewAgent } from "../src/opencode-config"
 import { afterEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs"
 import { dirname, join } from "path"
@@ -81,10 +81,79 @@ noise line with spaces
     expect(config.agent["sdd-review-adversary"].prompt).toBe("{file:test}")
   })
 
+  test("creates sdd-review-adversary without legacy missing prompt file references", () => {
+    const config = { agent: { "sdd-review": { model: "openai/gpt-5.5" } } }
+
+    expect(ensureSddReviewAdversaryAgent(config)).toBe(true)
+
+    const serialized = JSON.stringify(config)
+    expect(config.agent["sdd-review-adversary"].prompt).toBeUndefined()
+    expect(serialized).not.toContain("{file:~/.config/opencode/prompts/sdd/sdd-review.md}")
+    expect(serialized).not.toContain("{file:/.config/opencode/prompts/sdd/sdd-review.md}")
+  })
+
+  test("removes legacy sdd-review prompt file refs from existing review agents", () => {
+    const config = {
+      agent: {
+        "sdd-review": { model: "openai/gpt-5.5", prompt: "{file:~/.config/opencode/prompts/sdd/sdd-review.md}" },
+        "sdd-review-adversary": { model: "openai/gpt-5.5-fast", prompt: "{file:/.config/opencode/prompts/sdd/sdd-review.md}" },
+      },
+    }
+
+    expect(ensureSddReviewAdversaryAgent(config)).toBe(true)
+
+    expect(config.agent["sdd-review"].prompt).toBeUndefined()
+    expect(config.agent["sdd-review-adversary"].prompt).toBeUndefined()
+    expect(JSON.stringify(config)).not.toContain("prompts/sdd/sdd-review.md")
+  })
+
   test("rejects invalid sdd-review model refs", () => {
     const result = configureSddReviewModel("missing-provider-prefix")
     expect(result.changed).toBe(false)
     expect(result.warning).toContain("Invalid")
+  })
+
+  test("does not present stale configured model refs as available when OpenCode CLI catalog is available", () => {
+    tempHome = join(tmpdir(), `cyberpunk-opencode-models-${Date.now()}-${Math.random()}`)
+    process.env.HOME = tempHome
+    const configPath = getOpenCodeConfigPath()
+    mkdirSync(dirname(configPath), { recursive: true })
+    writeFileSync(configPath, JSON.stringify({ agent: { "sdd-review": { model: "stale/missing-model" } } }), "utf8")
+    const originalWhich = Bun.which
+    const originalSpawnSync = Bun.spawnSync
+    ;(Bun as any).which = () => "/usr/bin/opencode"
+    ;(Bun as any).spawnSync = () => ({ exitCode: 0, stdout: Buffer.from("openai/gpt-5.5\n"), stderr: Buffer.from("") })
+
+    try {
+      const refs = listAvailableOpenCodeModels().flatMap(group => group.models.map(model => model.modelRef))
+      expect(refs).toContain("openai/gpt-5.5")
+      expect(refs).not.toContain("stale/missing-model")
+    } finally {
+      ;(Bun as any).which = originalWhich
+      ;(Bun as any).spawnSync = originalSpawnSync
+    }
+  })
+
+  test("rejects sdd-review model refs missing from readable OpenCode CLI catalog", () => {
+    tempHome = join(tmpdir(), `cyberpunk-opencode-configure-${Date.now()}-${Math.random()}`)
+    process.env.HOME = tempHome
+    const configPath = getOpenCodeConfigPath()
+    mkdirSync(dirname(configPath), { recursive: true })
+    writeFileSync(configPath, JSON.stringify({ agent: {} }), "utf8")
+    const originalWhich = Bun.which
+    const originalSpawnSync = Bun.spawnSync
+    ;(Bun as any).which = () => "/usr/bin/opencode"
+    ;(Bun as any).spawnSync = () => ({ exitCode: 0, stdout: Buffer.from("openai/gpt-5.5\n"), stderr: Buffer.from("") })
+
+    try {
+      const result = configureSddReviewModel("stale/missing-model")
+      expect(result.changed).toBe(false)
+      expect(result.warning).toContain("not available")
+      expect(readOpenCodeConfig()?.agent?.["sdd-review"]).toBeUndefined()
+    } finally {
+      ;(Bun as any).which = originalWhich
+      ;(Bun as any).spawnSync = originalSpawnSync
+    }
   })
 
   test("does not overwrite corrupted opencode.json", () => {

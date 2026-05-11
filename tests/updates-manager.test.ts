@@ -49,6 +49,8 @@ describe("update manager", () => {
   })
 
   test("cyberpunk checker passes timeout to binary release check", async () => {
+    const upgrade = await import("../src/commands/upgrade.ts")
+    upgrade.__resetUpgradeTestOverrides()
     writeFileSync(join(TEMP_HOME, ".config", "cyberpunk", "config.json"), JSON.stringify({
       version: 2,
       installMode: "binary",
@@ -71,6 +73,8 @@ describe("update manager", () => {
   })
 
   test("cyberpunk checker falls back to binary mode outside a repo", async () => {
+    const upgrade = await import("../src/commands/upgrade.ts")
+    upgrade.__resetUpgradeTestOverrides()
     writeFileSync(join(TEMP_HOME, ".config", "cyberpunk", "config.json"), JSON.stringify({
       version: 2,
       updates: { enabled: true, ttlMs: 60000, timeoutMs: 100 },

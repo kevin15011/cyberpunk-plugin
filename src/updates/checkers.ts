@@ -1,7 +1,10 @@
 // src/updates/checkers.ts — best-effort update discovery
 
 import { spawnSync } from "child_process"
+import { existsSync } from "fs"
+import { join } from "path"
 import { checkBinaryUpgrade, checkUpgrade } from "../commands/upgrade"
+import { readConfigRaw } from "../config/load"
 import { resolveContextModeExecutable } from "../components/context-mode"
 import type { ToolUpdateStatus, UpdateTool } from "./types"
 
@@ -51,6 +54,12 @@ function commandVersion(command: string): string | undefined {
 
 export async function checkCyberpunkUpdate(timeoutMs = 2500): Promise<ToolUpdateStatus> {
   try {
+    const installMode = readConfigRaw().parsed?.installMode
+    if (installMode === "binary" || !existsSync(join(process.cwd(), ".git"))) {
+      const s = await checkBinaryUpgrade(timeoutMs)
+      return { tool: "cyberpunk", current: s.currentVersion, latest: s.latestVersion, available: !s.upToDate, checkedAt: new Date().toISOString() }
+    }
+
     const s = await checkUpgrade(timeoutMs)
     return { tool: "cyberpunk", current: s.currentVersion, latest: s.latestVersion, available: !s.upToDate, checkedAt: new Date().toISOString() }
   } catch (err) {

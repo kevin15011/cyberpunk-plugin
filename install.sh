@@ -151,7 +151,7 @@ print_playback_guidance() {
   elif [ "$OS" = "linux" ] || [ "$OS" = "linux-musl" ]; then
     PLAYBACK_DEPENDENCY="paplay"
     if detect_linux_wsl; then
-      PLAYBACK_INSTALL_HINT="Install PulseAudio/PipeWire tools inside WSL (for example: sudo apt install pulseaudio-utils) and ensure Windows audio bridging is available."
+      PLAYBACK_INSTALL_HINT="Install PulseAudio/PipeWire playback tools that provide paplay inside WSL (for example: sudo apt install pulseaudio-utils) and ensure Windows audio bridging is available."
     else
       PLAYBACK_INSTALL_HINT="Install PulseAudio/PipeWire playback tools that provide paplay (Debian/Ubuntu: sudo apt install pulseaudio-utils; Fedora: sudo dnf install pulseaudio-utils; Arch: sudo pacman -S libpulse)."
     fi

@@ -327,6 +327,15 @@ describe("runDoctor summary derivation", () => {
         },
       }),
     }))
+    mock.module("../src/updates/manager.ts", () => ({
+      createUpdateManager: (force: boolean) => ({
+        apply: async (tools: string[]) => {
+          expect(force).toBe(true)
+          applied.push(tools)
+          return tools.map(tool => ({ tool, status: "updated", message: `${tool} updated` }))
+        },
+      }),
+    }))
 
     const { runDoctor } = await importAfterHomeSet<typeof import("../src/commands/doctor")>("../../src/commands/doctor.ts", fixture.home)
     const result = await withHome(fixture.home, () => runDoctor({

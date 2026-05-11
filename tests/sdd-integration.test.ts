@@ -319,6 +319,26 @@ describe("sdd-integration: OpenCode SDD readiness", () => {
     expect(opencodeJson.agent["sdd-claude-review"]).toBeUndefined()
   })
 
+  test("orchestrator patch removes legacy missing prompt file refs from review agents", async () => {
+    const opencodeDir = join(tempHome, ".config", "opencode")
+    mkdirSync(opencodeDir, { recursive: true })
+    writeFileSync(join(opencodeDir, "opencode.json"), JSON.stringify({
+      agent: {
+        "gentle-orchestrator": { prompt: "# Orchestrator\n", permission: { task: {} } },
+        "sdd-review": { model: "openai/gpt-5.5", prompt: "{file:~/.config/opencode/prompts/sdd/sdd-review.md}" },
+        "sdd-review-adversary": { model: "openai/gpt-5.5-fast", prompt: "{file:/.config/opencode/prompts/sdd/sdd-review.md}" },
+      },
+    }), "utf8")
+    const { patchOpenCodeSddOrchestrator } = await loadSddModule()
+
+    expect(patchOpenCodeSddOrchestrator()).toBe(true)
+    const opencodeJson = JSON.parse(readFileSync(join(opencodeDir, "opencode.json"), "utf8"))
+
+    expect(opencodeJson.agent["sdd-review"].prompt).toBeUndefined()
+    expect(opencodeJson.agent["sdd-review-adversary"].prompt).toBeUndefined()
+    expect(JSON.stringify(opencodeJson)).not.toContain("prompts/sdd/sdd-review.md")
+  })
+
   test("patches judgment-day to prefer review and adversary agents", async () => {
     writeRequiredSddAssets(tempHome)
     const { patchJudgmentDaySkill, JUDGMENT_DAY_START_MARKER } = await loadSddModule()

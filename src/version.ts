@@ -1,3 +1,3 @@
 // src/version.ts — compile-time application version embedded into standalone binaries
 
-export const APP_VERSION = "1.13.0"
+export const APP_VERSION = "1.13.1"

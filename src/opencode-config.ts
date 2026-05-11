@@ -46,6 +46,11 @@ export interface OpenCodeModelProviderGroup {
 
 export type SddReviewAgentName = "sdd-review" | "sdd-review-adversary"
 
+const LEGACY_SDD_REVIEW_PROMPTS = new Set([
+  "{file:~/.config/opencode/prompts/sdd/sdd-review.md}",
+  "{file:/.config/opencode/prompts/sdd/sdd-review.md}",
+])
+
 export function getOpenCodeConfigDir(): string {
   const home = getHomeDirAuto()
   return join(home, ".config", "opencode")
@@ -139,6 +144,23 @@ function addModelChoice(
   groups.set(providerId, group)
 }
 
+function isLegacySddReviewPrompt(prompt: unknown): boolean {
+  return typeof prompt === "string" && LEGACY_SDD_REVIEW_PROMPTS.has(prompt)
+}
+
+function sanitizeSddReviewAgentPrompts(config: OpenCodeConfig): boolean {
+  if (!isPlainRecord(config.agent)) return false
+  let changed = false
+  for (const agentName of ["sdd-review", "sdd-review-adversary"] as const) {
+    const agent = config.agent[agentName]
+    if (isPlainRecord(agent) && isLegacySddReviewPrompt(agent.prompt)) {
+      delete agent.prompt
+      changed = true
+    }
+  }
+  return changed
+}
+
 /**
  * Return providers/models known from the user's OpenCode config.
  *
@@ -202,22 +224,9 @@ export function parseOpenCodeModelListOutput(output: string): OpenCodeModelProvi
     .sort((a, b) => a.providerName.localeCompare(b.providerName))
 }
 
-function mergeModelProviderGroups(groups: OpenCodeModelProviderGroup[]): OpenCodeModelProviderGroup[] {
-  const merged = new Map<string, OpenCodeModelProviderGroup>()
-  for (const group of groups) {
-    for (const model of group.models) {
-      addModelChoice(merged, model.providerId, group.providerName || model.providerName, model.modelId, model.modelName, model.source)
-    }
-  }
-  return [...merged.values()]
-    .map(group => ({ ...group, models: [...group.models].sort((a, b) => a.modelName.localeCompare(b.modelName)) }))
-    .sort((a, b) => a.providerName.localeCompare(b.providerName))
-}
-
-export function listAvailableOpenCodeModels(): OpenCodeModelProviderGroup[] {
-  const configured = listConfiguredOpenCodeModels()
+function readOpenCodeCliModelCatalog(): { available: boolean; groups: OpenCodeModelProviderGroup[] } {
   const opencodeBin = typeof Bun !== "undefined" ? Bun.which("opencode") : null
-  if (!opencodeBin) return configured
+  if (!opencodeBin) return { available: false, groups: [] }
 
   try {
     const proc = Bun.spawnSync([opencodeBin, "models"], {
@@ -225,12 +234,18 @@ export function listAvailableOpenCodeModels(): OpenCodeModelProviderGroup[] {
       stderr: "pipe",
       timeout: 5000,
     })
-    if (proc.exitCode !== 0) return configured
+    if (proc.exitCode !== 0) return { available: false, groups: [] }
     const cliGroups = parseOpenCodeModelListOutput(Buffer.from(proc.stdout).toString("utf8"))
-    return mergeModelProviderGroups([...configured, ...cliGroups])
+    return { available: true, groups: cliGroups }
   } catch {
-    return configured
+    return { available: false, groups: [] }
   }
+}
+
+export function listAvailableOpenCodeModels(): OpenCodeModelProviderGroup[] {
+  const cliCatalog = readOpenCodeCliModelCatalog()
+  if (cliCatalog.available) return cliCatalog.groups
+  return listConfiguredOpenCodeModels()
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -239,13 +254,15 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 function getSddReviewBaseAgent(config: OpenCodeConfig): Record<string, unknown> {
   const existing = isPlainRecord(config.agent?.["sdd-review"]) ? config.agent!["sdd-review"] : {}
+  const { prompt, ...safeExisting } = existing
+  const safePrompt = isLegacySddReviewPrompt(prompt) ? undefined : prompt
   return {
-    ...existing,
-    description: existing.description ?? "Code review using assigned model against specs and design decisions",
-    hidden: existing.hidden ?? true,
-    mode: existing.mode ?? "subagent",
-    prompt: existing.prompt ?? "{file:~/.config/opencode/prompts/sdd/sdd-review.md}",
-    tools: existing.tools ?? { bash: true, read: true, write: true },
+    ...safeExisting,
+    ...(safePrompt === undefined ? {} : { prompt: safePrompt }),
+    description: safeExisting.description ?? "Code review using assigned model against specs and design decisions",
+    hidden: safeExisting.hidden ?? true,
+    mode: safeExisting.mode ?? "subagent",
+    tools: safeExisting.tools ?? { bash: true, read: true, write: true },
   }
 }
 
@@ -255,8 +272,15 @@ export function configureSddReviewModel(modelRef: string, agentName: SddReviewAg
   if (!readResult.ok && readResult.exists) {
     return { changed: false, warning: `OpenCode config is invalid JSON — refusing to overwrite: ${readResult.error}` }
   }
+
+  const cliCatalog = readOpenCodeCliModelCatalog()
+  if (cliCatalog.available) {
+    const allowed = cliCatalog.groups.some(group => group.models.some(model => model.modelRef === modelRef))
+    if (!allowed) return { changed: false, warning: `OpenCode model ref is not available in the CLI catalog: ${modelRef}` }
+  }
   const config = readResult.ok ? readResult.config : {}
   config.agent = isPlainRecord(config.agent) ? config.agent as Record<string, Record<string, unknown>> : {}
+  const sanitized = sanitizeSddReviewAgentPrompts(config)
   const previous = config.agent[agentName]?.model
   const base = agentName === "sdd-review-adversary" ? getSddReviewBaseAgent(config) : {}
   config.agent[agentName] = {
@@ -265,7 +289,7 @@ export function configureSddReviewModel(modelRef: string, agentName: SddReviewAg
     model: modelRef,
   }
   writeOpenCodeConfig(config)
-  return { changed: previous !== modelRef }
+  return { changed: previous !== modelRef || sanitized }
 }
 
 export function getConfiguredSddReviewModel(config: OpenCodeConfig | null = readOpenCodeConfig(), agentName: SddReviewAgentName = "sdd-review"): string | undefined {
@@ -304,10 +328,11 @@ export function ensureSddReviewTaskPermission(config: OpenCodeConfig): boolean {
 
 export function ensureSddReviewAdversaryAgent(config: OpenCodeConfig): boolean {
   config.agent = isPlainRecord(config.agent) ? config.agent as Record<string, Record<string, unknown>> : {}
+  let changed = sanitizeSddReviewAgentPrompts(config)
   const review = config.agent["sdd-review"]
   const adversary = config.agent["sdd-review-adversary"]
-  if (!isPlainRecord(review) || typeof review.model !== "string") return false
-  if (isPlainRecord(adversary)) return false
+  if (!isPlainRecord(review) || typeof review.model !== "string") return changed
+  if (isPlainRecord(adversary)) return changed
   config.agent["sdd-review-adversary"] = {
     ...getSddReviewBaseAgent(config),
     model: review.model,

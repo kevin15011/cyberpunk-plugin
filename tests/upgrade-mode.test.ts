@@ -653,6 +653,36 @@ describe("runUpgrade dispatch by installMode", () => {
       toVersion: "repo-current",
     })
   })
+
+  test("missing mode with an installed binary dispatches to binary path outside a repo", async () => {
+    const fixture = createTestHome("cyberpunk-upgrade-missing-mode-binary")
+    writeTestConfig() // no installMode
+    const binaryPath = join(fixture.home, ".local", "bin", "cyberpunk")
+    mkdirSync(join(binaryPath, ".."), { recursive: true })
+    writeFileSync(binaryPath, "installed-binary", "utf8")
+    const originalFetch = globalThis.fetch
+    const originalCwd = process.cwd()
+    globalThis.fetch = (async () => new Response(JSON.stringify({ tag_name: "v9.9.9" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch
+
+    try {
+      process.chdir(fixture.home)
+      const mod = await importUpgradeModule()
+      mod.__setUpgradeTestOverrides({
+        getRepoDir: () => { throw new Error("repo mode should not be used") },
+      })
+
+      const status = await withHome(fixture.home, () => mod.checkUpgrade(100))
+
+      expect(status.latestVersion).toBe("9.9.9")
+      expect(status.changedFiles).toEqual([binaryPath])
+    } finally {
+      process.chdir(originalCwd)
+      globalThis.fetch = originalFetch
+    }
+  })
 })
 
 // ── checkUpgrade dispatch ─────────────────────────────────────────

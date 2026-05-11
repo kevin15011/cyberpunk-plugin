@@ -45,6 +45,9 @@ describe("installer automatic dependency bootstrap", () => {
 
   test("sounds installs ffmpeg with Homebrew on macOS before generating files", async () => {
     const commands: string[] = []
+    const binDir = join(TEMP_HOME, "bin")
+    process.env.PATH = `${binDir}:${process.env.PATH ?? ""}`
+    makeExecutable(join(binDir, "brew"))
 
     mock.module("../src/platform/detect", () => ({
       ...actualDetect,
@@ -56,10 +59,8 @@ describe("installer automatic dependency bootstrap", () => {
       ...actualChildProcess,
       execSync: mock((command: string) => {
         commands.push(command)
-        if (command.includes("which ffmpeg") && !commands.some(c => c.includes("brew install ffmpeg"))) {
-          throw new Error("ffmpeg missing")
-        }
-        if (command.includes("which brew")) return "/opt/homebrew/bin/brew\n"
+        if (command.includes("brew install ffmpeg")) makeExecutable(join(binDir, "ffmpeg"))
+        if (command.includes("ffmpeg -loglevel")) return ""
         return ""
       }),
     }))
@@ -74,6 +75,8 @@ describe("installer automatic dependency bootstrap", () => {
 
   test("sounds installs Homebrew first on macOS when brew is missing", async () => {
     const commands: string[] = []
+    const binDir = join(TEMP_HOME, "bin")
+    process.env.PATH = `${binDir}:${process.env.PATH ?? ""}`
 
     mock.module("../src/platform/detect", () => ({
       ...actualDetect,
@@ -85,12 +88,9 @@ describe("installer automatic dependency bootstrap", () => {
       ...actualChildProcess,
       execSync: mock((command: string) => {
         commands.push(command)
-        if (command.includes("which ffmpeg") && !commands.some(c => c.includes("brew install ffmpeg"))) {
-          throw new Error("ffmpeg missing")
-        }
-        if (command.includes("which brew") && !commands.some(c => c.includes("Homebrew/install"))) {
-          throw new Error("brew missing")
-        }
+        if (command.includes("Homebrew/install")) makeExecutable(join(binDir, "brew"))
+        if (command.includes("brew install ffmpeg")) makeExecutable(join(binDir, "ffmpeg"))
+        if (command.includes("ffmpeg -loglevel")) return ""
         return ""
       }),
     }))
@@ -107,13 +107,14 @@ describe("installer automatic dependency bootstrap", () => {
   test("context-mode falls back to a user npm prefix when global install is not permitted", async () => {
     const commands: string[] = []
     const userContextMode = join(TEMP_HOME, ".local", "npm-global", "bin", "context-mode")
+    const binDir = join(TEMP_HOME, "bin")
+    process.env.PATH = `${binDir}:${process.env.PATH ?? ""}`
+    makeExecutable(join(binDir, "npm"))
 
     mock.module("child_process", () => ({
       ...actualChildProcess,
       execSync: mock((command: string) => {
         commands.push(command)
-        if (command.includes("which npm")) return "/usr/local/bin/npm\n"
-        if (command.includes("which context-mode")) throw new Error("context-mode missing")
         if (command === "npm install -g context-mode") throw new Error("EACCES permission denied")
         if (command.includes("npm install -g context-mode --prefix")) makeExecutable(userContextMode, "#!/bin/sh\nprintf '1.0.0\\n'\n")
         return ""
@@ -139,13 +140,14 @@ describe("installer automatic dependency bootstrap", () => {
 
   test("codebase-memory can bootstrap through wget when curl is unavailable", async () => {
     const commands: string[] = []
+    const binDir = join(TEMP_HOME, "bin")
+    process.env.PATH = `${binDir}:${process.env.PATH ?? ""}`
+    makeExecutable(join(binDir, "wget"))
 
     mock.module("child_process", () => ({
       ...actualChildProcess,
       execSync: mock((command: string) => {
         commands.push(command)
-        if (command.includes("which curl")) throw new Error("curl missing")
-        if (command.includes("which wget")) return "/usr/bin/wget\n"
         if (command.includes("wget") && command.includes("codebase-memory-mcp")) {
           makeExecutable(join(TEMP_HOME, ".local", "bin", "codebase-memory-mcp"))
         }
