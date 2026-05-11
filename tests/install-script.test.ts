@@ -32,7 +32,7 @@ exec "${resolved}" "$@"
 `)
   }
 
-  for (const commandName of ["basename", "cat", "chmod", "grep", "mkdir", "tail", "tr", "wc"]) {
+  for (const commandName of ["basename", "cat", "chmod", "grep", "mkdir", "rm", "tail", "tr", "wc"]) {
     writePassThrough(commandName)
   }
 
