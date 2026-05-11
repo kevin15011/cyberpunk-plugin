@@ -1171,6 +1171,92 @@ describe("Doctor macOS readiness checks", () => {
     expect(macChecks.length).toBe(0)
   })
 
+  test("Linux readiness checks report binary, PATH, and paplay readiness", async () => {
+    createMinimalConfig()
+    const binDir = join(tempDir, ".local", "bin")
+    const fakeToolDir = join(tempDir, "linux-tools")
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(fakeToolDir, { recursive: true })
+    writeFileSync(join(binDir, "cyberpunk"), "#!/bin/sh\nexit 0\n", { mode: 0o755 })
+    writeFileSync(join(fakeToolDir, "paplay"), "#!/bin/sh\nexit 0\n", { mode: 0o755 })
+    writeFileSync(join(fakeToolDir, "which"), `#!/bin/sh
+old_ifs=$IFS
+IFS=:
+for dir in $PATH; do
+  if [ -x "$dir/$1" ]; then
+    printf '%s\n' "$dir/$1"
+    IFS=$old_ifs
+    exit 0
+  fi
+done
+IFS=$old_ifs
+exit 1
+`, { mode: 0o755 })
+
+    const evalCode = `
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+      import { runDoctor } from ${JSON.stringify(join(process.cwd(), "src/commands/doctor.ts"))};
+      const result = await runDoctor({ fix: false, verbose: false });
+      process.stdout.write(JSON.stringify(result));
+    `
+
+    const proc = Bun.spawnSync([process.execPath, "--eval", evalCode], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: tempDir, PATH: `${fakeToolDir}:${binDir}` },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    if (proc.exitCode !== 0) {
+      throw new Error(Buffer.from(proc.stderr).toString("utf8") || `runDoctor subprocess failed with exit ${proc.exitCode}`)
+    }
+
+    const result = JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>
+    const releaseCheck = result.checks.find((c: any) => c.id === "linux:release-asset")
+    const pathCheck = result.checks.find((c: any) => c.id === "linux:path")
+    const audioCheck = result.checks.find((c: any) => c.id === "linux:audio")
+
+    expect(releaseCheck).toBeDefined()
+    expect(releaseCheck!.status).toBe("pass")
+    expect(pathCheck).toBeDefined()
+    expect(pathCheck!.status).toBe("pass")
+    expect(audioCheck).toBeDefined()
+    expect(audioCheck!.status).toBe("pass")
+    expect(audioCheck!.message).toContain("paplay")
+  })
+
+  test("Linux readiness keeps missing audio advisory with PulseAudio/PipeWire guidance", async () => {
+    createMinimalConfig()
+
+    const evalCode = `
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+      import { runDoctor } from ${JSON.stringify(join(process.cwd(), "src/commands/doctor.ts"))};
+      const result = await runDoctor({ fix: true, verbose: false });
+      process.stdout.write(JSON.stringify(result));
+    `
+
+    const proc = Bun.spawnSync([process.execPath, "--eval", evalCode], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: tempDir, PATH: "/nonexistent" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+
+    if (proc.exitCode !== 0) {
+      throw new Error(Buffer.from(proc.stderr).toString("utf8") || `runDoctor subprocess failed with exit ${proc.exitCode}`)
+    }
+
+    const result = JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as Awaited<ReturnType<typeof import("../src/commands/doctor").runDoctor>>
+    const audioCheck = result.checks.find((c: any) => c.id === "linux:audio")
+
+    expect(audioCheck).toBeDefined()
+    expect(audioCheck!.status).toBe("warn")
+    expect(audioCheck!.fixable).toBe(false)
+    expect(audioCheck!.detail?.nextStep).toContain("PulseAudio/PipeWire")
+    expect(audioCheck!.detail?.nextStep).toContain("paplay")
+    expect(result.fixes.find((f: any) => f.checkId === "linux:audio")).toBeUndefined()
+  })
+
   test("darwin checks advisory-only in fix mode — deferred items not repaired", async () => {
     createMinimalConfig()
 

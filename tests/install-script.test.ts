@@ -140,7 +140,8 @@ else
   echo x86_64
 fi
 `)
-    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("ffmpeg", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("paplay", "#!/bin/sh\nexit 0\n")
 
     writeFileSync(join(currentFixture.home, ".zshrc"), 'export PATH="$HOME/.local/bin:$PATH"\n', "utf8")
 
@@ -192,7 +193,8 @@ else
   echo arm64
 fi
 `)
-    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("ffmpeg", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("afplay", "#!/bin/sh\nexit 0\n")
 
     const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
 
@@ -231,7 +233,8 @@ else
   echo x86_64
 fi
 `)
-    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("ffmpeg", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("paplay", "#!/bin/sh\nexit 0\n")
 
     // Write .zshrc WITHOUT a trailing newline
     writeFileSync(join(currentFixture.home, ".zshrc"), "alias ll='ls -la'", "utf8")
@@ -258,7 +261,8 @@ else
   echo x86_64
 fi
 `)
-    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("ffmpeg", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("paplay", "#!/bin/sh\nexit 0\n")
 
     // Write .zshrc with an unquoted variant of the PATH export
     writeFileSync(join(currentFixture.home, ".zshrc"), 'export PATH=$HOME/.local/bin:$PATH\n', "utf8")
@@ -284,7 +288,8 @@ else
   echo x86_64
 fi
 `)
-    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("ffmpeg", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("paplay", "#!/bin/sh\nexit 0\n")
 
     const result = runInstaller(installEnv(currentFixture, "/bin/bash"))
 
@@ -307,7 +312,8 @@ else
   echo x86_64
 fi
 `)
-    currentFixture.writeExecutable("ffplay", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("ffmpeg", "#!/bin/sh\nexit 0\n")
+    currentFixture.writeExecutable("paplay", "#!/bin/sh\nexit 0\n")
 
     // No .zshrc file exists at all — it will be created from scratch
     const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
@@ -317,5 +323,26 @@ fi
     const contents = readFileSync(join(currentFixture.home, ".zshrc"), "utf8")
     const pathLines = contents.split("\n").filter(line => line.includes('export PATH="$HOME/.local/bin:$PATH"'))
     expect(pathLines.length).toBe(1)
+  }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
+
+  test("prints Linux ffmpeg and paplay dependency guidance without claiming ffplay", () => {
+    currentFixture = createInstallerFixture("cyberpunk-install-linux-audio-guidance")
+    currentFixture.writeExecutable("uname", `#!/bin/sh
+if [ "$1" = "-s" ]; then
+  echo Linux
+else
+  echo x86_64
+fi
+`)
+
+    const result = runInstaller(installEnv(currentFixture, "/bin/zsh"))
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("ffmpeg is still required for sound generation features")
+    expect(result.stdout).toContain("Install ffmpeg with your distro package manager")
+    expect(result.stdout).toContain("paplay is required for event sound playback")
+    expect(result.stdout).toContain("PulseAudio/PipeWire playback tools")
+    expect(result.stdout).toContain("pulseaudio-utils")
+    expect(result.stdout).not.toContain("ffplay")
   }, INSTALL_SCRIPT_TEST_TIMEOUT_MS)
 })

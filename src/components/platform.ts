@@ -12,10 +12,27 @@ export interface PlatformPrerequisites {
   git: boolean
 }
 
+export function getPlaybackInstallHint(environment = detectEnvironment()): string {
+  if (environment === "darwin") {
+    return "afplay is included with macOS; if it is missing, reinstall Command Line Tools or verify your PATH"
+  }
+
+  if (environment === "wsl") {
+    return "Install PulseAudio/PipeWire tools inside WSL (for example: sudo apt install pulseaudio-utils) and ensure Windows audio bridging is available"
+  }
+
+  if (environment === "linux") {
+    return "Install PulseAudio/PipeWire playback tools that provide paplay (Debian/Ubuntu: sudo apt install pulseaudio-utils; Fedora: sudo dnf install pulseaudio-utils; Arch: sudo pacman -S libpulse)"
+  }
+
+  return "Install a compatible playback tool for your platform"
+}
+
 export function getRuntimeDependencyChecks(): DoctorCheck[] {
   const environment = detectEnvironment()
   const playbackDependency = getPlaybackDependency(environment)
   const platformLabel = getPlatformLabel(environment)
+  const playbackHint = getPlaybackInstallHint(environment)
 
   const opencodeAvailable = isCommandOnPath("opencode")
   const playbackAvailable = isCommandOnPath(playbackDependency)
@@ -44,7 +61,7 @@ export function getRuntimeDependencyChecks(): DoctorCheck[] {
       fixable: false,
       detail: playbackAvailable ? { group: "runtime" } : {
         group: "runtime",
-        nextStep: `Install ${playbackDependency} for ${platformLabel} or enable a compatible playback tool`,
+        nextStep: `${playbackHint} (${platformLabel})`,
       },
     },
   ]

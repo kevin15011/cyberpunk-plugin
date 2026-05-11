@@ -17,7 +17,7 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
 - **Codebase Memory MCP** — Auto-downloads `codebase-memory-mcp` binary, adds MCP config for structural code exploration (call graphs, symbols, routes). Routing instructions enforce read-before-edit workflow.
 - **Configurable SDD review** — `sdd-review` uses the model you select from your configured OpenCode providers/models.
 - **Automatic context-mode bootstrap** — Ensures `context-mode` MCP/plugin config, routing instructions, and SDD prompt defaults exist after OpenCode/Gentle AI updates
-- **Cross-platform** — macOS (`afplay`) and Linux (`ffplay`)
+- **Cross-platform** — macOS (`afplay`) and Linux/WSL (`paplay`)
 
 ### Components
 
@@ -50,6 +50,14 @@ This downloads the binary from the latest GitHub Release, installs it to `~/.loc
 Pre-built binaries are published for Linux (`x64`, `arm64`) and macOS (`arm64`) using the shared `cyberpunk-{os}-{arch}` asset naming convention.
 
 If `~/.local/bin` is not already in your `PATH`, the script prints shell-aware PATH guidance that points to the likely profile file (`~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`) plus the reload command to apply it.
+
+### Linux notes
+
+- Pre-built Linux binaries are published for **x64** and **arm64**.
+- WSL is supported through the same Linux assets and runtime path. There is no separate WSL binary or preset-specific build.
+- Install ffmpeg before using sound generation features. Use your distro package manager, for example: `sudo apt install ffmpeg`, `sudo dnf install ffmpeg`, or `sudo pacman -S ffmpeg`.
+- Event sound playback uses `paplay`, usually provided by PulseAudio/PipeWire packages. Examples: `sudo apt install pulseaudio-utils`, `sudo dnf install pulseaudio-utils`, or `sudo pacman -S libpulse`.
+- On WSL, `paplay` may also require Windows/WSLg audio bridging to be available. If sound playback is missing, `cyberpunk doctor` reports it as advisory instead of blocking plugin use.
 
 ### macOS notes
 
@@ -171,8 +179,9 @@ Run `cyberpunk doctor` to check the status of TPM, plugin readiness, gitmux, and
 - **Linux x64/arm64** — Pre-built binary available via curl install
 - **macOS arm64** — Pre-built binary available via curl install
 - **macOS Intel (x64)** — Build from source
-- **Linux** — `ffplay` (`sudo apt install ffmpeg`)
-- **macOS** — `ffplay` (`brew install ffmpeg`)
+- **Linux/WSL playback** — `paplay` via PulseAudio/PipeWire tools (`pulseaudio-utils` or distro equivalent)
+- **macOS playback** — `afplay` (included with macOS)
+- `ffmpeg` — Needed for sound generation (`sudo apt install ffmpeg`, `sudo dnf install ffmpeg`, `sudo pacman -S ffmpeg`, or `brew install ffmpeg`)
 - `npm` — Needed for `context-mode` component
 - `curl` — Needed for `rtk` and `codebase-memory` components
 - `git` — For TPM installation

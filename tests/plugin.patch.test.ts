@@ -1,8 +1,12 @@
 // tests/plugin.patch.test.ts — tests for PLUGIN_SOURCE (sound hooks only, no SDD patching)
 
 import { describe, test, expect } from "bun:test"
+import { readFileSync } from "fs"
 
 const loadPluginModule = () => import(`../src/components/plugin.ts?patch=${Date.now()}-${Math.random()}`)
+
+const normalizeRuntimePluginSource = (source: string) =>
+  source.replace("// ONLY handles sound playback on events — no installations, no config, no bootstrap.\n", "")
 
 // ── PLUGIN_SOURCE must NOT contain SDD patching code ──────────
 
@@ -47,6 +51,17 @@ describe("PLUGIN_SOURCE: no SDD patching code", () => {
   test("must NOT contain readFileSync import (runtime patching)", async () => {
     const { PLUGIN_SOURCE } = await loadPluginModule()
     expect(PLUGIN_SOURCE).not.toContain("readFileSync")
+  })
+})
+
+// ── Bundled source must stay in sync with root runtime source ───
+
+describe("PLUGIN_SOURCE: bundled source sync", () => {
+  test("matches the root cyberpunk.ts runtime plugin source", async () => {
+    const { PLUGIN_SOURCE } = await loadPluginModule()
+    const rootPluginSource = readFileSync(new URL("../cyberpunk.ts", import.meta.url), "utf8")
+
+    expect(PLUGIN_SOURCE).toBe(normalizeRuntimePluginSource(rootPluginSource))
   })
 })
 

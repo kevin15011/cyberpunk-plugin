@@ -13,7 +13,7 @@ import { getCodebaseMemoryComponent } from "../components/codebase-memory"
 import { COMPONENT_IDS } from "../config/schema"
 import type { ComponentModule } from "../components/types"
 import { readConfigRaw } from "../config/load"
-import { checkPlatformPrerequisites, getRuntimeDependencyChecks, isXattrAvailable, canCheckCodesign } from "../components/platform"
+import { checkPlatformPrerequisites, getPlaybackInstallHint, getRuntimeDependencyChecks, isXattrAvailable, canCheckCodesign } from "../components/platform"
 import { detectEnvironment } from "../platform/detect"
 import { getHomeDirAuto } from "../platform/paths"
 import { isCommandOnPath } from "../platform/shell"
@@ -381,6 +381,7 @@ async function applyUpdateFix(check: DoctorCheck): Promise<DoctorFixResult> {
 
 function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPrerequisites>): DoctorCheck[] {
   const checks: DoctorCheck[] = []
+  const environment = detectEnvironment()
 
   checks.push({
     id: "platform:ffmpeg",
@@ -418,8 +419,59 @@ function collectPlatformChecks(prerequisites: ReturnType<typeof checkPlatformPre
 
   checks.push(...getRuntimeDependencyChecks())
 
+  // Linux readiness checks — WSL uses the Linux binary/runtime path with audio as advisory.
+  if (environment === "linux" || environment === "wsl") {
+    const home = getHomeDirAuto()
+    const binDir = join(home, ".local", "bin")
+    const binaryPath = join(binDir, "cyberpunk")
+    const binaryExecutable = isExecutableFile(binaryPath)
+    const binaryOnPath = isCommandOnPath("cyberpunk")
+    const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean)
+    const binDirOnPath = pathEntries.includes(binDir)
+    const paplayAvailable = isCommandOnPath("paplay")
+
+    checks.push({
+      id: "linux:release-asset",
+      label: environment === "wsl" ? "WSL/Linux installed binary" : "Linux installed binary",
+      status: binaryExecutable ? "pass" : "warn",
+      message: binaryExecutable
+        ? "Installed Linux binary exists and is executable at ~/.local/bin/cyberpunk"
+        : existsSync(binDir)
+          ? "Installed Linux binary not found or not executable at ~/.local/bin/cyberpunk"
+          : "Binary install directory (~/.local/bin) not found — run the installer or create it and add it to PATH",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "linux:path",
+      label: environment === "wsl" ? "WSL/Linux cyberpunk command" : "Linux cyberpunk command",
+      status: binaryOnPath ? "pass" : "warn",
+      message: binaryOnPath
+        ? "cyberpunk command available on PATH"
+        : binaryExecutable
+          ? binDirOnPath
+            ? "~/.local/bin is on PATH, but cyberpunk is still not resolvable — restart the shell or run ~/.local/bin/cyberpunk help"
+            : "cyberpunk is installed at ~/.local/bin/cyberpunk but ~/.local/bin is not on PATH — add export PATH=\"$HOME/.local/bin:$PATH\" to your shell profile and reload it"
+          : "cyberpunk command not found on PATH and no executable was found at ~/.local/bin/cyberpunk",
+      fixable: false,
+    })
+
+    checks.push({
+      id: "linux:audio",
+      label: environment === "wsl" ? "WSL/Linux audio playback" : "Linux audio playback",
+      status: paplayAvailable ? "pass" : "warn",
+      message: paplayAvailable
+        ? "paplay available on PATH for event sound playback"
+        : environment === "wsl"
+          ? "paplay not found — WSL audio playback depends on PulseAudio/PipeWire tooling and host audio bridging"
+          : "paplay not found — event sound playback needs PulseAudio/PipeWire tooling",
+      fixable: false,
+      detail: paplayAvailable ? { group: "runtime" } : { group: "runtime", nextStep: getPlaybackInstallHint(environment) },
+    })
+  }
+
   // macOS readiness checks — gated on darwin
-  if (detectEnvironment() === "darwin") {
+  if (environment === "darwin") {
     const xattrOk = isXattrAvailable()
     const codesignOk = canCheckCodesign()
     const home = getHomeDirAuto()

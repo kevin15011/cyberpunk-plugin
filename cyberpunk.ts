@@ -16,7 +16,7 @@ async function playSound($: any, file: string) {
   if (IS_MAC) {
     await $`afplay ${path}`.nothrow()
   } else {
-    await $`ffplay -nodisp -autoexit -v quiet ${path}`.nothrow()
+    await $`paplay ${path}`.nothrow()
   }
 }
 

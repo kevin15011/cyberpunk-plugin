@@ -7,6 +7,8 @@ DETECTED_RELOAD_CMD="source ~/.profile"
 PATH_EXPORT_LINE=""
 PATH_STATUS="available"
 FFMPEG_INSTALL_HINT=""
+PLAYBACK_INSTALL_HINT=""
+PLAYBACK_DEPENDENCY=""
 QUARANTINE_NOTE=""
 
 detect_shell_profile() {
@@ -122,12 +124,44 @@ print_ffmpeg_guidance() {
   if [ "$OS" = "darwin" ]; then
     FFMPEG_INSTALL_HINT="brew install ffmpeg"
   elif [ "$OS" = "linux" ] || [ "$OS" = "linux-musl" ]; then
-    FFMPEG_INSTALL_HINT="sudo apt install ffmpeg"
+    FFMPEG_INSTALL_HINT="Install ffmpeg with your distro package manager (Debian/Ubuntu: sudo apt install ffmpeg; Fedora: sudo dnf install ffmpeg; Arch: sudo pacman -S ffmpeg)"
   else
     FFMPEG_INSTALL_HINT="Install ffmpeg using your system package manager."
   fi
 
   echo "   Install with: ${FFMPEG_INSTALL_HINT}"
+}
+
+detect_linux_wsl() {
+  if [ "$OS" != "linux" ] && [ "$OS" != "linux-musl" ]; then
+    return 1
+  fi
+
+  if [ -r /proc/version ] && grep -qi "microsoft\|wsl" /proc/version 2>/dev/null; then
+    return 0
+  fi
+
+  return 1
+}
+
+print_playback_guidance() {
+  if [ "$OS" = "darwin" ]; then
+    PLAYBACK_DEPENDENCY="afplay"
+    PLAYBACK_INSTALL_HINT="afplay is included with macOS; verify your PATH if it is unavailable."
+  elif [ "$OS" = "linux" ] || [ "$OS" = "linux-musl" ]; then
+    PLAYBACK_DEPENDENCY="paplay"
+    if detect_linux_wsl; then
+      PLAYBACK_INSTALL_HINT="Install PulseAudio/PipeWire tools inside WSL (for example: sudo apt install pulseaudio-utils) and ensure Windows audio bridging is available."
+    else
+      PLAYBACK_INSTALL_HINT="Install PulseAudio/PipeWire playback tools that provide paplay (Debian/Ubuntu: sudo apt install pulseaudio-utils; Fedora: sudo dnf install pulseaudio-utils; Arch: sudo pacman -S libpulse)."
+    fi
+  else
+    PLAYBACK_DEPENDENCY="a compatible playback tool"
+    PLAYBACK_INSTALL_HINT="Install a compatible playback tool for your platform."
+  fi
+
+  echo ">> NEXT STEP: ${PLAYBACK_DEPENDENCY} is required for event sound playback."
+  echo "   ${PLAYBACK_INSTALL_HINT}"
 }
 
 attempt_quarantine_removal() {
@@ -157,6 +191,7 @@ attempt_quarantine_removal() {
 print_install_summary() {
   local install_path="$1"
   local ffmpeg_present="$2"
+  local playback_present="$3"
 
   echo ""
   echo ">> INSTALL SUMMARY"
@@ -186,6 +221,15 @@ print_install_summary() {
   else
     echo "   Remaining action: install ffmpeg"
     echo "   Hint: ${FFMPEG_INSTALL_HINT}"
+  fi
+
+  if [ -n "$PLAYBACK_DEPENDENCY" ]; then
+    if [ "$playback_present" = "true" ]; then
+      echo "   ${PLAYBACK_DEPENDENCY}: detected"
+    else
+      echo "   Remaining action: install ${PLAYBACK_DEPENDENCY}"
+      echo "   Hint: ${PLAYBACK_INSTALL_HINT}"
+    fi
   fi
 
   if [ -n "$QUARANTINE_NOTE" ]; then
@@ -236,10 +280,23 @@ INSTALL_DIR_DISPLAY="~/.local/bin"
 INSTALL_PATH="${INSTALL_DIR}/cyberpunk"
 REPO="kevin15011/cyberpunk-plugin"
 FFMPEG_PRESENT="true"
+PLAYBACK_PRESENT="true"
 
-if ! command -v ffplay >/dev/null 2>&1; then
+if ! command -v ffmpeg >/dev/null 2>&1; then
   FFMPEG_PRESENT="false"
   print_ffmpeg_guidance
+  echo ""
+fi
+
+if [ "$OS" = "darwin" ]; then
+  PLAYBACK_DEPENDENCY="afplay"
+elif [ "$OS" = "linux" ] || [ "$OS" = "linux-musl" ]; then
+  PLAYBACK_DEPENDENCY="paplay"
+fi
+
+if [ -n "$PLAYBACK_DEPENDENCY" ] && ! command -v "$PLAYBACK_DEPENDENCY" >/dev/null 2>&1; then
+  PLAYBACK_PRESENT="false"
+  print_playback_guidance
   echo ""
 fi
 
@@ -306,7 +363,7 @@ if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_PATH" 2>/dev/null; then
       ;;
   esac
 
-  print_install_summary "$INSTALL_PATH" "$FFMPEG_PRESENT"
+  print_install_summary "$INSTALL_PATH" "$FFMPEG_PRESENT" "$PLAYBACK_PRESENT"
 else
   echo ">> ERROR: Failed to download binary for ${OS}/${ARCH}."
   echo "   Please report this issue at: https://github.com/${REPO}/issues"

@@ -96,7 +96,6 @@ export const CyberpunkPlugin: Plugin = async ({ $ }) => {
       if (event.type === "permission.asked") {
         try { await playSound($, "permission.wav") } catch {}
       }
-
     },
   }
 }
