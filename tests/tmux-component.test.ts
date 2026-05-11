@@ -87,6 +87,12 @@ function seedCyberpunkConfig() {
   setDefaultConfig(CONFIG_DIR)
 }
 
+function createLocalTpmMarker() {
+  const tpmDir = join(tempDir, ".tmux", "plugins", "tpm")
+  ensureDirSync(tpmDir, { recursive: true })
+  writeFileSync(join(tpmDir, "tpm"), "#!/bin/sh\n", "utf8")
+}
+
 // ---------------------------------------------------------------------------
 // Spec Scenario 1: Install tmux into existing user config
 // ---------------------------------------------------------------------------
@@ -94,6 +100,7 @@ function seedCyberpunkConfig() {
 describe("Spec S1: Install tmux into existing user config", () => {
   test("managed block added with bundled content, unmanaged content preserved", async () => {
     seedCyberpunkConfig()
+    createLocalTpmMarker()
     const userContent = "# My custom tmux config\nset -g prefix C-b\nbind | split-window -h\n"
     createUserTmuxConf(userContent)
 
@@ -119,6 +126,7 @@ describe("Spec S1: Install tmux into existing user config", () => {
 
   test("install creates backup of existing tmux.conf", async () => {
     seedCyberpunkConfig()
+    createLocalTpmMarker()
     createUserTmuxConf("# original content\n")
     await getTmuxComponentFn().install()
     expect(existsSync(TMUX_CONF_PATH + ".bak")).toBe(true)
@@ -127,6 +135,7 @@ describe("Spec S1: Install tmux into existing user config", () => {
 
   test("repeated install with identical content is idempotent (skipped)", async () => {
     seedCyberpunkConfig()
+    createLocalTpmMarker()
     createUserTmuxConf("# user\n")
     const comp = getTmuxComponentFn()
 
@@ -433,6 +442,7 @@ describe("Spec S6: Fix missing managed tmux block safely", () => {
 describe("Spec S7: Config reflects tmux install", () => {
   test("components.tmux.installed becomes true after successful install", async () => {
     seedCyberpunkConfig()
+    createLocalTpmMarker()
     createUserTmuxConf()
 
     const comp = getTmuxComponentFn()
