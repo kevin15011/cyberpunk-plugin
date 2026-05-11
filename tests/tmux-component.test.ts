@@ -294,33 +294,39 @@ describe("Spec S4: Tmux routed through non-interactive flags", () => {
 
 describe("Spec S5: Warn about optional tmux dependencies", () => {
   test("doctor reports warn for TPM and gitmux when missing, fixable=false", async () => {
+    const originalPath = process.env.PATH
+    process.env.PATH = tempDir
     createMixedTmuxConf()
 
-    const comp = getTmuxComponentFn()
-    const result = await comp.doctor({
-      cyberpunkConfig: null,
-      verbose: false,
-      prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
-    })
+    try {
+      const comp = getTmuxComponentFn()
+      const result = await comp.doctor({
+        cyberpunkConfig: null,
+        verbose: false,
+        prerequisites: { ffmpeg: false, npm: false, bun: false, curl: false, git: false },
+      })
 
-    expect(result.component).toBe("tmux")
+      expect(result.component).toBe("tmux")
 
-    // tmux:config should pass (managed block exists)
-    const configCheck = result.checks.find(c => c.id === "tmux:config")
-    expect(configCheck).toBeDefined()
-    expect(configCheck!.status).toBe("pass")
+      // tmux:config should pass (managed block exists)
+      const configCheck = result.checks.find(c => c.id === "tmux:config")
+      expect(configCheck).toBeDefined()
+      expect(configCheck!.status).toBe("pass")
 
-    // TPM should warn (not installed in temp dir)
-    const tpmCheck = result.checks.find(c => c.id === "tmux:tpm")
-    expect(tpmCheck).toBeDefined()
-    expect(tpmCheck!.status).toBe("warn")
-    expect(tpmCheck!.fixable).toBe(false)
+      // TPM should warn (not installed in temp dir)
+      const tpmCheck = result.checks.find(c => c.id === "tmux:tpm")
+      expect(tpmCheck).toBeDefined()
+      expect(tpmCheck!.status).toBe("warn")
+      expect(tpmCheck!.fixable).toBe(false)
 
-    // gitmux should warn
-    const gitmuxCheck = result.checks.find(c => c.id === "tmux:gitmux")
-    expect(gitmuxCheck).toBeDefined()
-    expect(gitmuxCheck!.status).toBe("warn")
-    expect(gitmuxCheck!.fixable).toBe(false)
+      // gitmux should warn
+      const gitmuxCheck = result.checks.find(c => c.id === "tmux:gitmux")
+      expect(gitmuxCheck).toBeDefined()
+      expect(gitmuxCheck!.status).toBe("warn")
+      expect(gitmuxCheck!.fixable).toBe(false)
+    } finally {
+      process.env.PATH = originalPath
+    }
   })
 
   test("doctor emits all 4 tmux check IDs", async () => {

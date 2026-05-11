@@ -519,14 +519,16 @@ export function getTmuxComponent(): ComponentModule {
       })
 
       // Check 5: gitmux on PATH
-      const hasGitmux = isGitmuxOnPath()
+      const hasGitmux = ctx.prerequisites.git && isGitmuxOnPath()
       checks.push({
         id: "tmux:gitmux",
         label: "gitmux",
         status: hasGitmux ? "pass" : "warn",
         message: hasGitmux
           ? "gitmux disponible en PATH"
-          : "gitmux no encontrado — status bar no mostrará info de git",
+          : ctx.prerequisites.git
+            ? "gitmux no encontrado — status bar no mostrará info de git"
+            : "git no está disponible — gitmux no puede alimentar la status bar",
         fixable: false,
       })
 
