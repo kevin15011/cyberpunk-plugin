@@ -1,7 +1,7 @@
 // src/components/sdd-integration.ts — Optional SDD patching component
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "fs"
-import { join } from "path"
+import { dirname, join } from "path"
 import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
@@ -184,6 +184,31 @@ function getSddPhaseCommonPath(): string {
 function getSddReviewSkillPath(): string {
   const home = getHomeDirAuto()
   return join(home, ".config", "opencode", "skills", "sdd-review", "SKILL.md")
+}
+
+function buildManagedSddReviewSkill(): string {
+  return `# sdd-review
+
+Code review using the assigned model against SDD specs, design decisions, tasks, and apply-progress.
+
+${SDD_REVIEW_START_MARKER}
+${SDD_REVIEW_DEFINITION_TEMPLATE}
+${SDD_REVIEW_END_MARKER}
+`
+}
+
+export function ensureOpenCodeSddAssets(readiness: OpenCodeSddReadiness = detectOpenCodeSddReadiness()): boolean {
+  const reviewPath = getSddReviewSkillPath()
+  if (existsSync(reviewPath)) return false
+
+  // Only bootstrap assets owned by this project. External skills like
+  // judgment-day are integrated when present, but never fabricated here.
+  const missingWithoutReview = readiness.missingRequired.filter(path => path !== reviewPath)
+  if (missingWithoutReview.length > 0) return false
+
+  mkdirSync(dirname(reviewPath), { recursive: true })
+  writeFileSync(reviewPath, buildManagedSddReviewSkill(), "utf8")
+  return true
 }
 
 function getJudgmentDaySkillPath(): string {
@@ -567,7 +592,11 @@ export function getSddIntegrationComponent(): ComponentModule {
     label: COMPONENT_LABELS["sdd-integration"],
 
     async install(): Promise<InstallResult> {
-      const readiness = detectOpenCodeSddReadiness()
+      let readiness = detectOpenCodeSddReadiness()
+      const bootstrappedOwnedAssets = ensureOpenCodeSddAssets(readiness)
+      if (bootstrappedOwnedAssets) {
+        readiness = detectOpenCodeSddReadiness()
+      }
 
       if (!readiness.ready) {
         return {
@@ -595,8 +624,8 @@ export function getSddIntegrationComponent(): ComponentModule {
       return {
         component: "sdd-integration",
         action: "install",
-        status: patched || reviewPatched || judgmentDayPatched || orchestratorPatched ? "success" : "skipped",
-        message: patched || reviewPatched || judgmentDayPatched || orchestratorPatched
+        status: bootstrappedOwnedAssets || patched || reviewPatched || judgmentDayPatched || orchestratorPatched ? "success" : "skipped",
+        message: bootstrappedOwnedAssets || patched || reviewPatched || judgmentDayPatched || orchestratorPatched
           ? "SDD Integration instalada, review gate, Judgment Day y sdd-review actualizados"
           : "SDD Integration ya instalada y actualizada",
       }

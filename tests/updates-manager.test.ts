@@ -122,6 +122,21 @@ printf 'Context Mode MCP server v1.0.89 running on stdio\nDetected runtimes:\n' 
     expect(status.available).toBe(true)
   })
 
+  test("context-mode checker resolves user-prefix binary version", async () => {
+    const commandPath = join(TEMP_HOME, ".local", "npm-global", "bin", "context-mode")
+    mkdirSync(join(commandPath, ".."), { recursive: true })
+    writeFileSync(commandPath, "#!/bin/sh\nprintf 'context-mode 1.0.121\\n'\n", "utf8")
+    chmodSync(commandPath, 0o755)
+    const { checkNpmUpdate } = await import(`../src/updates/checkers.ts?user-prefix-version=${Date.now()}`)
+
+    const status = await checkNpmUpdate("context-mode", "context-mode", 100, async () => ({ version: "1.0.121" }))
+
+    expect(status.current).toBe("1.0.121")
+    expect(status.latest).toBe("1.0.121")
+    expect(status.available).toBe(false)
+    expect(status.error).toBeUndefined()
+  })
+
   test("GitHub release checker falls back to releases/latest redirect when API is rate-limited", async () => {
     const binDir = join(TEMP_HOME, "bin")
     const commandPath = join(binDir, "rtk")

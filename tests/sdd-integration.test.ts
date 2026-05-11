@@ -244,6 +244,36 @@ describe("sdd-integration: OpenCode SDD readiness", () => {
     expect(result.message).toContain("sdd-apply/SKILL.md")
   })
 
+  test("install bootstraps managed sdd-review skill when that is the only missing required asset", async () => {
+    writeRequiredSddAssets(tempHome)
+    const reviewPath = join(tempHome, ".config", "opencode", "skills", "sdd-review", "SKILL.md")
+    rmSync(reviewPath)
+    writeMinimalOpenCodeConfig(tempHome)
+
+    const { getSddIntegrationComponent, SDD_REVIEW_START_MARKER } = await loadSddModule()
+    const result = await getSddIntegrationComponent().install()
+
+    expect(result.status).toBe("success")
+    expect(existsSync(reviewPath)).toBe(true)
+    expect(readFileSync(reviewPath, "utf8")).toContain(SDD_REVIEW_START_MARKER)
+  })
+
+  test("install bootstraps owned review asset but does not create external judgment-day skill", async () => {
+    writeRequiredSddAssets(tempHome)
+    const reviewPath = join(tempHome, ".config", "opencode", "skills", "sdd-review", "SKILL.md")
+    const judgmentPath = join(tempHome, ".config", "opencode", "skills", "judgment-day", "SKILL.md")
+    rmSync(reviewPath)
+    rmSync(judgmentPath)
+    writeMinimalOpenCodeConfig(tempHome)
+
+    const { getSddIntegrationComponent, SDD_REVIEW_START_MARKER } = await loadSddModule()
+    const result = await getSddIntegrationComponent().install()
+
+    expect(result.status).toBe("success")
+    expect(readFileSync(reviewPath, "utf8")).toContain(SDD_REVIEW_START_MARKER)
+    expect(existsSync(judgmentPath)).toBe(false)
+  })
+
   test("doctor does not pass when required SDD assets are missing", async () => {
     const sharedDir = join(tempHome, ".config", "opencode", "skills", "_shared")
     mkdirSync(sharedDir, { recursive: true })

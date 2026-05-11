@@ -2,6 +2,7 @@
 
 import { spawnSync } from "child_process"
 import { checkBinaryUpgrade, checkUpgrade } from "../commands/upgrade"
+import { resolveContextModeExecutable } from "../components/context-mode"
 import type { ToolUpdateStatus, UpdateTool } from "./types"
 
 type FetchJson = (url: string, timeoutMs: number) => Promise<any>
@@ -67,12 +68,15 @@ export async function checkCyberpunkUpdate(timeoutMs = 2500): Promise<ToolUpdate
 }
 
 export async function checkNpmUpdate(tool: "context-mode", packageName: string, timeoutMs: number, json: FetchJson = fetchJson): Promise<ToolUpdateStatus> {
+  const command = tool === "context-mode" && packageName === "context-mode"
+    ? (resolveContextModeExecutable() ?? packageName)
+    : packageName
   try {
-    const current = commandVersion(`${packageName} --version`)
+    const current = commandVersion(`${command} --version`)
     const data = await withTimeout(json(`https://registry.npmjs.org/${packageName}/latest`, timeoutMs), timeoutMs)
     return status(tool, current, data?.version)
   } catch (err) {
-    return status(tool, commandVersion(`${packageName} --version`), undefined, err instanceof Error ? err.message : String(err))
+    return status(tool, commandVersion(`${command} --version`), undefined, err instanceof Error ? err.message : String(err))
   }
 }
 
