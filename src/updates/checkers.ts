@@ -1,7 +1,7 @@
 // src/updates/checkers.ts — best-effort update discovery
 
 import { spawnSync } from "child_process"
-import { checkUpgrade } from "../commands/upgrade"
+import { checkBinaryUpgrade, checkUpgrade } from "../commands/upgrade"
 import type { ToolUpdateStatus, UpdateTool } from "./types"
 
 type FetchJson = (url: string, timeoutMs: number) => Promise<any>
@@ -53,6 +53,15 @@ export async function checkCyberpunkUpdate(timeoutMs = 2500): Promise<ToolUpdate
     const s = await checkUpgrade(timeoutMs)
     return { tool: "cyberpunk", current: s.currentVersion, latest: s.latestVersion, available: !s.upToDate, checkedAt: new Date().toISOString() }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.includes("No se pudo determinar el directorio del repositorio")) {
+      try {
+        const s = await checkBinaryUpgrade(timeoutMs)
+        return { tool: "cyberpunk", current: s.currentVersion, latest: s.latestVersion, available: !s.upToDate, checkedAt: new Date().toISOString() }
+      } catch (binaryErr) {
+        return status("cyberpunk", undefined, undefined, binaryErr instanceof Error ? binaryErr.message : String(binaryErr))
+      }
+    }
     return status("cyberpunk", undefined, undefined, err instanceof Error ? err.message : String(err))
   }
 }

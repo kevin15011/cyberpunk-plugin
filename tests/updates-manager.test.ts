@@ -70,6 +70,31 @@ describe("update manager", () => {
     }
   })
 
+  test("cyberpunk checker falls back to binary mode outside a repo", async () => {
+    writeFileSync(join(TEMP_HOME, ".config", "cyberpunk", "config.json"), JSON.stringify({
+      version: 2,
+      updates: { enabled: true, ttlMs: 60000, timeoutMs: 100 },
+      components: {},
+    }, null, 2), "utf8")
+    const originalFetch = globalThis.fetch
+    const originalCwd = process.cwd()
+    globalThis.fetch = (async () => new Response(JSON.stringify({ tag_name: "v1.11.0" }), { status: 200 })) as typeof fetch
+
+    try {
+      process.chdir(TEMP_HOME)
+      const { checkToolUpdate } = await import(`../src/updates/checkers.ts?cyberpunk-no-repo=${Date.now()}`)
+      const status = await checkToolUpdate("cyberpunk", 100)
+
+      expect(status.tool).toBe("cyberpunk")
+      expect(status.error).toBeUndefined()
+      expect(status.latest).toBe("1.11.0")
+      expect(status.available).toBe(false)
+    } finally {
+      process.chdir(originalCwd)
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("checker treats unknown current version with known latest as updateable", async () => {
     const { checkNpmUpdate } = await import(`../src/updates/checkers.ts?unknown-current=${Date.now()}`)
 

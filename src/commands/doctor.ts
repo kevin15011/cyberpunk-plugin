@@ -796,10 +796,13 @@ async function applySoundValidityFix(check: DoctorCheck, prerequisites: ReturnTy
 }
 
 async function applyContextModeFix(check: DoctorCheck, prerequisites: ReturnType<typeof checkPlatformPrerequisites>): Promise<DoctorFixResult> {
-  // Guard: context-mode repairs only run when the binary is on PATH
-  const cmOnPath = isCommandOnPath("context-mode")
+  // Guard: context-mode repairs only run when the binary is resolvable.
+  // Binary installs may place it under ~/.local/npm-global/bin, which is valid
+  // even before the user's interactive shell has reloaded PATH.
+  const { resolveContextModeExecutable } = await import("../components/context-mode")
+  const cmExecutable = resolveContextModeExecutable()
 
-  if (!cmOnPath) {
+  if (!cmExecutable) {
     return { checkId: check.id, status: "skipped", message: "context-mode binary no disponible — reparación omitida" }
   }
 
@@ -878,12 +881,12 @@ Use \`context-mode\` when a normal tool call would likely dump too much raw data
       }
 
       const mcpObj = (config as any).mcp as Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (mcpObj["context-mode"]?.type === "local") {
+      if (mcpObj["context-mode"]?.type === "local" && mcpObj["context-mode"]?.command?.[0] === cmExecutable) {
         return { checkId: check.id, status: "unchanged", message: "MCP ya configurado" }
       }
 
       mcpObj["context-mode"] = {
-        command: ["context-mode"],
+        command: [cmExecutable],
         type: "local",
         enabled: true,
       }

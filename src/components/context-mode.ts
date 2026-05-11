@@ -1,7 +1,7 @@
 // src/components/context-mode.ts — npm install -g + write routing instructions
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "fs"
-import { join } from "path"
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "fs"
+import { delimiter, join } from "path"
 import { execSync } from "child_process"
 import type { ComponentModule, InstallResult, ComponentStatus, DoctorCheck, DoctorContext, DoctorResult } from "./types"
 import { loadConfig } from "../config/load"
@@ -84,7 +84,33 @@ function isNpmAvailable(): boolean {
 }
 
 function isContextModeInstalled(): boolean {
-  return isCommandOnPath("context-mode")
+  return resolveContextModeExecutable() !== null
+}
+
+function isExecutableFile(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function getUserPrefixContextModePath(): string {
+  return join(getHomeDirAuto(), ".local", "npm-global", "bin", "context-mode")
+}
+
+export function resolveContextModeExecutable(): string | null {
+  const userPrefixBinary = getUserPrefixContextModePath()
+  if (isExecutableFile(userPrefixBinary)) return userPrefixBinary
+
+  const pathEntries = (process.env.PATH ?? "").split(delimiter).filter(Boolean)
+  for (const pathEntry of pathEntries) {
+    const candidate = join(pathEntry, "context-mode")
+    if (isExecutableFile(candidate)) return candidate
+  }
+
+  return isCommandOnPath("context-mode") ? "context-mode" : null
 }
 
 function getCommandError(error: unknown): string {
@@ -185,14 +211,16 @@ function patchOpencodeJsonMcp(): boolean {
     config.mcp = {}
   }
 
-  // Check if already configured
-  if (config.mcp["context-mode"]?.type === "local") {
+  const executable = resolveContextModeExecutable() ?? "context-mode"
+
+  // Check if already configured with the resolved executable.
+  if (config.mcp["context-mode"]?.type === "local" && config.mcp["context-mode"]?.command?.[0] === executable) {
     return false
   }
 
   // Add context-mode MCP server config
   config.mcp["context-mode"] = {
-    command: ["context-mode"],
+    command: [executable],
     type: "local",
     enabled: true,
   }

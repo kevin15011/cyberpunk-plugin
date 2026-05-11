@@ -1,7 +1,7 @@
 // tests/installer-auto-deps.test.ts — automatic dependency bootstrap for installer components
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
 
@@ -106,6 +106,7 @@ describe("installer automatic dependency bootstrap", () => {
 
   test("context-mode falls back to a user npm prefix when global install is not permitted", async () => {
     const commands: string[] = []
+    const userContextMode = join(TEMP_HOME, ".local", "npm-global", "bin", "context-mode")
 
     mock.module("child_process", () => ({
       ...actualChildProcess,
@@ -114,6 +115,7 @@ describe("installer automatic dependency bootstrap", () => {
         if (command.includes("which npm")) return "/usr/local/bin/npm\n"
         if (command.includes("which context-mode")) throw new Error("context-mode missing")
         if (command === "npm install -g context-mode") throw new Error("EACCES permission denied")
+        if (command.includes("npm install -g context-mode --prefix")) makeExecutable(userContextMode, "#!/bin/sh\nprintf '1.0.0\\n'\n")
         return ""
       }),
     }))
@@ -121,10 +123,18 @@ describe("installer automatic dependency bootstrap", () => {
     const { getContextModeComponent } = await import(`../src/components/context-mode.ts?auto=${Date.now()}-${Math.random()}`)
 
     const result = await getContextModeComponent().install()
+    const doctor = await getContextModeComponent().doctor({
+      cyberpunkConfig: null,
+      verbose: false,
+      prerequisites: { ffmpeg: false, npm: true, bun: false, curl: false, git: false },
+    })
+    const opencodeConfig = JSON.parse(readFileSync(join(OPENCODE_DIR, "opencode.json"), "utf8"))
 
     expect(result.status).toBe("success")
     expect(commands.some(command => command.includes("npm install -g context-mode --prefix"))).toBe(true)
     expect(process.env.PATH).toContain(join(TEMP_HOME, ".local", "npm-global", "bin"))
+    expect(opencodeConfig.mcp["context-mode"].command[0]).toBe(userContextMode)
+    expect(doctor.checks.find(check => check.id === "context-mode:binary")?.status).toBe("pass")
   })
 
   test("codebase-memory can bootstrap through wget when curl is unavailable", async () => {
