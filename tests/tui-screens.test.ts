@@ -817,12 +817,7 @@ describe("upgrade screen", () => {
       route: route("upgrade"),
       upgrade: {
         loading: false,
-        status: {
-          currentVersion: "1.0.0",
-          latestVersion: "1.0.0",
-          upToDate: true,
-          changedFiles: [],
-        },
+        status: [{ tool: "cyberpunk", current: "1.0.0", latest: "1.0.0", available: false, checkedAt: "now" }],
       },
     })
     const lines = upgradeScreen.render(state)
@@ -837,12 +832,7 @@ describe("upgrade screen", () => {
       route: route("upgrade"),
       upgrade: {
         loading: false,
-        status: {
-          currentVersion: "1.0.0",
-          latestVersion: "2.0.0",
-          upToDate: false,
-          changedFiles: ["file1.ts", "file2.ts"],
-        },
+        status: [{ tool: "cyberpunk", current: "1.0.0", latest: "2.0.0", available: true, checkedAt: "now" }],
       },
     })
     const lines = upgradeScreen.render(state)
@@ -858,12 +848,7 @@ describe("upgrade screen", () => {
       route: route("upgrade"),
       upgrade: {
         loading: false,
-        status: {
-          currentVersion: "1.0.0",
-          latestVersion: "2.0.0",
-          upToDate: false,
-          changedFiles: [],
-        },
+        status: [{ tool: "cyberpunk", current: "1.0.0", latest: "2.0.0", available: true, checkedAt: "now" }],
       },
     })
     const result = upgradeScreen.update(state, { type: "enter" })
@@ -875,12 +860,7 @@ describe("upgrade screen", () => {
       route: route("upgrade"),
       upgrade: {
         loading: false,
-        status: {
-          currentVersion: "1.0.0",
-          latestVersion: "1.0.0",
-          upToDate: true,
-          changedFiles: [],
-        },
+        status: [{ tool: "cyberpunk", current: "1.0.0", latest: "1.0.0", available: false, checkedAt: "now" }],
       },
     })
     const result = upgradeScreen.update(state, { type: "enter" })

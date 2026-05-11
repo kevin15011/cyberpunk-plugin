@@ -1,21 +1,25 @@
 // src/commands/upgrade.ts — git fetch or binary download, compare versions, replace files preserving config
 
-import { existsSync, writeFileSync, renameSync, unlinkSync, readFileSync } from "fs"
-import { join } from "path"
+import { closeSync, copyFileSync, existsSync, openSync, renameSync, unlinkSync, writeSync } from "fs"
+import { createReadStream } from "node:fs"
+import { basename, join } from "path"
 import { execSync } from "child_process"
 import { createHash } from "node:crypto"
 import { loadConfig } from "../config/load"
 import { saveConfig } from "../config/save"
 import type { InstallMode } from "../config/schema"
 import { getHomeDirAuto } from "../platform/paths"
+import { removeUpdateCache } from "../updates/cache"
+import { APP_VERSION } from "../version"
 
 const REPO = "kevin15011/cyberpunk-plugin"
+const DEFAULT_UPGRADE_TIMEOUT_MS = 2500
 
 type UpgradeTestOverrides = {
   getRepoDir?: () => string
   gitCommand?: (args: string, cwd?: string) => string
   fetchChecksums?: (tag: string, assetName: string) => Promise<string>
-  computeFileSha256?: (path: string) => string
+  computeFileSha256?: (path: string) => string | Promise<string>
   smokeTestBinary?: (path: string) => boolean
   prepareDarwinBinary?: (path: string) => { attempted: boolean; guidance?: string }
 }
@@ -33,7 +37,7 @@ function getBinaryPath(): string {
   return join(
     getHomeDirAuto(),
     ".local", "bin",
-    "cyberpunk"
+    process.platform === "win32" ? "cyberpunk.exe" : "cyberpunk"
   )
 }
 
@@ -62,6 +66,10 @@ function getRepoDir(): string {
   if (existsSync(join(process.cwd(), ".git"))) {
     return process.cwd()
   }
+
+  // There is currently no persisted, trustworthy repo checkout path in the
+  // config schema. Do not infer one from component install paths: those point
+  // at copied theme/plugin assets, not necessarily the Git working tree.
   return ""
 }
 
@@ -93,12 +101,42 @@ export function __resetUpgradeTestOverrides(): void {
  * Get the current app version from package.json.
  */
 export function getAppVersion(): string {
+  return APP_VERSION || "0.0.0"
+}
+
+function normalizeTimeout(timeoutMs: number | undefined): number {
+  return Number.isFinite(timeoutMs) && (timeoutMs ?? 0) > 0 ? timeoutMs! : DEFAULT_UPGRADE_TIMEOUT_MS
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), normalizeTimeout(timeoutMs))
+  })
   try {
-    // Read from package.json at build time — fallback to "0.0.0"
-    const pkg = require("../../package.json")
-    return pkg.version || "0.0.0"
-  } catch {
-    return "0.0.0"
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const resolvedTimeoutMs = normalizeTimeout(timeoutMs)
+  const timer = setTimeout(() => controller.abort(), resolvedTimeoutMs)
+  try {
+    return await withTimeout(fetch(url, {
+      ...init,
+      headers: { "User-Agent": "cyberpunk-cli", ...init?.headers },
+      signal: controller.signal,
+    }), resolvedTimeoutMs, "Upgrade network request timed out")
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Upgrade network request timed out")
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -109,15 +147,45 @@ export function getAppVersion(): string {
  *   1 if a > b
  */
 export function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/, "").split(".").map(Number)
-  const pb = b.replace(/^v/, "").split(".").map(Number)
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
   for (let i = 0; i < 3; i++) {
-    const na = pa[i] || 0
-    const nb = pb[i] || 0
+    const na = pa.core[i] || 0
+    const nb = pb.core[i] || 0
     if (na < nb) return -1
     if (na > nb) return 1
   }
+
+  if (pa.prerelease.length === 0 && pb.prerelease.length > 0) return 1
+  if (pa.prerelease.length > 0 && pb.prerelease.length === 0) return -1
+
+  const len = Math.max(pa.prerelease.length, pb.prerelease.length)
+  for (let i = 0; i < len; i++) {
+    const ai = pa.prerelease[i]
+    const bi = pb.prerelease[i]
+    if (ai === undefined && bi !== undefined) return -1
+    if (ai !== undefined && bi === undefined) return 1
+    if (ai === bi) continue
+
+    const an = /^\d+$/.test(ai) ? Number(ai) : undefined
+    const bn = /^\d+$/.test(bi) ? Number(bi) : undefined
+    if (an !== undefined && bn !== undefined) return an < bn ? -1 : 1
+    if (an !== undefined) return -1
+    if (bn !== undefined) return 1
+    return ai < bi ? -1 : 1
+  }
   return 0
+}
+
+function parseSemver(version: string): { core: number[]; prerelease: string[] } {
+  const normalized = version.trim().replace(/^v/i, "").split("+")[0]
+  const [corePart, prereleasePart] = normalized.split("-", 2)
+  const core = corePart.split(".").slice(0, 3).map(part => {
+    const parsed = Number.parseInt(part, 10)
+    return Number.isFinite(parsed) ? parsed : 0
+  })
+  while (core.length < 3) core.push(0)
+  return { core, prerelease: prereleasePart ? prereleasePart.split(".") : [] }
 }
 
 /**
@@ -126,7 +194,7 @@ export function compareSemver(a: string, b: string): number {
  * both the GitHub workflow and install.sh bootstrapper.
  */
 export function getPlatformAsset(): string {
-  const os = process.platform === "darwin" ? "darwin" : "linux"
+  const os = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : "linux"
   let arch = process.arch
   if (os === "darwin" && arch === "x64") {
     throw new Error("Pre-built macOS x64 binaries are no longer published. Build Cyberpunk from source on Intel Macs.")
@@ -134,7 +202,7 @@ export function getPlatformAsset(): string {
   if (arch === "x64") arch = "x64"
   else if (arch === "arm64") arch = "arm64"
   else arch = "x64" // fallback
-  return `cyberpunk-${os}-${arch}`
+  return `cyberpunk-${os}-${arch}${os === "windows" ? ".exe" : ""}`
 }
 
 // ── Binary verification helpers ───────────────────────────────────
@@ -142,22 +210,21 @@ export function getPlatformAsset(): string {
 /**
  * Fetch and parse SHA256 checksum from release checksums.txt for a given asset.
  */
-export async function fetchChecksums(tag: string, assetName: string): Promise<string> {
+export async function fetchChecksums(tag: string, assetName: string, timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<string> {
   if (upgradeTestOverrides.fetchChecksums) {
     return upgradeTestOverrides.fetchChecksums(tag, assetName)
   }
 
   const url = `https://github.com/${REPO}/releases/download/${tag}/checksums.txt`
-  const resp = await fetch(url, {
-    headers: { "User-Agent": "cyberpunk-cli" },
-  })
+  const resp = await fetchWithTimeout(url, timeoutMs)
   if (!resp.ok) {
     throw new Error(`Failed to fetch checksums: HTTP ${resp.status}`)
   }
-  const text = await resp.text()
+  const text = await withTimeout(resp.text(), timeoutMs, "Checksum response timed out")
+  const expectedAsset = basename(assetName)
   for (const line of text.split("\n")) {
     const parts = line.split(/\s+/)
-    if (parts.length >= 2 && parts[1] === assetName) {
+    if (parts.length >= 2 && basename(parts[1]) === expectedAsset) {
       return parts[0]
     }
   }
@@ -167,13 +234,39 @@ export async function fetchChecksums(tag: string, assetName: string): Promise<st
 /**
  * Compute SHA256 hex digest of a file.
  */
-export function computeFileSha256(filePath: string): string {
+export async function computeFileSha256(filePath: string): Promise<string> {
   if (upgradeTestOverrides.computeFileSha256) {
-    return upgradeTestOverrides.computeFileSha256(filePath)
+    return await upgradeTestOverrides.computeFileSha256(filePath)
   }
 
-  const fileBuffer = readFileSync(filePath)
-  return createHash("sha256").update(fileBuffer).digest("hex")
+  return await new Promise((resolve, reject) => {
+    const hash = createHash("sha256")
+    const stream = createReadStream(filePath)
+    stream.on("data", chunk => hash.update(chunk))
+    stream.on("error", reject)
+    stream.on("end", () => resolve(hash.digest("hex")))
+  })
+}
+
+async function writeResponseBodyToFile(resp: Response, filePath: string, timeoutMs: number): Promise<void> {
+  if (!resp.body) {
+    throw new Error("Download response did not include a body")
+  }
+
+  const reader = resp.body.getReader()
+  const fd = openSync(filePath, "w", 0o755)
+  try {
+    while (true) {
+      const chunk = await withTimeout(reader.read(), timeoutMs, "Binary download response timed out")
+      if (chunk.done) break
+      if (chunk.value.byteLength > 0) {
+        writeSync(fd, chunk.value)
+      }
+    }
+  } finally {
+    try { reader.releaseLock() } catch {}
+    closeSync(fd)
+  }
 }
 
 /**
@@ -219,19 +312,44 @@ export function prepareDarwinBinary(tmpPath: string): { attempted: boolean; guid
 /**
  * Fetch latest release tag from GitHub API.
  */
-export async function fetchLatestReleaseTag(): Promise<string> {
+export async function fetchLatestReleaseTag(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<string> {
   const url = `https://api.github.com/repos/${REPO}/releases/latest`
-  const resp = await fetch(url, {
-    headers: { "User-Agent": "cyberpunk-cli" },
-  })
-  if (!resp.ok) {
-    throw new Error(`GitHub API returned ${resp.status}`)
+  try {
+    const resp = await fetchWithTimeout(url, timeoutMs)
+    if (!resp.ok) {
+      throw new Error(`GitHub API returned ${resp.status}`)
+    }
+    const data = await withTimeout(resp.json(), timeoutMs, "Release response timed out") as { tag_name?: string }
+    if (!data.tag_name) {
+      throw new Error("No tag_name in release response")
+    }
+    return data.tag_name
+  } catch (err) {
+    try {
+      return await fetchLatestReleaseTagFromRedirect(timeoutMs)
+    } catch {
+      throw err
+    }
   }
-  const data = await resp.json() as { tag_name?: string }
-  if (!data.tag_name) {
-    throw new Error("No tag_name in release response")
-  }
-  return data.tag_name
+}
+
+async function fetchLatestReleaseTagFromRedirect(timeoutMs: number): Promise<string> {
+  const resp = await fetchWithTimeout(`https://github.com/${REPO}/releases/latest`, timeoutMs, { redirect: "manual" })
+  const location = resp.headers.get("location") ?? resp.url
+  const fromLocation = parseReleaseTag(location)
+  if (fromLocation) return fromLocation
+
+  const text = await withTimeout(resp.text(), timeoutMs, "Release redirect response timed out")
+  const fromBody = parseReleaseTag(text)
+  if (fromBody) return fromBody
+  throw new Error("Could not resolve latest GitHub release tag")
+}
+
+function parseReleaseTag(input: string | null | undefined): string | undefined {
+  if (!input) return undefined
+  const tag = input.match(/\/releases\/tag\/(v?[^"'<\s?#]+)/)?.[1]
+  if (!tag) return undefined
+  return tag.startsWith("v") ? tag : `v${tag}`
 }
 
 /**
@@ -240,21 +358,18 @@ export async function fetchLatestReleaseTag(): Promise<string> {
  * → prepareDarwinBinary (if darwin) → atomic rename.
  * On any step failure, deletes .tmp file and throws without replacing existing binary.
  */
-async function downloadAndReplaceBinary(assetName: string, tag: string): Promise<void> {
+async function downloadAndReplaceBinary(assetName: string, tag: string, timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<void> {
   const binaryPath = getBinaryPath()
   const downloadUrl = `https://github.com/${REPO}/releases/download/${tag}/${assetName}`
   const tmpPath = binaryPath + ".tmp"
 
   // Step 1: Download
-  const resp = await fetch(downloadUrl, {
-    headers: { "User-Agent": "cyberpunk-cli" },
-  })
+  const resp = await fetchWithTimeout(downloadUrl, timeoutMs)
   if (!resp.ok) {
     throw new Error(`Download failed: HTTP ${resp.status}`)
   }
 
-  const arrayBuf = await resp.arrayBuffer()
-  writeFileSync(tmpPath, Buffer.from(arrayBuf))
+  await writeResponseBodyToFile(resp, tmpPath, timeoutMs)
 
   // Step 2: chmod +x
   try {
@@ -265,8 +380,8 @@ async function downloadAndReplaceBinary(assetName: string, tag: string): Promise
 
   try {
     // Step 3: Verify SHA256 checksum
-    const expectedHash = await fetchChecksums(tag, assetName)
-    const actualHash = computeFileSha256(tmpPath)
+    const expectedHash = await fetchChecksums(tag, assetName, timeoutMs)
+    const actualHash = await computeFileSha256(tmpPath)
     if (actualHash !== expectedHash) {
       throw new Error(`CHECKSUM_MISMATCH: Binary checksum mismatch — expected ${expectedHash}, got ${actualHash}. The downloaded file may be corrupted or tampered with. Re-run the upgrade or verify manually with: sha256sum "${tmpPath}"`)
     }
@@ -311,15 +426,17 @@ async function checkRepoUpgrade(): Promise<UpgradeStatus> {
     currentVersion = "unknown"
   }
 
+  let branch: string
   try {
-    gitCommand("fetch origin main", repoDir)
+    branch = getCurrentRepoBranch(repoDir)
+    gitCommand(`fetch origin ${branch}`, repoDir)
   } catch (err) {
     throw new Error(`No se pudo conectar al repositorio remoto: ${err}`)
   }
 
   let latestVersion: string
   try {
-    latestVersion = gitCommand("rev-parse origin/main", repoDir)
+    latestVersion = gitCommand(`rev-parse origin/${branch}`, repoDir)
   } catch {
     throw new Error("No se pudo obtener la versión remota")
   }
@@ -339,6 +456,14 @@ async function checkRepoUpgrade(): Promise<UpgradeStatus> {
   return { currentVersion, latestVersion, upToDate, changedFiles }
 }
 
+function getCurrentRepoBranch(repoDir: string): string {
+  const branch = gitCommand("rev-parse --abbrev-ref HEAD", repoDir).trim()
+  if (!branch || branch === "HEAD") {
+    throw new Error("No se puede actualizar en modo repo desde un HEAD detached; cambia a una rama local con upstream remoto")
+  }
+  return branch
+}
+
 async function runRepoUpgrade(): Promise<UpgradeResult> {
   const repoDir = getRepoDir()
   if (!repoDir) {
@@ -349,7 +474,9 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
   }
 
   let status: UpgradeStatus
+  let branch: string
   try {
+    branch = getCurrentRepoBranch(repoDir)
     status = await checkRepoUpgrade()
   } catch (err) {
     return {
@@ -367,7 +494,6 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
   }
 
   // Back up files that will change
-  const { copyFileSync } = await import("fs")
   const filesToBackup = status.changedFiles.filter(f =>
     f !== "src/config/schema.ts" &&
     !f.endsWith("config.json") &&
@@ -382,7 +508,7 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
   }
 
   try {
-    gitCommand("pull origin main", repoDir)
+    gitCommand(`pull --ff-only origin ${branch}`, repoDir)
   } catch (err) {
     for (const file of filesToBackup) {
       const bakPath = join(repoDir, file + ".bak")
@@ -396,10 +522,18 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
     }
   }
 
+  for (const file of filesToBackup) {
+    const bakPath = join(repoDir, file + ".bak")
+    if (existsSync(bakPath)) {
+      try { unlinkSync(bakPath) } catch {}
+    }
+  }
+
   // Update lastUpgradeCheck timestamp
   const config = loadConfig()
   config.lastUpgradeCheck = new Date().toISOString()
   saveConfig(config)
+  removeUpdateCache()
 
   return {
     status: "upgraded",
@@ -411,10 +545,10 @@ async function runRepoUpgrade(): Promise<UpgradeResult> {
 
 // ── Binary upgrade (new path) ────────────────────────────────────
 
-export async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
+export async function checkBinaryUpgrade(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<UpgradeStatus> {
   const currentVersion = getAppVersion()
   const assetName = getPlatformAsset()
-  const latestTag = await fetchLatestReleaseTag()
+  const latestTag = await fetchLatestReleaseTag(timeoutMs)
   const latestVersion = latestTag.replace(/^v/, "")
   const upToDate = compareSemver(currentVersion, latestVersion) >= 0
   const binaryPath = getBinaryPath()
@@ -423,11 +557,11 @@ export async function checkBinaryUpgrade(): Promise<UpgradeStatus> {
     currentVersion,
     latestVersion,
     upToDate,
-    changedFiles: upToDate ? [] : [binaryPath, assetName],
+    changedFiles: upToDate ? [] : [binaryPath],
   }
 }
 
-export async function runBinaryUpgrade(): Promise<UpgradeResult> {
+export async function runBinaryUpgrade(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<UpgradeResult> {
   const currentVersion = getAppVersion()
   const binaryPath = getBinaryPath()
   let assetName: string
@@ -443,7 +577,7 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
 
   let latestTag: string
   try {
-    latestTag = await fetchLatestReleaseTag()
+    latestTag = await fetchLatestReleaseTag(timeoutMs)
   } catch (err) {
     return {
       status: "error",
@@ -460,7 +594,7 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
 
   // Download and replace (with verification)
   try {
-    await downloadAndReplaceBinary(assetName, latestTag)
+    await downloadAndReplaceBinary(assetName, latestTag, timeoutMs)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
 
@@ -485,6 +619,7 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
   const config = loadConfig()
   config.lastUpgradeCheck = new Date().toISOString()
   saveConfig(config)
+  removeUpdateCache()
 
   return {
     status: "upgraded",
@@ -496,23 +631,24 @@ export async function runBinaryUpgrade(): Promise<UpgradeResult> {
 
 // ── Public API — dispatch by installMode ──────────────────────────
 
-export async function checkUpgrade(): Promise<UpgradeStatus> {
+export async function checkUpgrade(timeoutMs = DEFAULT_UPGRADE_TIMEOUT_MS): Promise<UpgradeStatus> {
   const config = loadConfig()
   const mode: InstallMode = config.installMode || "repo"
 
   if (mode === "binary") {
-    return checkBinaryUpgrade()
+    return checkBinaryUpgrade(timeoutMs)
   }
 
   return checkRepoUpgrade()
 }
 
-export async function runUpgrade(): Promise<UpgradeResult> {
+export async function runUpgrade(timeoutMs?: number): Promise<UpgradeResult> {
   const config = loadConfig()
   const mode: InstallMode = config.installMode || "repo"
+  const resolvedTimeoutMs = timeoutMs ?? config.updates?.timeoutMs ?? DEFAULT_UPGRADE_TIMEOUT_MS
 
   if (mode === "binary") {
-    return runBinaryUpgrade()
+    return runBinaryUpgrade(resolvedTimeoutMs)
   }
 
   return runRepoUpgrade()

@@ -35,12 +35,29 @@ jobs:
             tag="v$(node -p 'require("./package.json").version')"
           fi
 
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            should_release="false"
-            echo "Release tag already exists: $tag"
-          else
+          expected_assets="cyberpunk-linux-x64 cyberpunk-linux-arm64 cyberpunk-darwin-arm64 cyberpunk-windows-x64.exe checksums.txt"
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
             should_release="true"
             echo "New release tag detected: $tag"
+          elif gh release view "$tag" --json assets --jq '.assets[].name' > release-assets.txt 2>/dev/null; then
+            missing=""
+            for asset in $expected_assets; do
+              if ! grep -Fxq "$asset" release-assets.txt; then
+                missing="$missing $asset"
+              fi
+            done
+
+            if [ -n "$missing" ]; then
+              should_release="true"
+              echo "Release tag exists but is missing asset(s):$missing"
+            else
+              should_release="false"
+              echo "Release tag already exists with all expected assets: $tag"
+            fi
+          else
+            should_release="true"
+            echo "Release tag exists but release assets could not be verified; continuing with allowUpdates"
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -296,7 +313,10 @@ jobs:
         shell: bash
         run: |
           shopt -s globstar
-          cat ./checksums/**/*.txt > ./checksums.txt
+          find ./checksums -name checksums.txt -print0 \
+            | sort -z \
+            | xargs -0 cat \
+            | awk '!seen[$2]++' > ./checksums.txt
 
       - name: Upload checksum manifest
         uses: ncipollo/release-action@v1

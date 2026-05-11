@@ -382,7 +382,7 @@ describe("doctor/upgrade data loading on route entry", () => {
   test("navigating to upgrade with existing upgrade state does NOT reload", () => {
     const state = makeState({
       route: route("upgrade"),
-      upgrade: { loading: false, status: { currentVersion: "1.0.0", latestVersion: "1.0.0", upToDate: true, changedFiles: [] } },
+      upgrade: { loading: false, status: [{ tool: "cyberpunk", current: "1.0.0", latest: "1.0.0", available: false, checkedAt: "now" }] },
     })
     expect(state.route.id).toBe("upgrade")
     expect(state.upgrade).toBeDefined()

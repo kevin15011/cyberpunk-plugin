@@ -58,7 +58,17 @@ describe("release workflow hardening", () => {
     expect(checksumsJob).toContain("- build-darwin-arm64")
     expect(checksumsJob).toContain("- build-windows-x64")
     expect(checksumsJob).toContain("actions/download-artifact@v5")
-    expect(checksumsJob).toContain("cat ./checksums/**/*.txt > ./checksums.txt")
+    expect(checksumsJob).toContain("find ./checksums -name checksums.txt -print0")
+    expect(checksumsJob).toContain("awk '!seen[$2]++' > ./checksums.txt")
     expect(checksumsJob).toContain("artifacts: ./checksums.txt")
+  })
+
+  test("existing tags only skip release when all expected assets are already present", () => {
+    const resolveTagJob = getJobBlock("resolve-tag")
+
+    expect(resolveTagJob).toContain("expected_assets=\"cyberpunk-linux-x64 cyberpunk-linux-arm64 cyberpunk-darwin-arm64 cyberpunk-windows-x64.exe checksums.txt\"")
+    expect(resolveTagJob).toContain("gh release view \"$tag\" --json assets --jq '.assets[].name'")
+    expect(resolveTagJob).toContain("Release tag exists but is missing asset(s):$missing")
+    expect(resolveTagJob).toContain("Release tag already exists with all expected assets")
   })
 })

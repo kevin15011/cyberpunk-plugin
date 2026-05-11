@@ -103,6 +103,11 @@ async function withMockedPlatform<T>(platform: NodeJS.Platform, arch: string, ru
 // ── Actual module function tests for compareSemver and helpers ────
 
 describe("compareSemver (from upgrade module)", () => {
+  test("getAppVersion uses embedded package version for compiled binaries", async () => {
+    const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+    expect(mod.getAppVersion()).toBe(CURRENT_VERSION)
+  })
+
   test("equal versions return 0", async () => {
     const mod = await import("../src/commands/upgrade.ts?" + Date.now())
     expect(mod.compareSemver("1.0.0", "1.0.0")).toBe(0)
@@ -127,6 +132,15 @@ describe("compareSemver (from upgrade module)", () => {
     expect(mod.compareSemver("v1.0.0", "1.0.0")).toBe(0)
     expect(mod.compareSemver("1.0.0", "v1.0.0")).toBe(0)
     expect(mod.compareSemver("v1.1.0", "v1.0.0")).toBe(1)
+  })
+
+  test("prerelease ordering and build metadata follow semver precedence", async () => {
+    const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+    expect(mod.compareSemver("1.0.0-alpha", "1.0.0-alpha.1")).toBe(-1)
+    expect(mod.compareSemver("1.0.0-alpha.1", "1.0.0-alpha.beta")).toBe(-1)
+    expect(mod.compareSemver("1.0.0-beta.2", "1.0.0-beta.11")).toBe(-1)
+    expect(mod.compareSemver("1.0.0-rc.1", "1.0.0")).toBe(-1)
+    expect(mod.compareSemver("v1.0.0+build.1", "1.0.0+build.2")).toBe(0)
   })
 
   test("up-to-date short-circuit: current >= latest means up-to-date", async () => {
@@ -161,6 +175,13 @@ describe("getPlatformAsset (from upgrade module)", () => {
     await withMockedPlatform("darwin", "x64", async () => {
       const mod = await import("../src/commands/upgrade.ts?" + Date.now())
       expect(() => mod.getPlatformAsset()).toThrow(/macOS x64 binaries are no longer published/i)
+    })
+  })
+
+  test("returns Windows release asset with exe suffix", async () => {
+    await withMockedPlatform("win32", "x64", async () => {
+      const mod = await import("../src/commands/upgrade.ts?" + Date.now())
+      expect(mod.getPlatformAsset()).toBe("cyberpunk-windows-x64.exe")
     })
   })
 
@@ -274,6 +295,46 @@ describe("runUpgrade dispatch by installMode", () => {
       })
       expect(readFileSync(binaryPath, "utf8")).toBe("dispatch-binary")
       expect(JSON.parse(readFileSync(configPath, "utf8")).installMode).toBe("binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+
+  test("successful binary upgrade clears stale update cache", async () => {
+    const { home, binaryPath, cleanup } = createBinaryTestEnv("clears-update-cache")
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      if (url.includes("/releases/download/v9.9.9/")) {
+        return new Response(Buffer.from("cache-clear-binary"), { status: 200 })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      const cache = await importAfterHomeSet<typeof import("../src/updates/cache")>("../../src/updates/cache.ts", home)
+      const cachePath = await withHome(home, () => {
+        cache.writeUpdateCache({ checkedAt: new Date().toISOString(), tools: [] })
+        return cache.getUpdateCachePath()
+      })
+      expect(existsSync(cachePath)).toBe(true)
+
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => MOCK_HASH,
+        smokeTestBinary: () => true,
+        prepareDarwinBinary: () => ({ attempted: true }),
+      })
+
+      const result = await withHome(home, () => mod.runUpgrade())
+      expect(result.status).toBe("upgraded")
+      expect(readFileSync(binaryPath, "utf8")).toBe("cache-clear-binary")
+      expect(existsSync(cachePath)).toBe(false)
     } finally {
       globalThis.fetch = originalFetch
       cleanup()
@@ -424,8 +485,9 @@ describe("runUpgrade dispatch by installMode", () => {
       getRepoDir: () => "/tmp/cyberpunk-repo",
       gitCommand: (args: string) => {
         if (args === "rev-parse HEAD") return "abc123"
-        if (args === "fetch origin main") return ""
-        if (args === "rev-parse origin/main") return "abc123"
+        if (args === "rev-parse --abbrev-ref HEAD") return "feature/audit"
+        if (args === "fetch origin feature/audit") return ""
+        if (args === "rev-parse origin/feature/audit") return "abc123"
         throw new Error(`unexpected git args: ${args}`)
       },
     })
@@ -436,6 +498,26 @@ describe("runUpgrade dispatch by installMode", () => {
       fromVersion: "abc123",
       toVersion: "abc123",
     })
+  })
+
+  test("repo mode refuses detached HEAD instead of falling back to main", async () => {
+    const fixture = createTestHome("cyberpunk-upgrade-detached-head")
+    writeTestConfig({ installMode: "repo" })
+    const mod = await importUpgradeModule()
+
+    mod.__setUpgradeTestOverrides({
+      getRepoDir: () => "/tmp/cyberpunk-repo",
+      gitCommand: (args: string) => {
+        if (args === "rev-parse --abbrev-ref HEAD") return "HEAD"
+        if (args === "rev-parse HEAD") return "detached-commit"
+        throw new Error(`unexpected git args: ${args}`)
+      },
+    })
+
+    const result = await withHome(fixture.home, () => mod.runUpgrade())
+
+    expect(result.status).toBe("error")
+    expect(result.error).toMatch(/HEAD detached/i)
   })
 
   test("repo upgrade preserves isolated config and leaves caller config untouched", async () => {
@@ -467,10 +549,11 @@ describe("runUpgrade dispatch by installMode", () => {
       getRepoDir: () => repoDir,
       gitCommand: (args: string) => {
         if (args === "rev-parse HEAD") return "repo-old"
-        if (args === "fetch origin main") return ""
-        if (args === "rev-parse origin/main") return "repo-new"
+        if (args === "rev-parse --abbrev-ref HEAD") return "release/hardening"
+        if (args === "fetch origin release/hardening") return ""
+        if (args === "rev-parse origin/release/hardening") return "repo-new"
         if (args === "diff --name-only repo-old..repo-new") return "README.md"
-        if (args === "pull origin main") {
+        if (args === "pull --ff-only origin release/hardening") {
           writeFileSync(join(repoDir, "README.md"), "after-upgrade", "utf8")
           return ""
         }
@@ -502,10 +585,47 @@ describe("runUpgrade dispatch by installMode", () => {
       expect(typeof savedFixtureConfig.lastUpgradeCheck).toBe("string")
       expect(readFileSync(hostFixture.configPath, "utf8")).toBe(hostConfigBefore)
       expect(readFileSync(join(repoDir, "README.md"), "utf8")).toBe("after-upgrade")
+      expect(existsSync(join(repoDir, "README.md.bak"))).toBe(false)
     } finally {
       mod.__resetUpgradeTestOverrides()
       delete process.env.HOME
       hostFixture.cleanup()
+      rmSync(repoDir, { recursive: true, force: true })
+    }
+  })
+
+  test("repo upgrade preserves backup files when pull fails", async () => {
+    const fixture = createTestHome("cyberpunk-upgrade-repo-pull-failure")
+    const repoDir = mkdtempSync(join(tmpdir(), "cyberpunk-upgrade-repo-fail-"))
+    writeTestConfig({ installMode: "repo" })
+    writeFileSync(join(repoDir, "README.md"), "before-upgrade", "utf8")
+
+    const mod = await importUpgradeModule()
+    mod.__setUpgradeTestOverrides({
+      getRepoDir: () => repoDir,
+      gitCommand: (args: string) => {
+        if (args === "rev-parse HEAD") return "repo-old"
+        if (args === "rev-parse --abbrev-ref HEAD") return "release/hardening"
+        if (args === "fetch origin release/hardening") return ""
+        if (args === "rev-parse origin/release/hardening") return "repo-new"
+        if (args === "diff --name-only repo-old..repo-new") return "README.md"
+        if (args === "pull --ff-only origin release/hardening") {
+          writeFileSync(join(repoDir, "README.md"), "partial-upgrade", "utf8")
+          throw new Error("pull failed")
+        }
+        throw new Error(`unexpected git args: ${args}`)
+      },
+    })
+
+    try {
+      const result = await withHome(fixture.home, () => mod.runUpgrade())
+
+      expect(result.status).toBe("error")
+      expect(result.error).toContain("pull failed")
+      expect(readFileSync(join(repoDir, "README.md"), "utf8")).toBe("before-upgrade")
+      expect(readFileSync(join(repoDir, "README.md.bak"), "utf8")).toBe("before-upgrade")
+    } finally {
+      mod.__resetUpgradeTestOverrides()
       rmSync(repoDir, { recursive: true, force: true })
     }
   })
@@ -519,8 +639,9 @@ describe("runUpgrade dispatch by installMode", () => {
       getRepoDir: () => "/tmp/cyberpunk-repo",
       gitCommand: (args: string) => {
         if (args === "rev-parse HEAD") return "repo-current"
-        if (args === "fetch origin main") return ""
-        if (args === "rev-parse origin/main") return "repo-current"
+        if (args === "rev-parse --abbrev-ref HEAD") return "develop"
+        if (args === "fetch origin develop") return ""
+        if (args === "rev-parse origin/develop") return "repo-current"
         throw new Error(`unexpected git args: ${args}`)
       },
     })
@@ -551,11 +672,9 @@ describe("checkUpgrade dispatch", () => {
     try {
       const status = await withHome(fixture.home, () => mod.checkUpgrade())
       expect(status.latestVersion).toBe("9.9.9")
-      expect(status.changedFiles).toHaveLength(2)
-      expect(status.changedFiles.some(path => path.endsWith("/cyberpunk"))).toBe(true)
-      // Asset name is platform-dependent: cyberpunk-{os}-{arch}
-      const expectedAsset = `cyberpunk-${process.platform === "darwin" ? "darwin" : "linux"}-${process.arch === "arm64" ? "arm64" : "x64"}`
-      expect(status.changedFiles).toContain(expectedAsset)
+      expect(status.changedFiles).toHaveLength(1)
+      expect(status.changedFiles[0].endsWith("/cyberpunk")).toBe(true)
+      expect(status.changedFiles[0]).not.toMatch(/^cyberpunk-/)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -566,13 +685,14 @@ describe("checkUpgrade dispatch", () => {
     writeTestConfig({ installMode: "repo" })
     const mod = await importUpgradeModule()
     mod.__setUpgradeTestOverrides({
-      getRepoDir: () => "/tmp/cyberpunk-repo",
-      gitCommand: (args: string) => {
-        if (args === "rev-parse HEAD") return "repo-head"
-        if (args === "fetch origin main") return ""
-        if (args === "rev-parse origin/main") return "repo-next"
-        if (args === "diff --name-only repo-head..repo-next") return "src/index.ts\nREADME.md"
-        throw new Error(`unexpected git args: ${args}`)
+        getRepoDir: () => "/tmp/cyberpunk-repo",
+        gitCommand: (args: string) => {
+          if (args === "rev-parse HEAD") return "repo-head"
+          if (args === "rev-parse --abbrev-ref HEAD") return "upgrade-audit"
+          if (args === "fetch origin upgrade-audit") return ""
+          if (args === "rev-parse origin/upgrade-audit") return "repo-next"
+          if (args === "diff --name-only repo-head..repo-next") return "src/index.ts\nREADME.md"
+          throw new Error(`unexpected git args: ${args}`)
       },
     })
 
@@ -583,6 +703,111 @@ describe("checkUpgrade dispatch", () => {
       upToDate: false,
       changedFiles: ["src/index.ts", "README.md"],
     })
+  })
+})
+
+describe("upgrade network and release parsing regressions", () => {
+  const MOCK_HASH = "a".repeat(64)
+
+  test("binary upgrade streams release asset to disk without arrayBuffer", async () => {
+    const { home, binaryPath, cleanup } = createBinaryTestEnv("streaming-download")
+    const originalFetch = globalThis.fetch
+    const chunks = [new TextEncoder().encode("streamed-"), new TextEncoder().encode("binary")]
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/releases/latest")) {
+        return new Response(JSON.stringify({ tag_name: "v9.9.9" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      if (url.includes("/releases/download/v9.9.9/")) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const chunk of chunks) controller.enqueue(chunk)
+            controller.close()
+          },
+        })
+        const response = new Response(stream, { status: 200 })
+        Object.defineProperty(response, "arrayBuffer", {
+          value: () => { throw new Error("arrayBuffer should not be used for binary downloads") },
+        })
+        return response
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as typeof fetch
+
+    try {
+      const mod = await importAfterHomeSet<typeof import("../src/commands/upgrade")>("../../src/commands/upgrade.ts", home)
+      mod.__setUpgradeTestOverrides({
+        fetchChecksums: async () => MOCK_HASH,
+        computeFileSha256: () => MOCK_HASH,
+        smokeTestBinary: () => true,
+        prepareDarwinBinary: () => ({ attempted: true }),
+      })
+
+      const result = await withHome(home, () => mod.runUpgrade())
+
+      expect(result.status).toBe("upgraded")
+      expect(readFileSync(binaryPath, "utf8")).toBe("streamed-binary")
+    } finally {
+      globalThis.fetch = originalFetch
+      cleanup()
+    }
+  })
+
+  test("fetchChecksums matches checksum entries by basename", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => new Response([
+      "b".repeat(64) + "  ./cyberpunk-linux-arm64",
+      "a".repeat(64) + "  ./cyberpunk-linux-x64",
+    ].join("\n"), { status: 200 })) as typeof fetch
+
+    try {
+      const mod = await import("../src/commands/upgrade.ts?checksum-basename=" + Date.now())
+      await expect(mod.fetchChecksums("v9.9.9", "cyberpunk-linux-x64", 100)).resolves.toBe("a".repeat(64))
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("fetchLatestReleaseTag falls back to GitHub latest redirect when API fails", async () => {
+    const originalFetch = globalThis.fetch
+    const calls: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.includes("api.github.com")) {
+        return new Response("rate limited", { status: 403 })
+      }
+      return new Response("", {
+        status: 302,
+        headers: { location: "https://github.com/kevin15011/cyberpunk-plugin/releases/tag/v9.9.9" },
+      })
+    }) as typeof fetch
+
+    try {
+      const mod = await import("../src/commands/upgrade.ts?release-fallback=" + Date.now())
+      await expect(mod.fetchLatestReleaseTag(100)).resolves.toBe("v9.9.9")
+      expect(calls).toEqual([
+        "https://api.github.com/repos/kevin15011/cyberpunk-plugin/releases/latest",
+        "https://github.com/kevin15011/cyberpunk-plugin/releases/latest",
+      ])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("checkBinaryUpgrade bounds latest-release network calls with timeout", async () => {
+    const fixture = createTestHome("cyberpunk-upgrade-timeout")
+    writeTestConfig({ installMode: "binary" })
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => new Promise<Response>(() => {})) as typeof fetch
+
+    try {
+      const mod = await importUpgradeModule()
+      await expect(withHome(fixture.home, () => mod.checkBinaryUpgrade(1))).rejects.toThrow(/timed out/i)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
 

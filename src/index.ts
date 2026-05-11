@@ -9,7 +9,7 @@ import { runConfigCommand, formatConfigOutput } from "./commands/config"
 import { checkUpgrade, runUpgrade } from "./commands/upgrade"
 import { runDoctor } from "./commands/doctor"
 import { runTUI } from "./tui/index"
-import { ensureConfigExists } from "./config/load"
+import { ensureConfigExists, loadConfig } from "./config/load"
 import { existsSync } from "fs"
 import { getConfigPath } from "./config/load"
 import { resolvePreset } from "./presets"
@@ -167,6 +167,7 @@ async function maybePrintUpdateNotice(json: boolean): Promise<void> {
   if (json) return
   if (!existsSync(getConfigPath())) return
   try {
+    if (loadConfig().updates?.enabled === false) return
     const statuses = await createUpdateManager(false).checkAll()
     const notice = formatUpdateNotice(statuses)
     if (notice) console.error(notice)

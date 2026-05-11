@@ -1,8 +1,12 @@
 import { build, spawn } from "bun"
+import { readFileSync, writeFileSync } from "fs"
 import { parseBuildArgs, resolveOutfile } from "./src/build/config"
 
 const { targetPlatform } = parseBuildArgs(process.argv.slice(2))
 const outfile = resolveOutfile(targetPlatform)
+const packageVersion = JSON.parse(readFileSync("./package.json", "utf8")).version
+
+writeFileSync("./src/version.ts", `// src/version.ts — compile-time application version embedded into standalone binaries\n\nexport const APP_VERSION = ${JSON.stringify(packageVersion)}\n`, "utf8")
 
 // Build and compile to standalone binary
 const result = await build({

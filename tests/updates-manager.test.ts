@@ -48,6 +48,28 @@ describe("update manager", () => {
     expect(status.error).toContain("timed out")
   })
 
+  test("cyberpunk checker passes timeout to binary release check", async () => {
+    writeFileSync(join(TEMP_HOME, ".config", "cyberpunk", "config.json"), JSON.stringify({
+      version: 2,
+      installMode: "binary",
+      updates: { enabled: true, ttlMs: 60000, timeoutMs: 1 },
+      components: {},
+    }, null, 2), "utf8")
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => new Promise<Response>(() => {})) as typeof fetch
+
+    try {
+      const { checkToolUpdate } = await import(`../src/updates/checkers.ts?cyberpunk-timeout=${Date.now()}`)
+      const status = await checkToolUpdate("cyberpunk", 1)
+
+      expect(status.tool).toBe("cyberpunk")
+      expect(status.available).toBe(false)
+      expect(status.error).toMatch(/timed out/i)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("checker treats unknown current version with known latest as updateable", async () => {
     const { checkNpmUpdate } = await import(`../src/updates/checkers.ts?unknown-current=${Date.now()}`)
 
@@ -118,6 +140,33 @@ printf 'Context Mode MCP server v1.0.89 running on stdio\nDetected runtimes:\n' 
     expect(existsSync(getUpdateCachePath())).toBe(false)
   })
 
+  test("passive CLI update notices respect updates.enabled=false", async () => {
+    const configPath = join(TEMP_HOME, ".config", "cyberpunk", "config.json")
+    writeFileSync(configPath, JSON.stringify({
+      version: 2,
+      components: {},
+      updates: { enabled: false, ttlMs: 60_000, timeoutMs: 1 },
+    }, null, 2), "utf8")
+
+    const { writeUpdateCache } = await import(`../src/updates/cache.ts?disabled-notice-cache=${Date.now()}`)
+    writeUpdateCache({ checkedAt: new Date().toISOString(), tools: [
+      { tool: "context-mode", current: "1.0.0", latest: "2.0.0", available: true, checkedAt: new Date().toISOString() },
+    ] })
+
+    const proc = Bun.spawnSync([process.execPath, "src/index.ts", "status", "--plugin"], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: TEMP_HOME, NO_COLOR: "1" },
+      timeout: 60000,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const stderr = Buffer.from(proc.stderr).toString("utf8")
+
+    expect(proc.exitCode).toBe(0)
+    expect(stderr).not.toContain("Updates available")
+    expect(stderr).not.toContain("context-mode")
+  })
+
   test("doctor exposes cached update metadata visibility", async () => {
     const { writeUpdateCache } = await import(`../src/updates/cache.ts?doctor-cache=${Date.now()}`)
     const { runDoctor } = await import(`../src/commands/doctor.ts?doctor=${Date.now()}`)
@@ -185,5 +234,49 @@ printf 'Context Mode MCP server v1.0.89 running on stdio\nDetected runtimes:\n' 
     expect(proc.exitCode).toBe(1)
     const parsed = JSON.parse(stdout)
     expect(parsed).toEqual([{ tool: "rtk", status: "error", message: expect.any(String) }])
+  })
+
+  test("context-mode updater reports a clear error when npm is unavailable", async () => {
+    const originalPath = process.env.PATH
+    process.env.PATH = ""
+    try {
+      const { updateTool } = await import(`../src/updates/updaters.ts?missing-npm=${Date.now()}`)
+      const result = await updateTool("context-mode")
+
+      expect(result).toEqual({
+        tool: "context-mode",
+        status: "error",
+        message: "context-mode updater requires missing command(s): npm",
+      })
+    } finally {
+      process.env.PATH = originalPath
+    }
+  })
+
+  test("curl-based updaters report missing shell tool prerequisites before running installers", async () => {
+    const originalPath = process.env.PATH
+    process.env.PATH = ""
+    try {
+      const { updateTool } = await import(`../src/updates/updaters.ts?missing-curl-tools=${Date.now()}`)
+
+      const rtk = await updateTool("rtk")
+      const codebaseMemory = await updateTool("codebase-memory")
+
+      expect(rtk).toEqual({
+        tool: "rtk",
+        status: "error",
+        message: expect.stringContaining("rtk updater requires missing command(s):"),
+      })
+      expect(rtk.message).toContain("curl")
+      expect(codebaseMemory).toEqual({
+        tool: "codebase-memory",
+        status: "error",
+        message: expect.stringContaining("codebase-memory updater requires missing command(s):"),
+      })
+      expect(codebaseMemory.message).toContain("curl")
+      expect(codebaseMemory.message).toContain("bash")
+    } finally {
+      process.env.PATH = originalPath
+    }
   })
 })

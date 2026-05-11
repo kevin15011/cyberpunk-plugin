@@ -27,17 +27,7 @@ export const upgradeScreen: ScreenModule = {
       return lines
     }
 
-    const legacyStatus = status as any
-    const statuses = Array.isArray(status)
-      ? status
-      : [{
-        tool: "cyberpunk" as const,
-        current: legacyStatus.currentVersion,
-        latest: legacyStatus.latestVersion,
-        available: !legacyStatus.upToDate,
-        checkedAt: new Date().toISOString(),
-        error: undefined,
-      }]
+    const statuses = status
     const available = statuses.filter(s => s.available)
 
     for (const tool of statuses) {
@@ -72,12 +62,7 @@ export const upgradeScreen: ScreenModule = {
 
     switch (key.type) {
       case "enter": {
-        const legacyStatus = upgrade?.status as any
-        const statuses = Array.isArray(upgrade?.status)
-          ? upgrade.status
-          : upgrade?.status
-            ? [{ available: !legacyStatus.upToDate }]
-            : []
+        const statuses = upgrade?.status ?? []
         if (statuses.length === 0 || statuses.every(s => !s.available)) {
           return { state, intent: { type: "none" } }
         }

@@ -48,9 +48,9 @@ function commandVersion(command: string): string | undefined {
   }
 }
 
-export async function checkCyberpunkUpdate(): Promise<ToolUpdateStatus> {
+export async function checkCyberpunkUpdate(timeoutMs = 2500): Promise<ToolUpdateStatus> {
   try {
-    const s = await checkUpgrade()
+    const s = await checkUpgrade(timeoutMs)
     return { tool: "cyberpunk", current: s.currentVersion, latest: s.latestVersion, available: !s.upToDate, checkedAt: new Date().toISOString() }
   } catch (err) {
     return status("cyberpunk", undefined, undefined, err instanceof Error ? err.message : String(err))
@@ -106,7 +106,7 @@ function parseReleaseTag(input: string | null | undefined): string | undefined {
 
 export async function checkToolUpdate(tool: UpdateTool, timeoutMs: number): Promise<ToolUpdateStatus> {
   switch (tool) {
-    case "cyberpunk": return checkCyberpunkUpdate()
+    case "cyberpunk": return checkCyberpunkUpdate(timeoutMs)
     case "context-mode": return checkNpmUpdate("context-mode", "context-mode", timeoutMs)
     case "rtk": return checkGithubReleaseUpdate("rtk", "rtk-ai/rtk", "rtk --version", timeoutMs)
     case "codebase-memory": return checkGithubReleaseUpdate("codebase-memory", "DeusData/codebase-memory-mcp", "codebase-memory-mcp --version", timeoutMs)

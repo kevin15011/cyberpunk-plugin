@@ -1,6 +1,6 @@
 // src/updates/cache.ts — TTL cache for update metadata
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs"
 import { join } from "path"
 import { getConfigDir } from "../config/load"
 import type { UpdateCacheFile } from "./types"
@@ -25,7 +25,6 @@ export function writeUpdateCache(cache: UpdateCacheFile): void {
   const path = getUpdateCachePath()
   mkdirSync(getConfigDir(), { recursive: true })
   writeFileSync(path + ".tmp", JSON.stringify(cache, null, 2) + "\n", "utf8")
-  const { renameSync } = require("fs") as typeof import("fs")
   renameSync(path + ".tmp", path)
 }
 
