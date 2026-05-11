@@ -2,6 +2,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, renameSync } from "fs"
+import { join } from "path"
 
 import { createTempHome, importAfterHomeSet, setDefaultConfig } from "./helpers/test-home"
 
@@ -174,6 +175,22 @@ describe("Config command success reporting", () => {
     expect(result.success).toBe(true)
     expect(result.action).toBe("set")
     expect(result.value).toBe("binary")
+  })
+
+  test("changing installMode clears stale update cache", async () => {
+    const runConfigCommand = await getRunConfigCommand()
+    const cachePath = join(fixture.configDir, "updates.json")
+    writeFileSync(cachePath, JSON.stringify({
+      checkedAt: new Date().toISOString(),
+      tools: [{ tool: "cyberpunk", current: "abc123", latest: "def456", available: true, checkedAt: new Date().toISOString() }],
+    }), "utf8")
+
+    expect(existsSync(cachePath)).toBe(true)
+
+    const result = await withHome(fixture.home, () => runConfigCommand({ key: "installMode", value: "binary" }))
+
+    expect(result.success).toBe(true)
+    expect(existsSync(cachePath)).toBe(false)
   })
 
   test("config reads and writes stay fixture-only even when caller HOME has unrelated config", async () => {

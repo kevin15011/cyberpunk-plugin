@@ -1,6 +1,6 @@
 {
   "name": "cyberpunk",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Cyberpunk CLI — interactive TUI for managing your cyberpunk dev environment",
   "type": "module",
   "scripts": {

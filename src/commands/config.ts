@@ -3,6 +3,7 @@
 import { loadConfig, ensureConfigExists } from "../config/load"
 import { saveConfig, setConfigValue, getConfigValue } from "../config/save"
 import { createDefaultConfig, COMPONENT_LABELS, type ComponentId } from "../config/schema"
+import { removeUpdateCache } from "../updates/cache"
 import type { CyberpunkConfig } from "../config/schema"
 
 export interface ConfigCommandResult {
@@ -81,6 +82,7 @@ export async function runConfigCommand(opts: {
       }
     }
     saveConfig(config)
+    if (opts.key === "installMode") removeUpdateCache()
     const { value: newValue } = getConfigValue(config, opts.key)
     return {
       action: "set",

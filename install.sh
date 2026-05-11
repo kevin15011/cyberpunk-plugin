@@ -284,6 +284,10 @@ if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_PATH" 2>/dev/null; then
     exit 1
   fi
 
+  # Drop stale update metadata from previous repo/local installs. Without this,
+  # the TUI can keep showing git commit hashes until the update cache TTL expires.
+  rm -f "${HOME}/.config/cyberpunk/updates.json"
+
   detect_shell_profile
   PATH_EXPORT_LINE="$(build_path_export_line)"
 
