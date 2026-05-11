@@ -187,6 +187,7 @@ describe("preset preflight", () => {
           "~/.config/opencode/skills/sdd-review/SKILL.md",
           "~/.config/opencode/skills/sdd-verify/SKILL.md",
           "~/.config/opencode/skills/sdd-archive/SKILL.md",
+          "~/.config/opencode/opencode.json",
         ],
       },
       {

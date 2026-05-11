@@ -77,6 +77,10 @@ export function normalizeConfig(config: CyberpunkConfig): CyberpunkConfig {
       ttlMs: config.updates?.ttlMs ?? 24 * 60 * 60 * 1000,
       timeoutMs: config.updates?.timeoutMs ?? 2500,
     },
+    sdd: {
+      review: { ...(config.sdd?.review ?? {}) },
+      judgmentDay: { mode: config.sdd?.judgmentDay?.mode ?? "ask" },
+    },
     repoUrl: config.repoUrl ?? defaults.repoUrl,
     lastUpgradeCheck: config.lastUpgradeCheck,
     pluginRegistered: config.pluginRegistered,

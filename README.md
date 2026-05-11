@@ -11,11 +11,11 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
   - `error` — Low descending tone on session errors
   - `compact` — Neural compression sound on context compaction
   - `permission` — Alert beep when opencode asks for permission
-- **SDD Integration** — Patches `sdd-phase-common.md` to register SDD review agents and wire the `apply → review → verify` flow. This is now a separate component from the sound plugin for clean separation of concerns.
+- **SDD Integration** — Patches SDD prompts/skills to wire the `apply → Judgment Day review gate → verify` flow. This is now a separate component from the sound plugin for clean separation of concerns.
 - **RTK** (optional) — Token-optimized CLI proxy that filters verbose command outputs before they reach your LLM context. Installs `rtk`, runs `rtk init -g --opencode`, and adds instruction reinforcement.
 - **TUI Plugins** — Registers `opencode-sdd-engram-manage` and `opencode-subagent-statusline` in `tui.json` for enhanced TUI experience.
 - **Codebase Memory MCP** — Auto-downloads `codebase-memory-mcp` binary, adds MCP config for structural code exploration (call graphs, symbols, routes). Routing instructions enforce read-before-edit workflow.
-- **2 custom SDD review phases** — `sdd-review` (native model review) and `sdd-claude-review` (Claude Opus CLI review)
+- **Configurable SDD review** — `sdd-review` uses the model you select from your configured OpenCode providers/models.
 - **Automatic context-mode bootstrap** — Ensures `context-mode` MCP/plugin config, routing instructions, and SDD prompt defaults exist after OpenCode/Gentle AI updates
 - **Cross-platform** — macOS (`afplay`) and Linux (`ffplay`)
 
@@ -26,7 +26,7 @@ A self-installing cyberpunk theme + sound pack for [opencode](https://opencode.a
 | **OpenCode Event Sounds** | `--plugin` | Cyberpunk theme + 4 generated sounds (idle, error, compact, permission) |
 | **Theme** | `--theme` | Dark cyberpunk TUI color scheme |
 | **Sounds** | `--sounds` | Sound effect WAV files (requires `ffmpeg`) |
-| **SDD Integration** | `--sdd-integration` | Patches `sdd-phase-common.md` with review/verify flow. Separated from the sound plugin for clean separation of concerns. |
+| **SDD Integration** | `--sdd-integration` | Patches SDD prompts/skills with the Judgment Day review gate before verify. Separated from the sound plugin for clean separation of concerns. |
 | **Context Mode** | `--context-mode` | MCP plugin + routing instructions for context protection |
 | **RTK** | `--rtk` | Token-optimized CLI proxy |
 | **Tmux** | `--tmux` | Cyberpunk HUD status bar + vim keybindings |

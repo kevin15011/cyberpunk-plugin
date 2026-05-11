@@ -40,6 +40,14 @@ export interface CyberpunkConfig {
     ttlMs: number
     timeoutMs: number
   }
+  sdd?: {
+    review?: {
+      model?: string
+    }
+    judgmentDay?: {
+      mode: "ask" | "auto" | "off"
+    }
+  }
 }
 
 export const COMPONENT_IDS: ComponentId[] = ["plugin", "sdd-integration", "theme", "sounds", "context-mode", "rtk", "tmux", "tui-plugins", "codebase-memory"]
@@ -79,5 +87,6 @@ export function createDefaultConfig(): CyberpunkConfig {
     profile: undefined,
     agentState: {},
     updates: { enabled: true, ttlMs: 24 * 60 * 60 * 1000, timeoutMs: 2500 },
+    sdd: { judgmentDay: { mode: "ask" } },
   }
 }

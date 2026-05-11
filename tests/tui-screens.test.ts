@@ -105,7 +105,7 @@ describe("home screen update", () => {
   })
 
   test("enter on upgrade navigates to upgrade route", () => {
-    const state = makeState({ cursor: 4 }) // upgrade is 5th item (index 4)
+    const state = makeState({ cursor: 5 }) // upgrade is 6th item (index 5)
     const result = homeScreen.update(state, { type: "enter" })
     expect(result.intent.type).toBe("navigate")
     if (result.intent.type === "navigate") {
@@ -114,7 +114,7 @@ describe("home screen update", () => {
   })
 
   test("enter on quit emits quit intent", () => {
-    const state = makeState({ cursor: 5 }) // quit is 6th item (index 5)
+    const state = makeState({ cursor: 6 }) // quit is 7th item (index 6)
     const result = homeScreen.update(state, { type: "enter" })
     expect(result.intent.type).toBe("quit")
     expect(result.state.quit).toBe(true)

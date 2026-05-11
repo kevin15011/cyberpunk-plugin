@@ -4,9 +4,10 @@ import type { ComponentId, ComponentStatus, DoctorRunResult, InstallResult } fro
 import type { ToolUpdateStatus } from "../updates/types"
 import type { AgentTarget } from "../domain/environment"
 import type { DetectedEnvironment } from "../platform/detect"
+import type { OpenCodeModelProviderGroup } from "../opencode-config"
 
 /** Valid screen identifiers in the navigation shell */
-export type RouteId = "home" | "install" | "uninstall" | "status" | "doctor" | "upgrade" | "task" | "results" | "result-detail"
+export type RouteId = "home" | "install" | "uninstall" | "status" | "doctor" | "upgrade" | "configure-models" | "task" | "results" | "result-detail"
 
 /** Generic task kind for the shared task/results pipeline */
 export type TaskKind = "install" | "uninstall" | "doctor-fix" | "upgrade"
@@ -55,6 +56,13 @@ export interface TUIState {
   doctor?: { loading: boolean; report?: DoctorRunResult; confirmFix: boolean }
   /** Upgrade screen state: loading indicator, cached multi-tool check status */
   upgrade?: { loading: boolean; status?: ToolUpdateStatus[] }
+  modelConfig?: {
+    loading: boolean
+    providers: OpenCodeModelProviderGroup[]
+    selectedProviderId?: string
+    returnToInstall?: boolean
+    currentModel?: string
+  }
   /** Result view metadata: which task kind produced the results */
   resultView?: { kind: TaskKind; detailIndex?: number }
   quit: boolean
@@ -85,6 +93,7 @@ export type ScreenIntent =
   | { type: "run-doctor" }
   | { type: "run-doctor-fix" }
   | { type: "run-upgrade" }
+  | { type: "configure-sdd-review-model"; modelRef: string }
   | { type: "none" }
 
 /** Result of a screen's update function */

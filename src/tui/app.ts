@@ -8,6 +8,7 @@ import { uninstallScreen } from "./screens/uninstall"
 import { statusScreen } from "./screens/status"
 import { doctorScreen } from "./screens/doctor"
 import { upgradeScreen } from "./screens/upgrade"
+import { configureModelsScreen } from "./screens/configure-models"
 import { taskScreen } from "./screens/task"
 import { resultsScreen } from "./screens/results"
 import { resultDetailScreen } from "./screens/result-detail"
@@ -22,6 +23,7 @@ export function getScreen(routeId: string): ScreenModule {
     case "status": return statusScreen
     case "doctor": return doctorScreen
     case "upgrade": return upgradeScreen
+    case "configure-models": return configureModelsScreen
     case "task": return taskScreen
     case "results": return resultsScreen
     case "result-detail": return resultDetailScreen
@@ -75,6 +77,7 @@ function applyIntent(state: TUIState, intent: ScreenIntent): TUIState {
       return pushRoute(state, route("doctor"))
     case "run-doctor-fix":
     case "run-upgrade":
+    case "configure-sdd-review-model":
       // These intents are handled by the task executor in index.ts,
       // not by the app router — return state unchanged
       return state

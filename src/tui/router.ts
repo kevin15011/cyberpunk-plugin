@@ -15,12 +15,14 @@ export function pushRoute(state: TUIState, next: AppRoute): TUIState {
     route: next,
     cursor: 0,
     message: undefined,
+    ...(next.id === "configure-models" ? { modelConfig: undefined } : {}),
     // Reset install phase when navigating away from install screen
-    ...(next.id !== "install" ? { _installPhase: undefined } : {}),
+    ...(next.id !== "install" && next.id !== "configure-models" ? { _installPhase: undefined } : {}),
     // Reset doctor state when navigating away from doctor screen
     ...(next.id !== "doctor" ? { doctor: undefined } : {}),
     // Reset upgrade state when navigating away from upgrade screen
     ...(next.id !== "upgrade" ? { upgrade: undefined } : {}),
+    ...(next.id !== "configure-models" ? { modelConfig: undefined } : {}),
   }
 }
 
@@ -61,6 +63,7 @@ export function goHome(state: TUIState): TUIState {
     task: undefined,
     doctor: undefined,
     upgrade: undefined,
+    modelConfig: undefined,
     resultView: undefined,
     message: undefined,
     _installPhase: undefined,

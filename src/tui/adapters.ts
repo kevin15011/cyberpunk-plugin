@@ -13,6 +13,9 @@ import type { UpgradeResult } from "../commands/upgrade"
 import type { ToolUpdateResult, ToolUpdateStatus, UpdateTool } from "../updates/types"
 import { createUpdateManager } from "../updates/manager"
 import type { AgentTarget } from "../domain/environment"
+import { configureSddReviewModel, getConfiguredSddReviewModel, listAvailableOpenCodeModels } from "../opencode-config"
+import { loadConfig } from "../config/load"
+import { saveConfig } from "../config/save"
 
 /** Collect fresh status for all components */
 export async function collectFreshStatus(target: AgentTarget = "opencode"): Promise<ComponentStatus[]> {
@@ -69,6 +72,26 @@ export async function startUpgradeTask(): Promise<UpgradeResult> {
 
 export async function startToolUpdateTask(tools: UpdateTool[]): Promise<ToolUpdateResult[]> {
   return createUpdateManager(true).apply(tools)
+}
+
+export async function loadOpenCodeModelProviders() {
+  return listAvailableOpenCodeModels()
+}
+
+export async function loadConfiguredSddReviewModel() {
+  return getConfiguredSddReviewModel()
+}
+
+export async function configureOpenCodeSddReviewModel(modelRef: string): Promise<void> {
+  const result = configureSddReviewModel(modelRef)
+  if (result.warning) throw new Error(result.warning)
+  const config = loadConfig()
+  config.sdd = {
+    ...(config.sdd ?? {}),
+    review: { ...(config.sdd?.review ?? {}), model: modelRef },
+    judgmentDay: { mode: config.sdd?.judgmentDay?.mode ?? "ask" },
+  }
+  saveConfig(config)
 }
 
 /** Create TaskHooks that update a TUIState's task field */

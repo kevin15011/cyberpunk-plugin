@@ -9,6 +9,7 @@ const MENU_ITEMS = [
   { id: "uninstall" as const, label: "Desinstalar componentes", hint: "Seleccionar qué remover" },
   { id: "status" as const, label: "Ver estado", hint: "Mostrar estado actual" },
   { id: "doctor" as const, label: "Doctor", hint: "Diagnosticar problemas" },
+  { id: "configure-models" as const, label: "Configure models", hint: "Cambiar modelo de sdd-review" },
   { id: "upgrade" as const, label: "Upgrade", hint: "Verificar actualizaciones" },
   { id: "quit" as const, label: "Salir", hint: "" },
 ] as const

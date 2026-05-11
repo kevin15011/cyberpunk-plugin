@@ -42,6 +42,7 @@ export const FILE_TOUCH_MAP: Record<ComponentId, string[]> = {
     "~/.config/opencode/skills/sdd-review/SKILL.md",
     "~/.config/opencode/skills/sdd-verify/SKILL.md",
     "~/.config/opencode/skills/sdd-archive/SKILL.md",
+    "~/.config/opencode/opencode.json",
   ],
   theme: [
     "~/.config/opencode/themes/cyberpunk.json",

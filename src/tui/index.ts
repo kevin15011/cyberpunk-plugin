@@ -2,12 +2,14 @@
 
 import { createApp, updateWithIntent, view } from "./app"
 import { enableRawMode, disableRawMode, clearScreen, writeLines, hideCursor, showCursor, readKey } from "./terminal"
-import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startToolUpdateTask } from "./adapters"
+import { collectFreshStatus, startInstallTask, startUninstallTask, startPresetInstall, loadDoctorSummary, startDoctorFixTask, loadUpgradeStatus, startToolUpdateTask, loadOpenCodeModelProviders, configureOpenCodeSddReviewModel, loadConfiguredSddReviewModel } from "./adapters"
 import { route, pushRoute } from "./router"
 import { pink, bold, green, red, yellow } from "./theme"
 import type { TUIState, TaskKind } from "./types"
 import type { ComponentId, InstallResult } from "../components/types"
 import type { ToolUpdateResult, UpdateTool } from "../updates/types"
+import { resolvePreset } from "../presets"
+import { getConfiguredSddReviewModel } from "../opencode-config"
 
 export async function runTUI(): Promise<void> {
   // Bootstrap: gather initial status
@@ -37,6 +39,7 @@ export async function runTUI(): Promise<void> {
 
   // Main loop
   const stdin = process.stdin
+  let processingKey = false
 
   try {
     // Initial render
@@ -45,6 +48,9 @@ export async function runTUI(): Promise<void> {
 
     await new Promise<void>((resolve) => {
       stdin.on("data", async (data: Buffer) => {
+        if (processingKey) return
+        processingKey = true
+        try {
         const key = readKey(data)
 
         // Handle the key through the app (returns state + raw intent)
@@ -83,11 +89,38 @@ export async function runTUI(): Promise<void> {
           }
         }
 
+        if (state.route.id === "configure-models" && !state.modelConfig) {
+          state = { ...state, modelConfig: { loading: true, providers: [] } }
+          clearScreen()
+          writeLines(view(state))
+          try {
+            const [providers, currentModel] = await Promise.all([loadOpenCodeModelProviders(), loadConfiguredSddReviewModel()])
+            state = { ...state, modelConfig: { loading: false, providers, currentModel } }
+          } catch (err) {
+            state = { ...state, modelConfig: { loading: false, providers: [] } }
+            state = { ...state, message: err instanceof Error ? err.message : String(err) }
+          }
+        }
+
         // Handle task execution intents
         if (intent.type === "run-doctor-fix") {
           state = await executeDoctorFixTask(state)
         } else if (intent.type === "run-upgrade") {
           state = await executeUpgradeTask(state)
+        } else if (intent.type === "configure-sdd-review-model") {
+          state = await executeConfigureModel(state, intent.modelRef)
+        } else if (needsModelConfigurationBeforeInstall(state, key)) {
+          state = pushRoute(state, route("configure-models"))
+          state = { ...state, modelConfig: { loading: true, providers: [], returnToInstall: true } }
+          clearScreen()
+          writeLines(view(state))
+          try {
+            const [providers, currentModel] = await Promise.all([loadOpenCodeModelProviders(), loadConfiguredSddReviewModel()])
+            state = { ...state, modelConfig: { loading: false, providers, returnToInstall: true, currentModel } }
+          } catch (err) {
+            state = { ...state, modelConfig: { loading: false, providers: [], returnToInstall: true } }
+            state = { ...state, message: err instanceof Error ? err.message : String(err) }
+          }
         } else if (needsTaskExecution(state, key)) {
           state = await executeTask(state)
         }
@@ -102,11 +135,62 @@ export async function runTUI(): Promise<void> {
         // Re-render
         clearScreen()
         writeLines(view(state))
+        } finally {
+          processingKey = false
+        }
       })
     })
   } finally {
     showCursor()
     disableRawMode()
+  }
+}
+
+function selectionIncludesSddIntegration(state: TUIState): boolean {
+  if (state.selectedComponents.includes("sdd-integration")) return true
+  if (!state.selectedPreset) return false
+  try {
+    return resolvePreset(state.selectedPreset, { target: state.selectedTool ?? "opencode" }).components.includes("sdd-integration")
+  } catch {
+    return false
+  }
+}
+
+function needsModelConfigurationBeforeInstall(state: TUIState, key: import("./types").KeyEvent): boolean {
+  if (key.type !== "enter") return false
+  if (state.route.id !== "install" || state._installPhase !== "confirm") return false
+  return selectionIncludesSddIntegration(state) && !getConfiguredSddReviewModel()
+}
+
+async function executeConfigureModel(state: TUIState, modelRef: string): Promise<TUIState> {
+  const returnToInstall = state.modelConfig?.returnToInstall === true
+  try {
+    await configureOpenCodeSddReviewModel(modelRef)
+    state = {
+      ...state,
+      message: `sdd-review model configurado: ${modelRef}`,
+      modelConfig: state.modelConfig ? { ...state.modelConfig, currentModel: modelRef } : state.modelConfig,
+    }
+  } catch (err) {
+    return { ...state, message: err instanceof Error ? err.message : String(err) }
+  }
+
+  if (returnToInstall) {
+    state = popConfigureModelsRoute(state)
+    return executeTask(state)
+  }
+  return state
+}
+
+function popConfigureModelsRoute(state: TUIState): TUIState {
+  const previous = state.history[state.history.length - 1]
+  if (!previous) return { ...state, modelConfig: undefined }
+  return {
+    ...state,
+    route: previous,
+    history: state.history.slice(0, -1),
+    cursor: 0,
+    modelConfig: undefined,
   }
 }
 

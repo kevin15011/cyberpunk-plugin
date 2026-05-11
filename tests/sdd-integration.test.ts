@@ -27,6 +27,20 @@ function writeRequiredSddAssets(home: string) {
   }
 }
 
+function writeMinimalOpenCodeConfig(home: string) {
+  const opencodeDir = join(home, ".config", "opencode")
+  mkdirSync(opencodeDir, { recursive: true })
+  writeFileSync(join(opencodeDir, "opencode.json"), JSON.stringify({
+    agent: {
+      "gentle-orchestrator": {
+        prompt: "# Orchestrator\n\n### Review Workload Guard (MANDATORY)\n",
+        permission: { task: {} },
+      },
+      "sdd-claude-review": { model: "anthropic/claude-opus" },
+    },
+  }), "utf8")
+}
+
 // ── extractBetweenMarkers tests ──────────────────────────────
 
 describe("sdd-integration: extractBetweenMarkers", () => {
@@ -244,14 +258,29 @@ describe("sdd-integration: OpenCode SDD readiness", () => {
     expect(readinessCheck?.message).toContain("sdd-apply/SKILL.md")
   })
 
-  test("status is installed only when SDD assets are ready and Section E/F is patched", async () => {
+  test("status is installed only when all managed SDD patches are applied", async () => {
     writeRequiredSddAssets(tempHome)
-    const { getSddIntegrationComponent, patchSddPhaseCommon } = await loadSddModule()
+    writeMinimalOpenCodeConfig(tempHome)
+    const { getSddIntegrationComponent, patchSddPhaseCommon, patchSddReviewSkill, patchOpenCodeSddOrchestrator } = await loadSddModule()
 
     expect(patchSddPhaseCommon()).toBe(true)
+    expect(patchSddReviewSkill()).toBe(true)
+    expect(patchOpenCodeSddOrchestrator()).toBe(true)
     const status = await getSddIntegrationComponent().status()
 
     expect(status.status).toBe("installed")
+  })
+
+  test("orchestrator patch allows sdd-review and removes primary claude review", async () => {
+    writeMinimalOpenCodeConfig(tempHome)
+    const { patchOpenCodeSddOrchestrator, ORCHESTRATOR_REVIEW_GATE_START_MARKER } = await loadSddModule()
+
+    expect(patchOpenCodeSddOrchestrator()).toBe(true)
+    const opencodeJson = JSON.parse(readFileSync(join(tempHome, ".config", "opencode", "opencode.json"), "utf8"))
+
+    expect(opencodeJson.agent["gentle-orchestrator"].prompt).toContain(ORCHESTRATOR_REVIEW_GATE_START_MARKER)
+    expect(opencodeJson.agent["gentle-orchestrator"].permission.task["sdd-review"]).toBe("allow")
+    expect(opencodeJson.agent["sdd-claude-review"]).toBeUndefined()
   })
 })
 

@@ -11,6 +11,7 @@ import { chmodSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, 
 import { join } from "path"
 
 import { createTempHome } from "./helpers/test-home"
+import { ORCHESTRATOR_REVIEW_GATE_END_MARKER, ORCHESTRATOR_REVIEW_GATE_START_MARKER, ORCHESTRATOR_REVIEW_GATE_TEMPLATE, SDD_REVIEW_DEFINITION_TEMPLATE, SDD_REVIEW_END_MARKER, SDD_REVIEW_START_MARKER } from "../src/components/sdd-integration"
 
 async function withHome<T>(home: string, run: () => Promise<T> | T): Promise<T> {
   const originalHome = process.env.HOME
@@ -135,6 +136,13 @@ function createHealthyConfig() {
 function createHealthyOpenCode() {
   mkdirSync(OPENCODE_DIR, { recursive: true })
   writeFileSync(OPENCODE_JSON, JSON.stringify({
+    agent: {
+      "gentle-orchestrator": {
+        prompt: `# Orchestrator\n\n${ORCHESTRATOR_REVIEW_GATE_START_MARKER}\n${ORCHESTRATOR_REVIEW_GATE_TEMPLATE}\n${ORCHESTRATOR_REVIEW_GATE_END_MARKER}\n`,
+        permission: { task: { "sdd-review": "allow" } },
+      },
+      "sdd-review": { model: "openai/gpt-5.5" },
+    },
     plugin: ["./plugins/cyberpunk"],
     mcp: { "context-mode": { command: ["context-mode"], type: "local", enabled: true } },
   }))
@@ -166,7 +174,10 @@ function createHealthySddAssets() {
   for (const skill of REQUIRED_SDD_SKILL_NAMES) {
     const skillDir = join(SKILLS_ROOT_DIR, skill)
     mkdirSync(skillDir, { recursive: true })
-    writeFileSync(join(skillDir, "SKILL.md"), `# ${skill}\n`)
+    const content = skill === "sdd-review"
+      ? `# ${skill}\n\n${SDD_REVIEW_START_MARKER}\n${SDD_REVIEW_DEFINITION_TEMPLATE}\n${SDD_REVIEW_END_MARKER}\n`
+      : `# ${skill}\n`
+    writeFileSync(join(skillDir, "SKILL.md"), content)
   }
 }
 
@@ -490,6 +501,10 @@ describe("Doctor Spec Scenarios", () => {
     // Mark sdd-integration as installed so doctor checks run
     writeFileSync(CONFIG_PATH, JSON.stringify({ version: 1, components: { "sdd-integration": { installed: true } } }))
     createHealthySddAssets()
+    mkdirSync(OPENCODE_DIR, { recursive: true })
+    writeFileSync(OPENCODE_JSON, JSON.stringify({
+      agent: { "gentle-orchestrator": { prompt: "# Orchestrator\n\n### Review Workload Guard (MANDATORY)\n", permission: { task: {} } } },
+    }))
     const result = await runDoctorFn({ fix: true, verbose: false, components: ["plugin", "sdd-integration"] })
 
     const patchFix = result.fixes.find(f => f.checkId === "sdd-integration:patching")
